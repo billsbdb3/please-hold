@@ -12,7 +12,7 @@ const Game = (function() {
     wtlMax: 15,
     wtlPerClick: 1,
     patiencePerClick: 1,
-    patiencePerSec: 0,
+    patiencePerSec: 0, // from non-generator sources
     dustPerSec: 0,
     dustMultiplier: 1,
     wtlRegen: 0,
@@ -23,10 +23,14 @@ const Game = (function() {
     totalClicks: 0,
     hangups: 0,
     combo: 1,
-    timeMultiplier: 1, // in-game time multiplier
-    inGameSeconds: 0,  // total subjective seconds on hold
+    timeMultiplier: 1,
+    inGameSeconds: 0,
     realStartTime: 0,
     realElapsed: 0,
+
+    // Generator multipliers (per-generator and global)
+    genMultipliers: {},
+    globalGenMultiplier: 1,
 
     // Phase 2 resources
     rage: 0,
@@ -37,30 +41,25 @@ const Game = (function() {
     entropy: 0,
 
     // Flags
-    flags: {
-      dustStarted: false,
-      noWtlCost: false,
-      started: false,
-    },
+    flags: { dustStarted: false, noWtlCost: false, started: false },
 
     // Tracking
-    maxPatience: 0, // highest patience ever reached
+    maxPatience: 0,
     boughtUpgrades: new Set(),
     triggeredMilestones: new Set(),
   };
 
+  // Initialize generator multipliers
+  Phase1.generators.forEach(g => { state.genMultipliers[g.id] = 1; });
+
   // ===== TIMING =====
-  let lastTick = 0;
-  let lastFlavorTime = 0;
-  let lastComboClick = -Infinity;
-  let lastClickTime = -Infinity;
-  const CLICK_COOLDOWN = 110;
-  const COMBO_MAX = 4;
-  const COMBO_UP = 0.3;
-  const COMBO_DECAY = 0.4;
-  const FLAVOR_INTERVAL = 12000;
+  let lastTick = 0, lastFlavorTime = 0, lastComboClick = -Infinity, lastClickTime = -Infinity;
+  const CLICK_COOLDOWN = 110, COMBO_MAX = 4, COMBO_UP = 0.3, COMBO_DECAY = 0.4, FLAVOR_INTERVAL = 12000;
 
   function mins() { return ((Date.now() - state.realStartTime) / 60000).toFixed(1) + 'm'; }
+  function totalPPS() {
+    return state.patiencePerSec + Phase1.calcGeneratorPPS(state);
+  }
 
   // ===== INIT =====
   function init() {
@@ -100,23 +99,39 @@ const Game = (function() {
       <div class="resource"><div class="resource-label">Patience</div><div class="resource-value patience" id="val-patience">0</div></div>
       <div class="resource"><div class="resource-label">Will to Live</div><div class="resource-value wtl" id="val-wtl">15/15</div><div class="bar-container"><div class="bar bar-wtl" id="bar-wtl"></div></div></div>
       <div class="resource" id="res-dust" style="display:none"><div class="resource-label">Dust</div><div class="resource-value dust" id="val-dust">0</div></div>
-      <div class="resource"><div class="resource-label">Queue</div><div class="resource-value queue" id="val-queue">#150</div></div>
+      <div class="resource"><div class="resource-label">Queue</div><div class="resource-value queue" id="val-queue">#${Phase1.QUEUE_START}</div></div>
     `;
+
+    // Rates bar
+    document.getElementById('rates-bar').innerHTML = 'patience/sec: <span id="val-pps">0.0</span>';
 
     // Actions
     document.getElementById('actions').innerHTML = `
       <button id="btn-endure" class="btn btn-primary">[ ENDURE ]<br><span class="btn-sub" id="sub-endure">+1 patience | -1 WtL</span></button>
       <button id="btn-refill" class="btn btn-secondary" style="display:none" disabled>Deep Breath<br><span class="btn-sub" id="sub-refill">5 patience → +12 WtL</span></button>
-      <button id="btn-advance" class="btn btn-danger" disabled>Advance in Queue<br><span class="btn-sub" id="sub-advance">costs 20 patience</span></button>
+      <button id="btn-advance" class="btn btn-danger" disabled>Advance in Queue<br><span class="btn-sub" id="sub-advance">costs 25 patience</span></button>
     `;
 
-    // Upgrades container
+    // Upgrades container: generators on left, upgrades on right
     document.getElementById('upgrades-container').innerHTML = `
-      <div class="upgrade-column hold-col"><h2>Hold Upgrades</h2><div id="upgrade-list"></div></div>
+      <div class="upgrade-column gen-col"><h2>Generators</h2><div id="gen-list"></div></div>
+      <div class="upgrade-column hold-col"><h2>Upgrades</h2><div id="upgrade-list"></div></div>
     `;
+
+    // Build generator buttons
+    const genList = document.getElementById('gen-list');
+    Phase1.generators.forEach(g => {
+      const btn = document.createElement('button');
+      btn.className = 'upgrade-btn gen-btn';
+      btn.id = 'gbtn-' + g.id;
+      btn.style.display = g.unlocked ? 'block' : 'none';
+      btn.innerHTML = formatGenButton(g);
+      btn.onclick = () => buyGenerator(g);
+      genList.appendChild(btn);
+    });
 
     // Build upgrade buttons
-    const list = document.getElementById('upgrade-list');
+    const upList = document.getElementById('upgrade-list');
     Phase1.upgrades.forEach(u => {
       const btn = document.createElement('button');
       btn.className = 'upgrade-btn';
@@ -124,7 +139,7 @@ const Game = (function() {
       btn.style.display = 'none';
       btn.innerHTML = `<strong>${u.name}</strong> — ${u.desc}<br><span class="upgrade-cost">${NumberFormat.format(u.cost)} patience</span>`;
       btn.onclick = () => buyUpgrade(u);
-      list.appendChild(btn);
+      upList.appendChild(btn);
     });
 
     // Wire up action buttons
@@ -133,19 +148,23 @@ const Game = (function() {
     document.getElementById('btn-advance').onclick = doAdvance;
   }
 
+  function formatGenButton(g) {
+    const cost = Phase1.getGeneratorCost(g);
+    const mult = (state.genMultipliers[g.id] || 1) * state.globalGenMultiplier;
+    const prodEach = (g.baseProduction * mult).toFixed(1);
+    return `<strong>${g.name}</strong> (${g.owned})<br><span class="btn-sub">${g.desc} | +${prodEach}/sec each</span><br><span class="upgrade-cost">${NumberFormat.format(cost)} patience</span>`;
+  }
+
   // ===== ACTIONS =====
   function doEndure() {
     if (state.wtl <= 0) return;
     const now = Date.now();
     if (now - lastClickTime < CLICK_COOLDOWN) return;
     lastClickTime = now;
-
     state.patience += state.patiencePerClick;
     if (state.patience > state.maxPatience) state.maxPatience = state.patience;
     state.wtl = Math.max(0, state.wtl - state.wtlPerClick);
     state.totalClicks++;
-
-    // Combo
     lastComboClick = now;
     state.combo = Math.min(COMBO_MAX, state.combo + COMBO_UP);
   }
@@ -164,11 +183,23 @@ const Game = (function() {
       state.patience -= cost;
       state.queue--;
       state.queueAdvances++;
-      console.log('[METRICS] Queue #' + state.queue + ' at ' + mins() + ' | cost:' + cost + ' | pps:' + state.patiencePerSec.toFixed(1) + ' | dust:' + state.dust.toFixed(1) + ' | clicks:' + state.totalClicks);
+      console.log('[METRICS] Queue #' + state.queue + ' at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | dust:' + state.dust.toFixed(1) + ' | clicks:' + state.totalClicks);
       Phase1.checkMilestones(state.queue, state.triggeredMilestones);
       UI.addLog('Advanced to #' + state.queue + '.');
       if (state.queue <= 0) endPhase1();
     }
+  }
+
+  function buyGenerator(g) {
+    const cost = Phase1.getGeneratorCost(g);
+    if (state.patience < cost) return;
+    state.patience -= cost;
+    g.owned++;
+    console.log('[METRICS] Bought gen "' + g.name + '" (#' + g.owned + ') at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | patience:' + Math.floor(state.patience));
+    UI.addLog('Bought: ' + g.name + ' (' + g.owned + ')');
+    // Update button
+    const btn = document.getElementById('gbtn-' + g.id);
+    if (btn) btn.innerHTML = formatGenButton(g);
   }
 
   function buyUpgrade(u) {
@@ -177,13 +208,13 @@ const Game = (function() {
     state.patience -= u.cost;
     state.boughtUpgrades.add(u.id);
     u.effect(state);
-    console.log('[METRICS] Bought "' + u.name + '" at ' + mins() + ' | patience:' + Math.floor(state.patience) + ' | pps:' + state.patiencePerSec.toFixed(1) + ' | dust:' + state.dust.toFixed(1) + ' | clicks:' + state.totalClicks + ' | maxP:' + Math.floor(state.maxPatience));
+    console.log('[METRICS] Bought upgrade "' + u.name + '" at ' + mins() + ' | patience:' + Math.floor(state.patience) + ' | pps:' + totalPPS().toFixed(1) + ' | clicks:' + state.totalClicks + ' | maxP:' + Math.floor(state.maxPatience));
     UI.addLog('Purchased: ' + u.name);
   }
 
   // ===== PHASE TRANSITION =====
   function endPhase1() {
-    console.log('[METRICS] === PHASE 1 COMPLETE === at ' + mins() + ' | clicks:' + state.totalClicks + ' | hangups:' + state.hangups + ' | pps:' + state.patiencePerSec.toFixed(1) + ' | dust:' + state.dust.toFixed(1) + ' | maxP:' + Math.floor(state.maxPatience));
+    console.log('[METRICS] === PHASE 1 COMPLETE === at ' + mins() + ' | clicks:' + state.totalClicks + ' | hangups:' + state.hangups + ' | pps:' + totalPPS().toFixed(1) + ' | dust:' + state.dust.toFixed(1));
     UI.showTransition(
       'SOMEONE PICKS UP.',
       [
@@ -202,67 +233,10 @@ const Game = (function() {
 
   function startPhase2() {
     state.phase = 2;
-    // TODO: Build Phase 2 UI and mechanics
     UI.addLog('Phase 2 begins. (Coming soon)');
   }
 
-  // ===== GAME LOOP =====
-  function tick() {
-    if (!state.flags.started) return;
-    const now = Date.now();
-    const dt = (now - lastTick) / 1000;
-    lastTick = now;
-
-    // Real elapsed
-    state.realElapsed = (now - state.realStartTime) / 1000;
-
-    // In-game time
-    state.inGameSeconds += dt * state.timeMultiplier;
-
-    // Combo decay
-    if (now - lastComboClick > 600 && state.combo > 1) {
-      state.combo = Math.max(1, state.combo - COMBO_DECAY * dt);
-    }
-
-    // WtL regen
-    if (state.wtlRegen > 0) {
-      state.wtl = Math.min(state.wtlMax, state.wtl + state.wtlRegen * dt);
-    }
-
-    // Hangup check
-    if (state.wtl <= 0 && state.wtlRegen < 0.3 && state.wtlPerClick > 0) {
-      hangUp();
-      return;
-    }
-
-    // Patience per sec (with combo multiplier)
-    let pps = state.patiencePerSec;
-    pps *= state.combo;
-    state.patience += pps * dt;
-
-    // Track max patience
-    if (state.patience > state.maxPatience) state.maxPatience = state.patience;
-
-    // Dust
-    if (state.flags.dustStarted) {
-      state.dust += state.dustPerSec * state.dustMultiplier * dt;
-    }
-
-    // Flavor text
-    if (now - lastFlavorTime > FLAVOR_INTERVAL) {
-      document.getElementById('flavor-text').textContent = Flavor.getForPhase(state.phase);
-      lastFlavorTime = now;
-    }
-
-    // Dust overlay
-    UI.setDustOverlay(state.dust);
-
-    // Update display
-    updateDisplay();
-
-    requestAnimationFrame(tick);
-  }
-
+  // ===== HANGUP =====
   function hangUp() {
     console.log('[METRICS] HANGUP at ' + mins() + ' | queue:#' + state.queue + ' | patience:' + Math.floor(state.patience) + ' | clicks:' + state.totalClicks);
     document.getElementById('game-area').style.display = 'none';
@@ -286,24 +260,71 @@ const Game = (function() {
     requestAnimationFrame(tick);
   }
 
-  // ===== DISPLAY UPDATE =====
-  function updateDisplay() {
-    // Patience
-    UI.setText('val-patience', NumberFormat.format(state.patience));
+  // ===== GAME LOOP =====
+  function tick() {
+    if (!state.flags.started) return;
+    const now = Date.now();
+    const dt = (now - lastTick) / 1000;
+    lastTick = now;
 
-    // WtL
-    UI.setText('val-wtl', Math.floor(state.wtl) + '/' + state.wtlMax);
-    const wtlPct = (state.wtl / state.wtlMax) * 100;
-    UI.setWidth('bar-wtl', wtlPct);
-    UI.setBarColor('bar-wtl', wtlPct);
+    state.realElapsed = (now - state.realStartTime) / 1000;
+    state.inGameSeconds += dt * state.timeMultiplier;
 
-    // Queue
-    UI.setText('val-queue', '#' + state.queue);
+    // Combo decay
+    if (now - lastComboClick > 600 && state.combo > 1) {
+      state.combo = Math.max(1, state.combo - COMBO_DECAY * dt);
+    }
+
+    // WtL regen
+    if (state.wtlRegen > 0) {
+      state.wtl = Math.min(state.wtlMax, state.wtl + state.wtlRegen * dt);
+    }
+
+    // Hangup check
+    if (state.wtl <= 0 && state.wtlRegen < 0.3 && state.wtlPerClick > 0) {
+      hangUp(); return;
+    }
+
+    // Patience per sec: generators + base + combo
+    let pps = totalPPS();
+    pps *= state.combo;
+    state.patience += pps * dt;
+    if (state.patience > state.maxPatience) state.maxPatience = state.patience;
 
     // Dust
     if (state.flags.dustStarted) {
+      state.dust += state.dustPerSec * state.dustMultiplier * dt;
+    }
+
+    // Flavor text
+    if (now - lastFlavorTime > FLAVOR_INTERVAL) {
+      document.getElementById('flavor-text').textContent = Flavor.getForPhase(state.phase);
+      lastFlavorTime = now;
+    }
+
+    // Dust overlay
+    UI.setDustOverlay(state.dust);
+
+    updateDisplay();
+    requestAnimationFrame(tick);
+  }
+
+  // ===== DISPLAY =====
+  function updateDisplay() {
+    UI.setText('val-patience', NumberFormat.format(state.patience));
+    UI.setText('val-wtl', Math.floor(state.wtl) + '/' + state.wtlMax);
+    UI.setText('val-queue', '#' + state.queue);
+
+    if (state.flags.dustStarted) {
       UI.show('res-dust');
       UI.setText('val-dust', NumberFormat.format(state.dust) + ' mm');
+    }
+
+    // Rates bar
+    const pps = totalPPS() * state.combo;
+    if (pps > 0) {
+      document.getElementById('rates-bar').style.display = 'block';
+      UI.setText('val-pps', pps.toFixed(1));
     }
 
     // Phone bar elapsed
@@ -313,6 +334,11 @@ const Game = (function() {
       if (elapsed) elapsed.textContent = NumberFormat.formatHoldTime(state.inGameSeconds);
     }
 
+    // WtL bar
+    const wtlPct = (state.wtl / state.wtlMax) * 100;
+    UI.setWidth('bar-wtl', wtlPct);
+    UI.setBarColor('bar-wtl', wtlPct);
+
     // Buttons
     const endureBtn = document.getElementById('btn-endure');
     const refillBtn = document.getElementById('btn-refill');
@@ -320,7 +346,6 @@ const Game = (function() {
 
     if (endureBtn) endureBtn.disabled = state.wtl <= 0;
     if (refillBtn) {
-      // Reveal when WtL drops below 60%
       if (state.wtl < state.wtlMax * 0.6) refillBtn.style.display = '';
       refillBtn.disabled = state.patience < state.refillCost;
       UI.setText('sub-refill', state.refillCost + ' patience → +' + state.refillAmount + ' WtL');
@@ -331,17 +356,30 @@ const Game = (function() {
       UI.setText('sub-advance', 'costs ' + NumberFormat.format(cost) + ' patience');
     }
 
-    // Endure button text
     UI.setText('sub-endure', '+' + state.patiencePerClick + ' patience' + (state.wtlPerClick > 0 ? ' | -' + state.wtlPerClick + ' WtL' : ''));
 
-    // Upgrades visibility & state
+    // Generator visibility and buttons
+    Phase1.generators.forEach(g => {
+      const btn = document.getElementById('gbtn-' + g.id);
+      if (!btn) return;
+      if (!g.unlocked && state.maxPatience >= g.unlocksAt) {
+        g.unlocked = true;
+        btn.style.display = 'block';
+        UI.addLog('New generator available: ' + g.name);
+      }
+      if (g.unlocked) {
+        const cost = Phase1.getGeneratorCost(g);
+        btn.disabled = state.patience < cost;
+        btn.innerHTML = formatGenButton(g);
+      }
+    });
+
+    // Upgrade visibility and state
     Phase1.upgrades.forEach(u => {
       const btn = document.getElementById('ubtn-' + u.id);
       if (!btn) return;
       if (!state.boughtUpgrades.has(u.id)) {
-        if (state.maxPatience >= u.revealAt) {
-          btn.style.display = 'block';
-        }
+        if (state.maxPatience >= u.revealAt) btn.style.display = 'block';
         btn.disabled = state.patience < u.cost;
       } else {
         btn.style.display = 'block';
@@ -353,28 +391,27 @@ const Game = (function() {
       }
     });
 
-    // Show upgrades container once first upgrade is visible
+    // Show upgrades container
     const upgradesBox = document.getElementById('upgrades-container');
-    if (upgradesBox && !upgradesBox.classList.contains('revealed') && state.maxPatience >= 15) {
+    if (upgradesBox && !upgradesBox.classList.contains('revealed') && state.maxPatience >= 8) {
       upgradesBox.style.display = 'grid';
-      upgradesBox.style.gridTemplateColumns = '1fr';
+      upgradesBox.style.gridTemplateColumns = '1fr 1fr';
       upgradesBox.classList.add('revealed');
       UI.addLog('You consider your options.');
     }
   }
 
-  // ===== SAVE STATE =====
+  // ===== SAVE =====
   function getState() {
     return {
       ...state,
       boughtUpgrades: Array.from(state.boughtUpgrades),
       triggeredMilestones: Array.from(state.triggeredMilestones),
+      generators: Phase1.generators.map(g => ({ id: g.id, owned: g.owned, unlocked: g.unlocked })),
     };
   }
 
-  // ===== PUBLIC API =====
   return { init, state, getState };
 })();
 
-// Start on DOM ready
 document.addEventListener('DOMContentLoaded', Game.init);
