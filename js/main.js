@@ -67,17 +67,17 @@ const Game = (function() {
 
   // Dust shop items (spendable dust for permanent bonuses)
   const dustShop = [
-    { id: 'ds_headphones', name: 'Noise-Canceling Headphones', desc: '+20% patience/sec', cost: 50, bought: false,
+    { id: 'ds_headphones', name: 'Noise-Canceling Headphones', desc: '+20% patience/sec', cost: 5, bought: false,
       effect(s) { s.globalGenMultiplier *= 1.2; } },
-    { id: 'ds_grip', name: 'Ergonomic Phone Grip', desc: '+2 patience/click', cost: 120, bought: false,
+    { id: 'ds_grip', name: 'Ergonomic Phone Grip', desc: '+2 patience/click', cost: 12, bought: false,
       effect(s) { s.patiencePerClick += 2; } },
-    { id: 'ds_room', name: 'Soundproofed Room', desc: '+10 max WtL, +1 WtL regen/sec', cost: 250, bought: false,
+    { id: 'ds_room', name: 'Soundproofed Room', desc: '+10 max WtL, +1 WtL regen/sec', cost: 25, bought: false,
       effect(s) { s.wtlMax += 10; s.wtlRegen += 1; } },
-    { id: 'ds_map', name: 'Phone Tree Map', desc: 'Queue advances cost 20% less', cost: 500, bought: false,
+    { id: 'ds_map', name: 'Phone Tree Map', desc: 'Queue advances cost 20% less', cost: 50, bought: false,
       effect(s) { s.queueCostMult = (s.queueCostMult || 1) * 0.8; } },
-    { id: 'ds_recorder', name: 'Call Recording Device', desc: 'All coping mechanisms +50%', cost: 800, bought: false,
+    { id: 'ds_recorder', name: 'Call Recording Device', desc: 'All coping mechanisms +50%', cost: 100, bought: false,
       effect(s) { s.globalGenMultiplier *= 1.5; } },
-    { id: 'ds_directline', name: 'Executive Direct Line', desc: 'Queue advances cost 30% less', cost: 1200, bought: false,
+    { id: 'ds_directline', name: 'Executive Direct Line', desc: 'Queue advances cost 30% less', cost: 200, bought: false,
       effect(s) { s.queueCostMult = (s.queueCostMult || 1) * 0.7; } },
   ];
   let dustShopRevealed = false;
@@ -337,7 +337,7 @@ const Game = (function() {
   }
 
   function updateDustShop() {
-    if (!dustShopRevealed && state.dust >= 30) {
+    if (!dustShopRevealed && state.dust >= 3) {
       dustShopRevealed = true;
       buildDustShop();
       UI.addLog('The dust is useful. You can feel it.');
@@ -389,12 +389,14 @@ const Game = (function() {
 
     state.realElapsed = (now - state.realStartTime) / 1000;
 
-    // Time multiplier: base from upgrades + logarithmic dust acceleration
-    // Dust provides gentle time boost (no feedback loop - dust is real-time only)
-    let effectiveTimeMult = state.timeMultiplier;
-    if (state.flags.dustStarted && state.dust > 1) {
-      effectiveTimeMult *= (1 + Math.pow(Math.log10(state.dust + 1), 2) * 5);
+    // Time multiplier: base from upgrades + logarithmic dust acceleration (CAPPED)
+    // Dust provides time boost but caps at x10000 to prevent runaway
+    let dustTimeFactor = 1;
+    if (state.flags.dustStarted && state.dust > 0.1) {
+      // log10 based: gentle curve. Capped at 10000x
+      dustTimeFactor = Math.min(10000, 1 + Math.pow(Math.log10(state.dust + 1), 3) * 20);
     }
+    let effectiveTimeMult = state.timeMultiplier * dustTimeFactor;
     state.inGameSeconds += dt * effectiveTimeMult;
 
     // Combo decay (only if unlocked)
@@ -418,13 +420,21 @@ const Game = (function() {
     state.patience += pps * dt;
     if (state.patience > state.maxPatience) state.maxPatience = state.patience;
 
-    // Dust: accumulates in REAL time only (prevents exponential feedback loop)
+    // Dust: accumulates based on IN-GAME time (realistic rate)
+    // ~0.1 mm per in-game year = 3.17e-9 mm/sec in-game
+    // dustPerSec is in mm/in-game-second, scaled by the effective time mult
     if (state.flags.dustStarted) {
-      state.dust += state.dustPerSec * state.dustMultiplier * dt;
+      state.dust += state.dustPerSec * state.dustMultiplier * dt * effectiveTimeMult;
     }
 
     // Phone tier check (based on in-game time)
     checkPhoneTier();
+
+    // Log time/dust state every 60 real seconds for debugging
+    if (Math.floor(state.realElapsed) % 60 === 0 && Math.floor(state.realElapsed) > 0 && Math.floor(state.realElapsed) !== state._lastTimeLog) {
+      state._lastTimeLog = Math.floor(state.realElapsed);
+      console.log('[METRICS] TIME at ' + mins() + ' | inGame:' + NumberFormat.formatHoldTime(state.inGameSeconds) + ' | timeMult:' + effectiveTimeMult.toFixed(1) + ' | dustFactor:' + dustTimeFactor.toFixed(1) + ' | dust:' + state.dust.toFixed(2));
+    }
 
     // Flavor text
     if (now - lastFlavorTime > FLAVOR_INTERVAL) {
