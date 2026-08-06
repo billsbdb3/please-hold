@@ -56,12 +56,12 @@ const Game = (function() {
   // Phone tiers (by in-game time)
   const phoneTiers = [
     { name: 'Tin Can & String', icon: '🥫', timeThreshold: 0, bonus: null, announced: true },
-    { name: 'Rotary Phone', icon: '☎️', timeThreshold: 86400, bonus: { patiencePerSecBonus: 0.1 }, announced: false,
-      narrative: "Your tin can has evolved. Somehow. You now hold a rotary phone. The hold music sounds slightly better. Slightly." },
-    { name: 'Landline', icon: '📞', timeThreshold: 86400 * 30, bonus: { patiencePerClickBonus: 1 }, announced: false,
-      narrative: "A landline materializes in your hand. Months have passed. The cord is reassuring." },
-    { name: 'Cordless Phone', icon: '📱', timeThreshold: 86400 * 365, bonus: { patiencePerSecBonus: 0.2 }, announced: false,
-      narrative: "A year on hold. Your phone is now cordless. The freedom is meaningless. You haven't moved." },
+    { name: 'Rotary Phone', icon: '☎️', timeThreshold: 86400 * 7, bonus: { patiencePerSecBonus: 0.5 }, announced: false,
+      narrative: "Your tin can has evolved. You now hold a rotary phone. It took a week of holding to get here." },
+    { name: 'Landline', icon: '📞', timeThreshold: 86400 * 90, bonus: { patiencePerClickBonus: 2 }, announced: false,
+      narrative: "Three months. Your phone is now a proper landline. The cord is reassuring. You haven't moved." },
+    { name: 'Cordless Phone', icon: '📱', timeThreshold: 86400 * 365 * 5, bonus: { patiencePerSecBonus: 1.0 }, announced: false,
+      narrative: "Five years on hold. Your phone is cordless now. The freedom means nothing. You haven't moved in five years." },
   ];
   let currentPhoneTier = 0;
 
@@ -389,11 +389,11 @@ const Game = (function() {
 
     state.realElapsed = (now - state.realStartTime) / 1000;
 
-    // Time multiplier: base from upgrades + dust-driven acceleration
-    // Dust feedback: time flows faster as dust accumulates
+    // Time multiplier: base from upgrades + logarithmic dust acceleration
+    // Dust provides gentle time boost (no feedback loop - dust is real-time only)
     let effectiveTimeMult = state.timeMultiplier;
-    if (state.flags.dustStarted && state.dust > 10) {
-      effectiveTimeMult *= (1 + state.dust / 150); // dust accelerates time
+    if (state.flags.dustStarted && state.dust > 1) {
+      effectiveTimeMult *= (1 + Math.pow(Math.log10(state.dust + 1), 2) * 5);
     }
     state.inGameSeconds += dt * effectiveTimeMult;
 
@@ -407,8 +407,8 @@ const Game = (function() {
       state.wtl = Math.min(state.wtlMax, state.wtl + state.wtlRegen * dt);
     }
 
-    // Hangup check: can't sustain if WtL is 0 and no meaningful regen
-    if (state.wtl <= 0 && state.wtlRegen < 0.5) {
+    // Hangup check: WtL at 0 and regen can't save you
+    if (state.wtl <= 0 && state.wtlRegen < 1.0) {
       hangUp(); return;
     }
 
@@ -418,10 +418,9 @@ const Game = (function() {
     state.patience += pps * dt;
     if (state.patience > state.maxPatience) state.maxPatience = state.patience;
 
-    // Dust: accumulates in in-game time, not real time
-    // This means as time accelerates, dust accelerates with it
+    // Dust: accumulates in REAL time only (prevents exponential feedback loop)
     if (state.flags.dustStarted) {
-      state.dust += state.dustPerSec * state.dustMultiplier * dt * effectiveTimeMult;
+      state.dust += state.dustPerSec * state.dustMultiplier * dt;
     }
 
     // Phone tier check (based on in-game time)
