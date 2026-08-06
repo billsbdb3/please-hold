@@ -347,7 +347,8 @@ const Game = (function() {
         btn.style.display = 'block';
         if (!btn.classList.contains('owned')) {
           btn.classList.add('owned');
-          btn.querySelector('.upgrade-cost').textContent = '✓ owned';
+          btn.innerHTML = '<strong>' + u.name + '</strong> ✓';
+          btn.disabled = true;
         }
       }
     });

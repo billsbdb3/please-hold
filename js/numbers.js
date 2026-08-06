@@ -34,18 +34,16 @@ const NumberFormat = (function() {
   function format(n) {
     if (n === null || n === undefined || isNaN(n)) return '0';
     if (n < 0) return '-' + format(-n);
-    if (n < 1000) return Math.floor(n).toLocaleString();
-    if (n < 10000) return Math.floor(n).toLocaleString();
+    if (n < 100000) return Math.floor(n).toLocaleString();
 
     const tier = Math.floor(Math.log10(n) / 3);
     if (tier >= SUFFIXES.length) {
       return n.toExponential(2);
     }
+    if (tier <= 1) return Math.floor(n).toLocaleString();
 
     const divisor = Math.pow(10, tier * 3);
     const value = n / divisor;
-
-    if (tier === 0) return Math.floor(n).toLocaleString();
     return value.toFixed(2) + ' ' + SUFFIXES[tier];
   }
 
