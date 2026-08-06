@@ -41,7 +41,7 @@ const Game = (function() {
     entropy: 0,
 
     // Flags
-    flags: { dustStarted: false, noWtlCost: false, started: false },
+    flags: { dustStarted: false, noWtlCost: false, started: false, comboUnlocked: false },
 
     // Tracking
     maxPatience: 0,
@@ -55,7 +55,6 @@ const Game = (function() {
   // ===== TIMING =====
   let lastTick = 0, lastFlavorTime = 0, lastComboClick = -Infinity, lastClickTime = -Infinity;
   const CLICK_COOLDOWN = 110, COMBO_MAX = 4, COMBO_UP = 0.3, COMBO_DECAY = 0.4, FLAVOR_INTERVAL = 12000;
-
   function mins() { return ((Date.now() - state.realStartTime) / 60000).toFixed(1) + 'm'; }
   function totalPPS() {
     return state.patiencePerSec + Phase1.calcGeneratorPPS(state);
@@ -112,9 +111,9 @@ const Game = (function() {
       <button id="btn-advance" class="btn btn-danger" disabled>Advance in Queue<br><span class="btn-sub" id="sub-advance">costs 25 patience</span></button>
     `;
 
-    // Upgrades container: generators on left, upgrades on right
+    // Upgrades container: coping mechanisms on left, upgrades on right
     document.getElementById('upgrades-container').innerHTML = `
-      <div class="upgrade-column gen-col"><h2>Generators</h2><div id="gen-list"></div></div>
+      <div class="upgrade-column gen-col"><h2>Coping Mechanisms</h2><div id="gen-list"></div></div>
       <div class="upgrade-column hold-col"><h2>Upgrades</h2><div id="upgrade-list"></div></div>
     `;
 
@@ -149,15 +148,11 @@ const Game = (function() {
   }
 
   function formatGenButton(g) {
-    if (Phase1.isGeneratorCapped(g)) {
-      const mult = (state.genMultipliers[g.id] || 1) * state.globalGenMultiplier;
-      const prodEach = (g.baseProduction * mult).toFixed(1);
-      return `<strong>${g.name}</strong> (${g.owned}/${g.maxOwned}) MAX<br><span class="btn-sub">${prodEach}/sec each | total: ${(g.baseProduction * g.owned * mult).toFixed(1)}/sec</span>`;
-    }
     const cost = Phase1.getGeneratorCost(g);
     const mult = (state.genMultipliers[g.id] || 1) * state.globalGenMultiplier;
     const prodEach = (g.baseProduction * mult).toFixed(1);
-    return `<strong>${g.name}</strong> (${g.owned}/${g.maxOwned})<br><span class="btn-sub">${g.desc} | +${prodEach}/sec each</span><br><span class="upgrade-cost">${NumberFormat.format(cost)} patience</span>`;
+    const softCapNote = g.owned >= g.softCapAt ? ' ⚠️' : '';
+    return `<strong>${g.name}</strong> (${g.owned})${softCapNote}<br><span class="btn-sub">${g.desc} | +${prodEach}/sec each</span><br><span class="upgrade-cost">${NumberFormat.format(cost)} patience</span>`;
   }
 
   // ===== ACTIONS =====
@@ -170,8 +165,11 @@ const Game = (function() {
     if (state.patience > state.maxPatience) state.maxPatience = state.patience;
     state.wtl = Math.max(0, state.wtl - state.wtlPerClick);
     state.totalClicks++;
-    lastComboClick = now;
-    state.combo = Math.min(COMBO_MAX, state.combo + COMBO_UP);
+    // Combo only if unlocked
+    if (state.flags.comboUnlocked) {
+      lastComboClick = now;
+      state.combo = Math.min(COMBO_MAX, state.combo + COMBO_UP);
+    }
   }
 
   function doRefill() {
@@ -196,13 +194,12 @@ const Game = (function() {
   }
 
   function buyGenerator(g) {
-    if (Phase1.isGeneratorCapped(g)) return;
     const cost = Phase1.getGeneratorCost(g);
     if (state.patience < cost) return;
     state.patience -= cost;
     g.owned++;
     console.log('[METRICS] Bought gen "' + g.name + '" (#' + g.owned + ') at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | patience:' + Math.floor(state.patience));
-    UI.addLog('Bought: ' + g.name + ' (' + g.owned + '/' + g.maxOwned + ')');
+    UI.addLog('Bought: ' + g.name + ' (' + g.owned + ')');
     const btn = document.getElementById('gbtn-' + g.id);
     if (btn) btn.innerHTML = formatGenButton(g);
   }
@@ -284,8 +281,8 @@ const Game = (function() {
     state.realElapsed = (now - state.realStartTime) / 1000;
     state.inGameSeconds += dt * state.timeMultiplier;
 
-    // Combo decay
-    if (now - lastComboClick > 600 && state.combo > 1) {
+    // Combo decay (only if unlocked)
+    if (state.flags.comboUnlocked && now - lastComboClick > 600 && state.combo > 1) {
       state.combo = Math.max(1, state.combo - COMBO_DECAY * dt);
     }
 
@@ -379,16 +376,11 @@ const Game = (function() {
       if (!g.unlocked && state.maxPatience >= g.unlocksAt) {
         g.unlocked = true;
         btn.style.display = 'block';
-        UI.addLog('New generator available: ' + g.name);
+        UI.addLog('New coping mechanism available: ' + g.name);
       }
       if (g.unlocked) {
-        if (Phase1.isGeneratorCapped(g)) {
-          btn.disabled = true;
-          btn.classList.add('owned');
-        } else {
-          const cost = Phase1.getGeneratorCost(g);
-          btn.disabled = state.patience < cost;
-        }
+        const cost = Phase1.getGeneratorCost(g);
+        btn.disabled = state.patience < cost;
         btn.innerHTML = formatGenButton(g);
       }
     });

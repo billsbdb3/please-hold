@@ -52,7 +52,7 @@ const UI = (function() {
 
   function setDustOverlay(dust) {
     const el = document.getElementById('dust-overlay');
-    if (el) el.style.background = 'rgba(160,130,80,' + Math.min(dust / 10000, 0.22) + ')';
+    if (el) el.style.background = 'rgba(160,130,80,' + Math.min(dust / 500, 0.25) + ')';
   }
 
   function showTransition(title, lines, buttonText, callback) {
@@ -76,5 +76,23 @@ const UI = (function() {
     win.classList.add('active');
   }
 
-  return { addLog, clearLog, show, hide, setText, setHTML, setWidth, setBarColor, setDustOverlay, showTransition, showWin };
+  function showMilestone(msg) {
+    // Create a prominent banner that fades after 6 seconds
+    let banner = document.getElementById('milestone-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'milestone-banner';
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:14px 20px;background:#2a2a1a;border-bottom:2px solid #c4a35a;color:#c4a35a;text-align:center;font-family:Courier New,monospace;font-size:0.9em;z-index:900;transition:opacity 1s;';
+      document.body.appendChild(banner);
+    }
+    banner.textContent = '★ ' + msg;
+    banner.style.opacity = '1';
+    banner.style.display = 'block';
+    setTimeout(() => { banner.style.opacity = '0'; }, 5000);
+    setTimeout(() => { banner.style.display = 'none'; }, 6000);
+    // Also log it
+    addLog('★ ' + msg);
+  }
+
+  return { addLog, clearLog, show, hide, setText, setHTML, setWidth, setBarColor, setDustOverlay, showTransition, showWin, showMilestone };
 })();
