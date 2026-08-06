@@ -16,8 +16,8 @@ const Game = (function() {
     dustPerSec: 0,
     dustMultiplier: 1,
     wtlRegen: 0,
-    refillCost: 8,
-    refillAmount: 8,
+    refillCost: 5,
+    refillAmount: 12,
     queue: Phase1.QUEUE_START,
     queueAdvances: 0,
     totalClicks: 0,
@@ -103,7 +103,7 @@ const Game = (function() {
     // Actions
     document.getElementById('actions').innerHTML = `
       <button id="btn-endure" class="btn btn-primary">[ ENDURE ]<br><span class="btn-sub" id="sub-endure">+1 patience | -1 WtL</span></button>
-      <button id="btn-refill" class="btn btn-secondary" style="display:none" disabled>Deep Breath<br><span class="btn-sub" id="sub-refill">8 patience → +8 WtL</span></button>
+      <button id="btn-refill" class="btn btn-secondary" style="display:none" disabled>Deep Breath<br><span class="btn-sub" id="sub-refill">5 patience → +12 WtL</span></button>
       <button id="btn-advance" class="btn btn-danger" disabled>Advance in Queue<br><span class="btn-sub" id="sub-advance">costs 20 patience</span></button>
     `;
 
@@ -254,14 +254,24 @@ const Game = (function() {
 
   function hangUp() {
     document.getElementById('game-area').style.display = 'none';
-    document.getElementById('hangup-scr').style.display = 'block';
-    // TODO: build hangup screen properly
+    const scr = document.getElementById('hangup-scr');
+    scr.style.display = 'block';
+    document.getElementById('hangup-txt').textContent = Flavor.getHangup();
+    document.getElementById('redial-btn').onclick = redial;
     state.hangups++;
     const penalty = Math.min(10, Math.floor(state.queueAdvances * 0.05) + 2);
     state.queue = Math.min(Phase1.QUEUE_START, state.queue + penalty);
     state.queueAdvances = Math.max(0, state.queueAdvances - penalty);
     state.patience = 0;
     state.wtl = state.wtlMax;
+  }
+
+  function redial() {
+    document.getElementById('hangup-scr').style.display = 'none';
+    document.getElementById('game-area').style.display = 'block';
+    UI.addLog('You redial. Queue: #' + state.queue + '. Upgrades remain. Dignity does not.');
+    lastTick = Date.now();
+    requestAnimationFrame(tick);
   }
 
   // ===== DISPLAY UPDATE =====

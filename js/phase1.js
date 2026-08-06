@@ -8,8 +8,8 @@ const Phase1 = (function() {
   const upgrades = [
     { id: 'p1_speakerphone', name: 'Speakerphone', desc: '+0.3 patience/sec', cost: 40, currency: 'patience', revealAt: 20, phase: 1,
       effect(s) { s.patiencePerSec += 0.3; } },
-    { id: 'p1_snack', name: 'Snack Drawer', desc: 'Deep Breath: 5 patience → +10 WtL', cost: 80, currency: 'patience', revealAt: 40, phase: 1,
-      effect(s) { s.refillCost = 5; s.refillAmount = 10; } },
+    { id: 'p1_snack', name: 'Snack Drawer', desc: 'Deep Breath: 3 patience → +12 WtL', cost: 80, currency: 'patience', revealAt: 40, phase: 1,
+      effect(s) { s.refillCost = 3; s.refillAmount = 12; } },
     { id: 'p1_tolerance', name: 'Hold Music Tolerance', desc: '+1 patience/click', cost: 150, currency: 'patience', revealAt: 80, phase: 1,
       effect(s) { s.patiencePerClick += 1; } },
     { id: 'p1_chair', name: 'Comfortable Chair', desc: '+0.8 patience/sec, +5 max WtL', cost: 300, currency: 'patience', revealAt: 150, phase: 1,
