@@ -43,7 +43,8 @@ const Game = (function() {
       started: false,
     },
 
-    // Upgrade tracking
+    // Tracking
+    maxPatience: 0, // highest patience ever reached
     boughtUpgrades: new Set(),
     triggeredMilestones: new Set(),
   };
@@ -58,6 +59,8 @@ const Game = (function() {
   const COMBO_UP = 0.3;
   const COMBO_DECAY = 0.4;
   const FLAVOR_INTERVAL = 12000;
+
+  function mins() { return ((Date.now() - state.realStartTime) / 60000).toFixed(1) + 'm'; }
 
   // ===== INIT =====
   function init() {
@@ -138,6 +141,7 @@ const Game = (function() {
     lastClickTime = now;
 
     state.patience += state.patiencePerClick;
+    if (state.patience > state.maxPatience) state.maxPatience = state.patience;
     state.wtl = Math.max(0, state.wtl - state.wtlPerClick);
     state.totalClicks++;
 
@@ -150,6 +154,7 @@ const Game = (function() {
     if (state.patience >= state.refillCost) {
       state.patience -= state.refillCost;
       state.wtl = Math.min(state.wtlMax, state.wtl + state.refillAmount);
+      console.log('[METRICS] Deep Breath at ' + mins() + ' | patience:' + Math.floor(state.patience) + ' | wtl:' + Math.floor(state.wtl) + '/' + state.wtlMax);
     }
   }
 
@@ -159,6 +164,7 @@ const Game = (function() {
       state.patience -= cost;
       state.queue--;
       state.queueAdvances++;
+      console.log('[METRICS] Queue #' + state.queue + ' at ' + mins() + ' | cost:' + cost + ' | pps:' + state.patiencePerSec.toFixed(1) + ' | dust:' + state.dust.toFixed(1) + ' | clicks:' + state.totalClicks);
       Phase1.checkMilestones(state.queue, state.triggeredMilestones);
       UI.addLog('Advanced to #' + state.queue + '.');
       if (state.queue <= 0) endPhase1();
@@ -171,11 +177,13 @@ const Game = (function() {
     state.patience -= u.cost;
     state.boughtUpgrades.add(u.id);
     u.effect(state);
+    console.log('[METRICS] Bought "' + u.name + '" at ' + mins() + ' | patience:' + Math.floor(state.patience) + ' | pps:' + state.patiencePerSec.toFixed(1) + ' | dust:' + state.dust.toFixed(1) + ' | clicks:' + state.totalClicks + ' | maxP:' + Math.floor(state.maxPatience));
     UI.addLog('Purchased: ' + u.name);
   }
 
   // ===== PHASE TRANSITION =====
   function endPhase1() {
+    console.log('[METRICS] === PHASE 1 COMPLETE === at ' + mins() + ' | clicks:' + state.totalClicks + ' | hangups:' + state.hangups + ' | pps:' + state.patiencePerSec.toFixed(1) + ' | dust:' + state.dust.toFixed(1) + ' | maxP:' + Math.floor(state.maxPatience));
     UI.showTransition(
       'SOMEONE PICKS UP.',
       [
@@ -232,6 +240,9 @@ const Game = (function() {
     pps *= state.combo;
     state.patience += pps * dt;
 
+    // Track max patience
+    if (state.patience > state.maxPatience) state.maxPatience = state.patience;
+
     // Dust
     if (state.flags.dustStarted) {
       state.dust += state.dustPerSec * state.dustMultiplier * dt;
@@ -253,6 +264,7 @@ const Game = (function() {
   }
 
   function hangUp() {
+    console.log('[METRICS] HANGUP at ' + mins() + ' | queue:#' + state.queue + ' | patience:' + Math.floor(state.patience) + ' | clicks:' + state.totalClicks);
     document.getElementById('game-area').style.display = 'none';
     const scr = document.getElementById('hangup-scr');
     scr.style.display = 'block';
@@ -327,7 +339,7 @@ const Game = (function() {
       const btn = document.getElementById('ubtn-' + u.id);
       if (!btn) return;
       if (!state.boughtUpgrades.has(u.id)) {
-        if (state.patience >= u.revealAt || state.boughtUpgrades.size >= Phase1.upgrades.indexOf(u)) {
+        if (state.maxPatience >= u.revealAt) {
           btn.style.display = 'block';
         }
         btn.disabled = state.patience < u.cost;
