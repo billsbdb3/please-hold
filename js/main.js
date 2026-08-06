@@ -45,12 +45,42 @@ const Game = (function() {
 
     // Tracking
     maxPatience: 0,
+    queueCostMult: 1, // multiplier on queue advance costs (reduced by dust shop)
     boughtUpgrades: new Set(),
     triggeredMilestones: new Set(),
   };
 
   // Initialize generator multipliers
   Phase1.generators.forEach(g => { state.genMultipliers[g.id] = 1; });
+
+  // Phone tiers (by in-game time)
+  const phoneTiers = [
+    { name: 'Tin Can & String', icon: '🥫', timeThreshold: 0, bonus: null, announced: true },
+    { name: 'Rotary Phone', icon: '☎️', timeThreshold: 86400, bonus: { patiencePerSecBonus: 0.1 }, announced: false,
+      narrative: "Your tin can has evolved. Somehow. You now hold a rotary phone. The hold music sounds slightly better. Slightly." },
+    { name: 'Landline', icon: '📞', timeThreshold: 86400 * 30, bonus: { patiencePerClickBonus: 1 }, announced: false,
+      narrative: "A landline materializes in your hand. Months have passed. The cord is reassuring." },
+    { name: 'Cordless Phone', icon: '📱', timeThreshold: 86400 * 365, bonus: { patiencePerSecBonus: 0.2 }, announced: false,
+      narrative: "A year on hold. Your phone is now cordless. The freedom is meaningless. You haven't moved." },
+  ];
+  let currentPhoneTier = 0;
+
+  // Dust shop items (spendable dust for permanent bonuses)
+  const dustShop = [
+    { id: 'ds_headphones', name: 'Noise-Canceling Headphones', desc: '+20% patience/sec', cost: 50, bought: false,
+      effect(s) { s.globalGenMultiplier *= 1.2; } },
+    { id: 'ds_grip', name: 'Ergonomic Phone Grip', desc: '+2 patience/click', cost: 120, bought: false,
+      effect(s) { s.patiencePerClick += 2; } },
+    { id: 'ds_room', name: 'Soundproofed Room', desc: '+10 max WtL, +1 WtL regen/sec', cost: 250, bought: false,
+      effect(s) { s.wtlMax += 10; s.wtlRegen += 1; } },
+    { id: 'ds_map', name: 'Phone Tree Map', desc: 'Queue advances cost 20% less', cost: 500, bought: false,
+      effect(s) { s.queueCostMult = (s.queueCostMult || 1) * 0.8; } },
+    { id: 'ds_recorder', name: 'Call Recording Device', desc: 'All coping mechanisms +50%', cost: 800, bought: false,
+      effect(s) { s.globalGenMultiplier *= 1.5; } },
+    { id: 'ds_directline', name: 'Executive Direct Line', desc: 'Queue advances cost 30% less', cost: 1200, bought: false,
+      effect(s) { s.queueCostMult = (s.queueCostMult || 1) * 0.7; } },
+  ];
+  let dustShopRevealed = false;
 
   // ===== TIMING =====
   let lastTick = 0, lastFlavorTime = 0, lastComboClick = -Infinity, lastClickTime = -Infinity;
@@ -181,7 +211,7 @@ const Game = (function() {
   }
 
   function doAdvance() {
-    const cost = Phase1.getAdvanceCost(state.queueAdvances);
+    const cost = Math.floor(Phase1.getAdvanceCost(state.queueAdvances) * state.queueCostMult);
     if (state.patience >= cost && state.queue > 0) {
       state.patience -= cost;
       state.queue--;
@@ -247,6 +277,85 @@ const Game = (function() {
     UI.addLog('Phase 2 begins. (Coming soon)');
   }
 
+  // ===== PHONE TIER ===
+  function checkPhoneTier() {
+    for (let i = phoneTiers.length - 1; i > currentPhoneTier; i--) {
+      if (state.inGameSeconds >= phoneTiers[i].timeThreshold && !phoneTiers[i].announced) {
+        phoneTiers[i].announced = true;
+        currentPhoneTier = i;
+        const tier = phoneTiers[i];
+        // Apply bonus
+        if (tier.bonus) {
+          if (tier.bonus.patiencePerSecBonus) state.patiencePerSec += tier.bonus.patiencePerSecBonus;
+          if (tier.bonus.patiencePerClickBonus) state.patiencePerClick += tier.bonus.patiencePerClickBonus;
+        }
+        // Update phone display
+        const phoneBar = document.getElementById('phone-bar');
+        if (phoneBar) {
+          const elapsed = phoneBar.querySelector('.elapsed');
+          const elText = elapsed ? elapsed.textContent : '';
+          phoneBar.innerHTML = '<span class="phone-icon">' + tier.icon + '</span> <span class="phone-name">' + tier.name + '</span><span class="elapsed">' + elText + '</span>';
+        }
+        // Narrative
+        if (tier.narrative) UI.showMilestone(tier.narrative);
+        UI.addLog('Phone evolved: ' + tier.name);
+        console.log('[METRICS] Phone tier: ' + tier.name + ' at ' + mins() + ' | inGameTime:' + NumberFormat.formatHoldTime(state.inGameSeconds));
+        break;
+      }
+    }
+  }
+
+  // ===== DUST SHOP =====
+  function buildDustShop() {
+    const container = document.getElementById('upgrades-container');
+    // Add dust shop column
+    const col = document.createElement('div');
+    col.className = 'upgrade-column dust-col';
+    col.id = 'dust-shop-col';
+    col.innerHTML = '<h2>Dust Artifacts</h2><div id="dust-shop-list"></div>';
+    container.appendChild(col);
+    container.style.gridTemplateColumns = '1fr 1fr 1fr';
+
+    const list = document.getElementById('dust-shop-list');
+    dustShop.forEach(item => {
+      const btn = document.createElement('button');
+      btn.className = 'upgrade-btn';
+      btn.id = 'dsbtn-' + item.id;
+      btn.innerHTML = `<strong>${item.name}</strong> — ${item.desc}<br><span class="upgrade-cost">${item.cost} dust</span>`;
+      btn.onclick = () => buyDustItem(item);
+      list.appendChild(btn);
+    });
+  }
+
+  function buyDustItem(item) {
+    if (item.bought || state.dust < item.cost) return;
+    state.dust -= item.cost;
+    item.bought = true;
+    item.effect(state);
+    UI.addLog('Acquired: ' + item.name);
+    console.log('[METRICS] Dust shop "' + item.name + '" at ' + mins() + ' | dust:' + state.dust.toFixed(1) + ' | pps:' + totalPPS().toFixed(1));
+  }
+
+  function updateDustShop() {
+    if (!dustShopRevealed && state.dust >= 30) {
+      dustShopRevealed = true;
+      buildDustShop();
+      UI.addLog('The dust is useful. You can feel it.');
+    }
+    if (!dustShopRevealed) return;
+    dustShop.forEach(item => {
+      const btn = document.getElementById('dsbtn-' + item.id);
+      if (!btn) return;
+      if (item.bought && !btn.classList.contains('owned')) {
+        btn.classList.add('owned');
+        btn.innerHTML = '<strong>' + item.name + '</strong> ✓';
+        btn.disabled = true;
+      } else if (!item.bought) {
+        btn.disabled = state.dust < item.cost;
+      }
+    });
+  }
+
   // ===== HANGUP =====
   function hangUp() {
     console.log('[METRICS] HANGUP at ' + mins() + ' | queue:#' + state.queue + ' | patience:' + Math.floor(state.patience) + ' | clicks:' + state.totalClicks);
@@ -279,7 +388,14 @@ const Game = (function() {
     lastTick = now;
 
     state.realElapsed = (now - state.realStartTime) / 1000;
-    state.inGameSeconds += dt * state.timeMultiplier;
+
+    // Time multiplier: base from upgrades + dust-driven acceleration
+    // Dust feedback: time flows faster as dust accumulates
+    let effectiveTimeMult = state.timeMultiplier;
+    if (state.flags.dustStarted && state.dust > 10) {
+      effectiveTimeMult *= (1 + state.dust / 150); // dust accelerates time
+    }
+    state.inGameSeconds += dt * effectiveTimeMult;
 
     // Combo decay (only if unlocked)
     if (state.flags.comboUnlocked && now - lastComboClick > 600 && state.combo > 1) {
@@ -291,8 +407,8 @@ const Game = (function() {
       state.wtl = Math.min(state.wtlMax, state.wtl + state.wtlRegen * dt);
     }
 
-    // Hangup check
-    if (state.wtl <= 0 && state.wtlRegen < 0.3 && state.wtlPerClick > 0) {
+    // Hangup check: can't sustain if WtL is 0 and no meaningful regen
+    if (state.wtl <= 0 && state.wtlRegen < 0.5) {
       hangUp(); return;
     }
 
@@ -302,10 +418,14 @@ const Game = (function() {
     state.patience += pps * dt;
     if (state.patience > state.maxPatience) state.maxPatience = state.patience;
 
-    // Dust
+    // Dust: accumulates in in-game time, not real time
+    // This means as time accelerates, dust accelerates with it
     if (state.flags.dustStarted) {
-      state.dust += state.dustPerSec * state.dustMultiplier * dt;
+      state.dust += state.dustPerSec * state.dustMultiplier * dt * effectiveTimeMult;
     }
+
+    // Phone tier check (based on in-game time)
+    checkPhoneTier();
 
     // Flavor text
     if (now - lastFlavorTime > FLAVOR_INTERVAL) {
@@ -317,6 +437,7 @@ const Game = (function() {
     UI.setDustOverlay(state.dust);
 
     updateDisplay();
+    updateDustShop();
     requestAnimationFrame(tick);
   }
 
@@ -355,14 +476,14 @@ const Game = (function() {
     const refillBtn = document.getElementById('btn-refill');
     const advanceBtn = document.getElementById('btn-advance');
 
-    if (endureBtn) endureBtn.disabled = state.wtl <= 0;
+    if (endureBtn) endureBtn.disabled = state.wtl < state.wtlPerClick;
     if (refillBtn) {
       if (state.wtl < state.wtlMax * 0.6) refillBtn.style.display = '';
       refillBtn.disabled = state.patience < state.refillCost;
       UI.setText('sub-refill', state.refillCost + ' patience → +' + state.refillAmount + ' WtL');
     }
     if (advanceBtn) {
-      const cost = Phase1.getAdvanceCost(state.queueAdvances);
+      const cost = Math.floor(Phase1.getAdvanceCost(state.queueAdvances) * state.queueCostMult);
       advanceBtn.disabled = state.patience < cost;
       UI.setText('sub-advance', 'costs ' + NumberFormat.format(cost) + ' patience');
     }

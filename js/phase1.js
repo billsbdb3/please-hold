@@ -76,11 +76,14 @@ const Phase1 = (function() {
     { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 100000, currency: 'patience', revealAt: 55000,
       effect(s) { s.dustPerSec = 0.5; s.flags.dustStarted = true; },
       narrative: "You glance down. There is a fine layer of dust on your arm. It wasn't there when you started this call. Was it? How long have you been sitting here?" },
-    { id: 'u_robo3x', name: 'Machine Learning', desc: 'Robo-Callers produce x3', cost: 250000, currency: 'patience', revealAt: 130000,
+    { id: 'u_timewarp1', name: 'Minutes Feel Like Hours', desc: 'Time perception shifts x10', cost: 200000, currency: 'patience', revealAt: 110000,
+      effect(s) { s.timeMultiplier *= 10; },
+      narrative: "Was that a minute? An hour? You can't tell anymore. The clock on the wall has stopped making sense." },
+    { id: 'u_robo3x', name: 'Machine Learning', desc: 'Robo-Callers produce x3', cost: 350000, currency: 'patience', revealAt: 200000,
       effect(s) { s.genMultipliers.gen_robocaller *= 3; } },
-    { id: 'u_timewarp', name: 'Time Perception Decay', desc: 'The minutes blur into hours...', cost: 600000, currency: 'patience', revealAt: 320000,
-      effect(s) { s.timeMultiplier *= 60; },
-      narrative: "The minutes begin to blur. You're not sure when the last hour ended and this one began. The clock seems wrong. Everything seems wrong." },
+    { id: 'u_timewarp2', name: 'Time Perception Decay', desc: 'Time slips further x10', cost: 600000, currency: 'patience', revealAt: 380000,
+      effect(s) { s.timeMultiplier *= 10; },
+      narrative: "Days? Weeks? The concept of 'today' has become philosophical. You're not sure it applies to you anymore." },
     { id: 'u_allx3', name: 'Conference Call', desc: 'ALL coping mechanisms produce x2', cost: 1500000, currency: 'patience', revealAt: 800000,
       effect(s) { s.globalGenMultiplier *= 2; } },
     { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 4000000, currency: 'patience', revealAt: 2000000,
@@ -100,11 +103,11 @@ const Phase1 = (function() {
   function getGeneratorCost(gen) {
     let effectiveGrowth = gen.growthRate;
     let owned = gen.owned;
-    // Soft cap: after threshold, growth rate doubles for excess units
+    // Soft cap: after threshold, growth rate TRIPLES for excess units
     if (owned >= gen.softCapAt) {
       const base = gen.baseCost * Math.pow(gen.growthRate, gen.softCapAt);
       const excess = owned - gen.softCapAt;
-      const postCapGrowth = gen.growthRate * 2;
+      const postCapGrowth = gen.growthRate * 3;
       return Math.floor(base * Math.pow(postCapGrowth, excess));
     }
     return Math.floor(gen.baseCost * Math.pow(effectiveGrowth, owned));

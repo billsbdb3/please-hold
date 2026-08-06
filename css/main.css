@@ -100,7 +100,8 @@ h1 {
 
 .btn-sub {
   font-size: 0.7em;
-  color: #999;
+  color: #bbb;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
 }
 
 /* === STATUS BAR === */
@@ -217,6 +218,7 @@ h1 {
   color: #aaa;
   font-style: italic;
   font-size: 0.82em;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
 }
 
 /* === UPGRADES === */
@@ -299,6 +301,24 @@ h1 {
   margin-top: 30px;
 }
 
+/* === HANGUP SCREEN === */
+#hangup-scr {
+  text-align: center;
+  margin-top: 80px;
+}
+
+#hangup-scr p {
+  color: #e07070;
+  font-style: italic;
+  margin-bottom: 25px;
+  font-size: 0.95em;
+}
+
+#hangup-scr .btn {
+  margin: 0 auto;
+  display: inline-block;
+}
+
 /* === WIN SCREEN === */
 #win-screen {
   display: none;
@@ -342,5 +362,4 @@ h1 {
   pointer-events: none;
   z-index: 500;
   background: rgba(160, 130, 80, 0);
-  transition: background 3s;
 }
