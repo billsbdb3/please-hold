@@ -1,0 +1,55 @@
+/* Phase 3 specific styles */
+.phase-3 #actions { display: none; }
+
+.phase-3 .allocation-panel {
+  background: #0f0f1a;
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.phase-3 .allocation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid #222;
+}
+
+.phase-3 .allocation-row:last-child { border-bottom: none; }
+
+.phase-3 .alloc-label {
+  font-size: 0.75em;
+  color: #ccc;
+  flex: 1;
+}
+
+.phase-3 .alloc-slider {
+  flex: 2;
+  margin: 0 12px;
+}
+
+.phase-3 .alloc-value {
+  font-size: 0.7em;
+  color: #888;
+  min-width: 50px;
+  text-align: right;
+}
+
+.phase-3 .inertia-btn {
+  background: #1a2a1a;
+  border: 1px solid #88e0b0;
+  color: #88e0b0;
+  padding: 10px 14px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.75em;
+  cursor: pointer;
+  border-radius: 3px;
+  margin: 4px;
+  transition: all 0.12s;
+}
+
+.phase-3 .inertia-btn:hover:not(:disabled) { background: #2a3a2a; }
+.phase-3 .inertia-btn:disabled { opacity: 0.3; cursor: not-allowed; }

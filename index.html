@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PLEASE HOLD</title>
+<link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/phase1.css">
+<link rel="stylesheet" href="css/phase2.css">
+<link rel="stylesheet" href="css/phase3.css">
+</head>
+<body>
+<div id="dust-overlay"></div>
+<div id="game-container">
+  <h1>PLEASE HOLD</h1>
+  <div id="subtitle">Your call is important to us.</div>
+
+  <!-- PRE-GAME -->
+  <div id="pre-call">
+    <p class="premise">You need to dispute a charge on your statement. It's $1.47.</p>
+    <p class="premise">It's the principle of the thing.</p>
+    <button id="call-btn" class="btn btn-call">[ Call Meridian Solutions Inc. ]</button>
+  </div>
+
+  <!-- MAIN GAME AREA (populated by JS per phase) -->
+  <div id="game-area" style="display:none">
+    <div id="phone-bar"></div>
+    <div id="status-bar"></div>
+    <div id="rates-bar"></div>
+    <div id="main-area">
+      <div id="actions"></div>
+      <div id="flavor-box"><div id="flavor-text"></div></div>
+    </div>
+    <div id="upgrades-container"></div>
+    <div id="log"></div>
+  </div>
+
+  <!-- PHASE TRANSITIONS -->
+  <div id="transition-screen" style="display:none"></div>
+
+  <!-- WIN SCREEN -->
+  <div id="win-screen"></div>
+</div>
+
+<script src="js/numbers.js"></script>
+<script src="js/flavor.js"></script>
+<script src="js/save.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/phase1.js"></script>
+<script src="js/phase2.js"></script>
+<script src="js/phase3.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
