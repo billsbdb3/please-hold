@@ -354,9 +354,10 @@ const Game = (function() {
 
     // Show upgrades container once first upgrade is visible
     const upgradesBox = document.getElementById('upgrades-container');
-    if (upgradesBox && upgradesBox.style.display === 'none' && state.patience >= 15) {
+    if (upgradesBox && !upgradesBox.classList.contains('revealed') && state.maxPatience >= 15) {
       upgradesBox.style.display = 'grid';
       upgradesBox.style.gridTemplateColumns = '1fr';
+      upgradesBox.classList.add('revealed');
       UI.addLog('You consider your options.');
     }
   }
