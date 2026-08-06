@@ -149,10 +149,15 @@ const Game = (function() {
   }
 
   function formatGenButton(g) {
+    if (Phase1.isGeneratorCapped(g)) {
+      const mult = (state.genMultipliers[g.id] || 1) * state.globalGenMultiplier;
+      const prodEach = (g.baseProduction * mult).toFixed(1);
+      return `<strong>${g.name}</strong> (${g.owned}/${g.maxOwned}) MAX<br><span class="btn-sub">${prodEach}/sec each | total: ${(g.baseProduction * g.owned * mult).toFixed(1)}/sec</span>`;
+    }
     const cost = Phase1.getGeneratorCost(g);
     const mult = (state.genMultipliers[g.id] || 1) * state.globalGenMultiplier;
     const prodEach = (g.baseProduction * mult).toFixed(1);
-    return `<strong>${g.name}</strong> (${g.owned})<br><span class="btn-sub">${g.desc} | +${prodEach}/sec each</span><br><span class="upgrade-cost">${NumberFormat.format(cost)} patience</span>`;
+    return `<strong>${g.name}</strong> (${g.owned}/${g.maxOwned})<br><span class="btn-sub">${g.desc} | +${prodEach}/sec each</span><br><span class="upgrade-cost">${NumberFormat.format(cost)} patience</span>`;
   }
 
   // ===== ACTIONS =====
@@ -191,13 +196,13 @@ const Game = (function() {
   }
 
   function buyGenerator(g) {
+    if (Phase1.isGeneratorCapped(g)) return;
     const cost = Phase1.getGeneratorCost(g);
     if (state.patience < cost) return;
     state.patience -= cost;
     g.owned++;
     console.log('[METRICS] Bought gen "' + g.name + '" (#' + g.owned + ') at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | patience:' + Math.floor(state.patience));
-    UI.addLog('Bought: ' + g.name + ' (' + g.owned + ')');
-    // Update button
+    UI.addLog('Bought: ' + g.name + ' (' + g.owned + '/' + g.maxOwned + ')');
     const btn = document.getElementById('gbtn-' + g.id);
     if (btn) btn.innerHTML = formatGenButton(g);
   }
@@ -210,6 +215,15 @@ const Game = (function() {
     u.effect(state);
     console.log('[METRICS] Bought upgrade "' + u.name + '" at ' + mins() + ' | patience:' + Math.floor(state.patience) + ' | pps:' + totalPPS().toFixed(1) + ' | clicks:' + state.totalClicks + ' | maxP:' + Math.floor(state.maxPatience));
     UI.addLog('Purchased: ' + u.name);
+    // Show narrative if present
+    if (u.narrative) {
+      const flavorEl = document.getElementById('flavor-text');
+      if (flavorEl) {
+        flavorEl.textContent = u.narrative;
+        flavorEl.style.color = '#c4a35a';
+        setTimeout(() => { flavorEl.style.color = ''; }, 15000);
+      }
+    }
   }
 
   // ===== PHASE TRANSITION =====
@@ -368,8 +382,13 @@ const Game = (function() {
         UI.addLog('New generator available: ' + g.name);
       }
       if (g.unlocked) {
-        const cost = Phase1.getGeneratorCost(g);
-        btn.disabled = state.patience < cost;
+        if (Phase1.isGeneratorCapped(g)) {
+          btn.disabled = true;
+          btn.classList.add('owned');
+        } else {
+          const cost = Phase1.getGeneratorCost(g);
+          btn.disabled = state.patience < cost;
+        }
         btn.innerHTML = formatGenButton(g);
       }
     });
