@@ -72,6 +72,10 @@ const Game = (function() {
     return state.patiencePerSec + Phase1.calcGeneratorPPS(state);
   }
 
+  function getEffectiveAdvanceCost() {
+    return Math.floor(Phase1.getAdvanceCost(state.queueAdvances) * state.queueCostMult * (1 - (state.queueMomentum || 0)));
+  }
+
   // ===== TIMING =====
   let lastTick = 0, lastFlavorTime = 0, lastComboClick = -Infinity, lastClickTime = -Infinity;
   const CLICK_COOLDOWN = 110, COMBO_MAX = 4, COMBO_UP = 0.3, COMBO_DECAY = 0.4, FLAVOR_INTERVAL = 12000;
@@ -201,11 +205,15 @@ const Game = (function() {
   }
 
   function doAdvance() {
-    const cost = Math.floor(Phase1.getAdvanceCost(state.queueAdvances) * state.queueCostMult);
+    const cost = getEffectiveAdvanceCost();
     if (state.patience >= cost && state.queue > 0) {
       state.patience -= cost;
       state.queue--;
       state.queueAdvances++;
+      // Queue Momentum: small discount that builds when advancing rapidly
+      // Resets if you go more than 10 seconds without advancing
+      state.queueMomentum = Math.min(0.3, (state.queueMomentum || 0) + 0.02);
+      state.lastAdvanceTime = state.realElapsed;
       console.log('[METRICS] Queue #' + state.queue + ' at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | dust:' + state.dust.toFixed(1) + ' | clicks:' + state.totalClicks);
       Phase1.checkMilestones(state.queue, state.triggeredMilestones);
       UI.addLog('Advanced to #' + state.queue + '.');
@@ -338,6 +346,7 @@ const Game = (function() {
     }
 
     // WtL PASSIVE DRAIN: hold music erodes you over time
+    // Escalates faster at higher real-time to threaten even with regen
     const realMinutes = state.realElapsed / 60;
     if (realMinutes > 5) {
       // Announce drain the first time
@@ -345,7 +354,10 @@ const Game = (function() {
         state.flags.drainAnnounced = true;
         UI.showMilestone('The hold music is getting to you. You can feel your will to live... slipping. Slowly. Inevitably. You should probably take deep breaths more often.');
       }
-      const drainRate = 0.15 * Math.log2(realMinutes - 4);
+      // Drain accelerates: 0.15*log2 early, adds a linear component late game
+      const baseDrain = 0.15 * Math.log2(realMinutes - 4);
+      const lateDrain = realMinutes > 30 ? (realMinutes - 30) * 0.02 : 0;
+      const drainRate = baseDrain + lateDrain;
       state.wtl = Math.max(0, state.wtl - drainRate * dt);
     }
 
@@ -383,6 +395,11 @@ const Game = (function() {
     if (now - lastFlavorTime > FLAVOR_INTERVAL) {
       document.getElementById('flavor-text').textContent = Flavor.getForPhase(state.phase);
       lastFlavorTime = now;
+    }
+
+    // Queue Momentum decay: resets if no advance in 10 seconds
+    if (state.queueMomentum > 0 && state.realElapsed - (state.lastAdvanceTime || 0) > 10) {
+      state.queueMomentum = Math.max(0, (state.queueMomentum || 0) - 0.05 * dt);
     }
 
     // Dust overlay
@@ -438,7 +455,7 @@ const Game = (function() {
       UI.setText('sub-refill', state.refillCost + ' patience → +' + state.refillAmount + ' WtL');
     }
     if (advanceBtn) {
-      const cost = Math.floor(Phase1.getAdvanceCost(state.queueAdvances) * state.queueCostMult);
+      const cost = getEffectiveAdvanceCost();
       advanceBtn.disabled = state.patience < cost;
       UI.setText('sub-advance', 'costs ' + NumberFormat.format(cost) + ' patience');
     }

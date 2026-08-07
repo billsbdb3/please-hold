@@ -93,6 +93,8 @@ function resetState() {
     hangups: 0,
     boughtUpgrades: new Set(),
     boughtCollectors: new Set(),
+    queueMomentum: 0,
+    lastAdvanceTime: 0,
   };
   GENERATORS.forEach(g => { g.owned = 0; });
 }
@@ -110,7 +112,8 @@ function getGenCost(gen) {
 }
 
 function getAdvanceCost() {
-  return Math.floor(QUEUE_BASE_COST * Math.pow(QUEUE_GROWTH, state.queueAdvances) * state.queueCostMult);
+  const momentum = state.queueMomentum || 0;
+  return Math.floor(QUEUE_BASE_COST * Math.pow(QUEUE_GROWTH, state.queueAdvances) * state.queueCostMult * (1 - momentum));
 }
 
 function calcPPS() {
@@ -204,7 +207,9 @@ function simulate(playerType = 'active') {
 
     // --- WtL Passive Drain ---
     if (realMinutes > 5) {
-      const drainRate = 0.15 * Math.log2(realMinutes - 4);
+      const baseDrain = 0.15 * Math.log2(realMinutes - 4);
+      const lateDrain = realMinutes > 30 ? (realMinutes - 30) * 0.02 : 0;
+      const drainRate = baseDrain + lateDrain;
       state.wtl = Math.max(0, state.wtl - drainRate * dt);
     }
 
@@ -363,6 +368,13 @@ function tryAdvanceQueue() {
     state.patience -= cost;
     state.queue--;
     state.queueAdvances++;
+    // Queue Momentum
+    state.queueMomentum = Math.min(0.3, (state.queueMomentum || 0) + 0.02);
+    state.lastAdvanceTime = state.realSeconds;
+  }
+  // Momentum decay if no advance in 10s
+  if (state.queueMomentum > 0 && state.realSeconds - state.lastAdvanceTime > 10) {
+    state.queueMomentum = Math.max(0, state.queueMomentum - 0.01);
   }
 }
 
