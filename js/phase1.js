@@ -20,7 +20,7 @@ const Phase1 = (function() {
   const generators = [
     {
       id: 'gen_doodle', name: 'Doodle Pad', desc: 'Doodle to pass the time',
-      baseCost: 15, growthRate: 1.18, baseProduction: 0.08,
+      baseCost: 15, growthRate: 1.18, baseProduction: 0.1,
       owned: 0, unlocked: true, unlocksAt: 0, softCapAt: 15,
     },
     {
@@ -86,6 +86,9 @@ const Phase1 = (function() {
       narrative: "Days? Weeks? The concept of 'today' has become philosophical. You're not sure it applies to you anymore." },
     { id: 'u_allx3', name: 'Conference Call', desc: 'ALL coping mechanisms produce x2', cost: 1500000, currency: 'patience', revealAt: 800000,
       effect(s) { s.globalGenMultiplier *= 2; } },
+    { id: 'u_timewarp3', name: 'Days Blur Into Weeks', desc: 'Time slips even further...', cost: 2500000, currency: 'patience', revealAt: 1200000,
+      effect(s) { s.timeMultiplier *= 12; },
+      narrative: "You blink. Was that a day? A week? The calendar on the wall is meaningless. You've been here longer than you can comprehend." },
     { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 4000000, currency: 'patience', revealAt: 2000000,
       effect(s) { s.wtlPerClick = 0; s.flags.noWtlCost = true; },
       narrative: "You no longer feel the drain. You and the hold music have reached an understanding." },

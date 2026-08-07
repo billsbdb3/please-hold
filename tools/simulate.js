@@ -12,7 +12,7 @@
 
 // === GAME CONSTANTS (mirrors phase1.js and main.js) ===
 const GENERATORS = [
-  { id: 'doodle', name: 'Doodle Pad', baseCost: 15, growthRate: 1.18, baseProduction: 0.08, softCapAt: 15, owned: 0 },
+  { id: 'doodle', name: 'Doodle Pad', baseCost: 15, growthRate: 1.18, baseProduction: 0.1, softCapAt: 15, owned: 0 },
   { id: 'fidget', name: 'Fidget Spinner', baseCost: 100, growthRate: 1.17, baseProduction: 0.35, softCapAt: 15, unlocksAt: 50, owned: 0 },
   { id: 'autodialer', name: 'Autodialer', baseCost: 600, growthRate: 1.16, baseProduction: 2.0, softCapAt: 18, unlocksAt: 400, owned: 0 },
   { id: 'speeddialer', name: 'Speed Dialer', baseCost: 4000, growthRate: 1.15, baseProduction: 10.0, softCapAt: 18, unlocksAt: 3000, owned: 0 },
@@ -36,6 +36,7 @@ const UPGRADES = [
   { id: 'robo3x', name: 'Machine Learning', cost: 350000, revealAt: 200000, effect: 'robo_x3' },
   { id: 'time2', name: 'Time Perception Decay', cost: 600000, revealAt: 380000, effect: 'time_x10' },
   { id: 'allx2b', name: 'Conference Call', cost: 1500000, revealAt: 800000, effect: 'all_x2' },
+  { id: 'time3', name: 'Days Blur Into Weeks', cost: 2500000, revealAt: 1200000, effect: 'time_x12' },
   { id: 'insider', name: 'Corporate Insider', cost: 4000000, revealAt: 2000000, effect: 'insider' },
 ];
 
@@ -147,6 +148,8 @@ function applyUpgrade(u) {
     case 'speed_x3': state.genMults.speeddialer *= 3; break;
     case 'dust_start': state.dustPerSec = 1; state.dustStarted = true; break;
     case 'time_x10': state.timeMultiplier *= 10; break;
+    case 'time_x12': state.timeMultiplier *= 12; break;
+    case 'time_x15': state.timeMultiplier *= 15; break;
     case 'robo_x3': state.genMults.robocaller *= 3; break;
     case 'insider': state.wtlPerClick = 0; state.noWtlCost = true; break;
   }
@@ -178,11 +181,13 @@ function simulate(playerType = 'active') {
   // Player params
   let clicksPerSec, clickBurstDuration, clickRestDuration;
   if (playerType === 'active') {
-    clicksPerSec = 7; clickBurstDuration = 12; clickRestDuration = 3;
+    // Matches real playtest: ~2.5 clicks/sec avg, bursts with rests
+    // After 60 min: autoclicker at 2/sec constant
+    clicksPerSec = 2.5; clickBurstDuration = 10; clickRestDuration = 4;
   } else if (playerType === 'casual') {
-    clicksPerSec = 4; clickBurstDuration = 8; clickRestDuration = 5;
+    clicksPerSec = 2; clickBurstDuration = 8; clickRestDuration = 6;
   } else { // idle
-    clicksPerSec = 3; clickBurstDuration = 5; clickRestDuration = 15;
+    clicksPerSec = 1.5; clickBurstDuration = 5; clickRestDuration = 15;
   }
 
   let clickCyclePos = 0;
@@ -230,12 +235,15 @@ function simulate(playerType = 'active') {
     }
 
     // --- Clicking ---
+    // After 60 min: autoclicker at 2/sec constant
+    const effectiveClickRate = realMinutes > 60 ? 2 : clicksPerSec;
+    const effectiveBurst = realMinutes > 60 ? 999 : clickBurstDuration; // always clicking after 60
     clickCyclePos += dt;
-    const cycleLength = clickBurstDuration + clickRestDuration;
-    const inBurst = (clickCyclePos % cycleLength) < clickBurstDuration;
+    const cycleLength = effectiveBurst + clickRestDuration;
+    const inBurst = (clickCyclePos % cycleLength) < effectiveBurst;
 
     if (inBurst && state.wtl >= state.wtlPerClick) {
-      const clicksFloat = clicksPerSec * dt;
+      const clicksFloat = effectiveClickRate * dt;
       clickAccum = (clickAccum || 0) + clicksFloat;
       const clicks = Math.floor(clickAccum);
       clickAccum -= clicks;
@@ -256,10 +264,14 @@ function simulate(playerType = 'active') {
       state.combo = Math.max(1, state.combo - 0.4 * dt);
     }
 
-    // --- Deep Breath (auto when WtL < 30% and can afford) ---
-    if (state.wtl < state.wtlMax * 0.3 && state.patience >= state.refillCost) {
+    // --- Deep Breath (trigger at random WtL between 1-5, like real player) ---
+    if (!state._deepBreathThreshold || state.wtl >= state.wtlMax) {
+      state._deepBreathThreshold = 1 + Math.random() * 4; // random 1-5
+    }
+    if (state.wtl <= state._deepBreathThreshold && state.patience >= state.refillCost) {
       state.patience -= state.refillCost;
       state.wtl = Math.min(state.wtlMax, state.wtl + state.refillAmount);
+      state._deepBreathThreshold = 1 + Math.random() * 4; // new random threshold
     }
 
     // --- PPS ---
