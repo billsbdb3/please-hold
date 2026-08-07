@@ -8,27 +8,27 @@ const Dust = (function() {
   // At dustPerSec=1 with x100 time cap: ~100 particles/real-sec max
   // Over 30 min endgame: ~180,000 particles. Costs spread 50-5500.
   const collectors = [
-    { id: 'ds_cloth', name: 'Microfiber Cloth', desc: '+10% patience/sec', cost: 50, bought: false,
+    { id: 'ds_cloth', name: 'Microfiber Cloth', desc: '+10% patience/sec', cost: 200, bought: false,
       effect(s) { s.globalGenMultiplier *= 1.1; } },
-    { id: 'ds_mask', name: 'Dust Mask', desc: '+0.3 WtL regen/sec', cost: 120, bought: false,
+    { id: 'ds_mask', name: 'Dust Mask', desc: '+0.3 WtL regen/sec', cost: 500, bought: false,
       effect(s) { s.wtlRegen += 0.3; } },
-    { id: 'ds_filter', name: 'Air Filter', desc: '+25% patience/sec', cost: 250, bought: false,
+    { id: 'ds_filter', name: 'Air Filter', desc: '+25% patience/sec', cost: 1200, bought: false,
       effect(s) { s.globalGenMultiplier *= 1.25; } },
-    { id: 'ds_broom', name: 'Industrial Broom', desc: '+1 dust/sec base rate', cost: 450, bought: false,
+    { id: 'ds_broom', name: 'Industrial Broom', desc: '+1 dust/sec base rate', cost: 2500, bought: false,
       effect(s) { s.dustPerSec += 1; } },
-    { id: 'ds_map', name: 'Phone Tree Map', desc: 'Queue advances cost 15% less', cost: 700, bought: false,
+    { id: 'ds_map', name: 'Phone Tree Map', desc: 'Queue advances cost 15% less', cost: 5000, bought: false,
       effect(s) { s.queueCostMult *= 0.85; } },
-    { id: 'ds_vacuum', name: 'Robotic Vacuum', desc: '+50% patience/sec, +0.5 WtL regen', cost: 1000, bought: false,
+    { id: 'ds_vacuum', name: 'Robotic Vacuum', desc: '+50% patience/sec, +0.5 WtL regen', cost: 8000, bought: false,
       effect(s) { s.globalGenMultiplier *= 1.5; s.wtlRegen += 0.5; } },
-    { id: 'ds_hepa', name: 'HEPA System', desc: '+2 dust/sec, +5 max WtL', cost: 1500, bought: false,
+    { id: 'ds_hepa', name: 'HEPA System', desc: '+2 dust/sec, +5 max WtL', cost: 15000, bought: false,
       effect(s) { s.dustPerSec += 2; s.wtlMax += 5; } },
-    { id: 'ds_static', name: 'Static Collector', desc: '+100% patience/sec (x2)', cost: 2200, bought: false,
+    { id: 'ds_static', name: 'Static Collector', desc: '+100% patience/sec (x2)', cost: 30000, bought: false,
       effect(s) { s.globalGenMultiplier *= 2; } },
-    { id: 'ds_directline', name: 'Executive Direct Line', desc: 'Queue advances cost 30% less', cost: 3200, bought: false,
+    { id: 'ds_directline', name: 'Executive Direct Line', desc: 'Queue advances cost 30% less', cost: 50000, bought: false,
       effect(s) { s.queueCostMult *= 0.7; } },
-    { id: 'ds_industrial', name: 'Industrial Extraction', desc: '+5 dust/sec, +1 WtL regen', cost: 4200, bought: false,
+    { id: 'ds_industrial', name: 'Industrial Extraction', desc: '+5 dust/sec, +1 WtL regen', cost: 80000, bought: false,
       effect(s) { s.dustPerSec += 5; s.wtlRegen += 1; } },
-    { id: 'ds_singularity', name: 'Dust Singularity', desc: 'ALL production x3', cost: 5500, bought: false,
+    { id: 'ds_singularity', name: 'Dust Singularity', desc: 'ALL production x3', cost: 150000, bought: false,
       effect(s) { s.globalGenMultiplier *= 3; } },
   ];
 
@@ -44,7 +44,7 @@ const Dust = (function() {
    */
   function calcDustPerTick(state, dt, effectiveTimeMult) {
     if (!state.flags.dustStarted) return 0;
-    const dustTimeCap = Math.min(100, effectiveTimeMult);
+    const dustTimeCap = Math.min(10, effectiveTimeMult);
     return state.dustPerSec * state.dustMultiplier * dt * dustTimeCap;
   }
 

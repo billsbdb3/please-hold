@@ -20,33 +20,33 @@ const Phase1 = (function() {
   const generators = [
     {
       id: 'gen_doodle', name: 'Doodle Pad', desc: 'Doodle to pass the time',
-      baseCost: 15, growthRate: 1.18, baseProduction: 0.1,
+      baseCost: 15, growthRate: 1.18, baseProduction: 0.08,
       owned: 0, unlocked: true, unlocksAt: 0, softCapAt: 15,
     },
     {
       id: 'gen_fidget', name: 'Fidget Spinner', desc: 'Idle hands, idle minds',
-      baseCost: 100, growthRate: 1.17, baseProduction: 0.5,
+      baseCost: 100, growthRate: 1.17, baseProduction: 0.35,
       owned: 0, unlocked: false, unlocksAt: 50, softCapAt: 15,
     },
     {
       id: 'gen_autodialer', name: 'Autodialer', desc: 'It redials for you. Endlessly.',
-      baseCost: 600, growthRate: 1.16, baseProduction: 3.0,
+      baseCost: 600, growthRate: 1.16, baseProduction: 2.0,
       owned: 0, unlocked: false, unlocksAt: 400, softCapAt: 18,
     },
     {
       id: 'gen_speeddialer', name: 'Speed Dialer', desc: 'Faster. Angrier. More persistent.',
-      baseCost: 4000, growthRate: 1.15, baseProduction: 15.0,
-      owned: 0, unlocked: false, unlocksAt: 3000, softCapAt: 18,
+      baseCost: 5000, growthRate: 1.15, baseProduction: 10.0,
+      owned: 0, unlocked: false, unlocksAt: 4000, softCapAt: 18,
     },
     {
       id: 'gen_robocaller', name: 'Robo-Caller', desc: 'An army of robotic patience.',
-      baseCost: 30000, growthRate: 1.14, baseProduction: 80.0,
-      owned: 0, unlocked: false, unlocksAt: 25000, softCapAt: 15,
+      baseCost: 40000, growthRate: 1.14, baseProduction: 50.0,
+      owned: 0, unlocked: false, unlocksAt: 30000, softCapAt: 15,
     },
     {
       id: 'gen_callcenter', name: 'Shadow Call Center', desc: 'They hold for you. All of them.',
-      baseCost: 250000, growthRate: 1.13, baseProduction: 500.0,
-      owned: 0, unlocked: false, unlocksAt: 200000, softCapAt: 12,
+      baseCost: 350000, growthRate: 1.13, baseProduction: 300.0,
+      owned: 0, unlocked: false, unlocksAt: 250000, softCapAt: 12,
     },
   ];
 
