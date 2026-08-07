@@ -101,16 +101,16 @@ const Phase1 = (function() {
   }
 
   function getGeneratorCost(gen) {
-    let effectiveGrowth = gen.growthRate;
     let owned = gen.owned;
-    // Soft cap: after threshold, growth rate TRIPLES for excess units
+    // Soft cap: after threshold, growth becomes extreme (looks attainable, then nope)
     if (owned >= gen.softCapAt) {
       const base = gen.baseCost * Math.pow(gen.growthRate, gen.softCapAt);
       const excess = owned - gen.softCapAt;
-      const postCapGrowth = gen.growthRate * 3;
+      // Growth rate to the power of 4 for post-cap units
+      const postCapGrowth = Math.pow(gen.growthRate, 4);
       return Math.floor(base * Math.pow(postCapGrowth, excess));
     }
-    return Math.floor(gen.baseCost * Math.pow(effectiveGrowth, owned));
+    return Math.floor(gen.baseCost * Math.pow(gen.growthRate, owned));
   }
 
   function calcGeneratorPPS(state) {

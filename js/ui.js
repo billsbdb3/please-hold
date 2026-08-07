@@ -55,6 +55,22 @@ const UI = (function() {
     if (el) el.style.background = 'rgba(160,130,80,' + Math.min(dust / 5000, 0.3) + ')';
   }
 
+  function setWtlOverlay(wtlPct) {
+    let el = document.getElementById('wtl-overlay');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'wtl-overlay';
+      el.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:499;background:rgba(180,20,20,0);transition:background 0.5s;';
+      document.body.appendChild(el);
+    }
+    if (wtlPct < 40) {
+      const intensity = (40 - wtlPct) / 40 * 0.25;
+      el.style.background = 'rgba(180,20,20,' + intensity.toFixed(3) + ')';
+    } else {
+      el.style.background = 'rgba(180,20,20,0)';
+    }
+  }
+
   function showTransition(title, lines, buttonText, callback) {
     const screen = document.getElementById('transition-screen');
     let html = '<h2>' + title + '</h2>';
@@ -77,20 +93,23 @@ const UI = (function() {
   }
 
   function showMilestone(msg) {
-    let banner = document.getElementById('milestone-banner');
-    if (!banner) {
-      banner = document.createElement('div');
-      banner.id = 'milestone-banner';
-      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:16px 20px;background:#1a1a0a;border-bottom:2px solid #c4a35a;color:#c4a35a;text-align:center;font-family:Courier New,monospace;font-size:0.95em;z-index:900;transition:opacity 1.5s;text-shadow:0 0 10px rgba(196,163,90,0.3);';
-      document.body.appendChild(banner);
+    // Create a modal-style popup for milestones
+    let modal = document.getElementById('milestone-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'milestone-modal';
+      modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:950;display:flex;justify-content:center;align-items:center;cursor:pointer;';
+      modal.onclick = () => { modal.style.display = 'none'; };
+      document.body.appendChild(modal);
     }
-    banner.textContent = '★ ' + msg;
-    banner.style.opacity = '1';
-    banner.style.display = 'block';
-    setTimeout(() => { banner.style.opacity = '0'; }, 10000);
-    setTimeout(() => { banner.style.display = 'none'; }, 12000);
+    const inner = document.createElement('div');
+    inner.style.cssText = 'background:#1a1a2e;border:2px solid #c4a35a;border-radius:8px;padding:30px 40px;max-width:500px;text-align:center;color:#c4a35a;font-family:Courier New,monospace;';
+    inner.innerHTML = '<p style="font-size:1.1em;margin-bottom:12px;">★</p><p style="font-size:0.9em;color:#e0e0e0;line-height:1.6;">' + msg + '</p><p style="font-size:0.65em;color:#666;margin-top:15px;">(click anywhere to dismiss)</p>';
+    modal.innerHTML = '';
+    modal.appendChild(inner);
+    modal.style.display = 'flex';
     addLog('★ ' + msg);
   }
 
-  return { addLog, clearLog, show, hide, setText, setHTML, setWidth, setBarColor, setDustOverlay, showTransition, showWin, showMilestone };
+  return { addLog, clearLog, show, hide, setText, setHTML, setWidth, setBarColor, setDustOverlay, setWtlOverlay, showTransition, showWin, showMilestone };
 })();
