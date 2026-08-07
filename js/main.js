@@ -45,6 +45,7 @@ const Game = (function() {
 
     // Tracking
     maxPatience: 0,
+    maxDust: 0, // highest dust ever (for time factor stability)
     queueCostMult: 1, // multiplier on queue advance costs (reduced by dust shop)
     boughtUpgrades: new Set(),
     triggeredMilestones: new Set(),
@@ -65,32 +66,16 @@ const Game = (function() {
   ];
   let currentPhoneTier = 0;
 
-  // Dust shop items (real-time accumulation: ~1 particle/sec base)
-  // Over 45 min play: ~2700 base particles. With multipliers maybe 5000-10000.
-  // Costs should be spread so you buy them over the last 20 min of Phase 1.
-  const dustShop = [
-    { id: 'ds_headphones', name: 'Noise-Canceling Headphones', desc: '+20% patience/sec', cost: 100, bought: false,
-      effect(s) { s.globalGenMultiplier *= 1.2; } },
-    { id: 'ds_grip', name: 'Ergonomic Phone Grip', desc: '+3 patience/click', cost: 300, bought: false,
-      effect(s) { s.patiencePerClick += 3; } },
-    { id: 'ds_room', name: 'Soundproofed Room', desc: '+10 max WtL, +0.5 WtL regen/sec', cost: 600, bought: false,
-      effect(s) { s.wtlMax += 10; s.wtlRegen += 0.5; } },
-    { id: 'ds_map', name: 'Phone Tree Map', desc: 'Queue advances cost 20% less', cost: 1000, bought: false,
-      effect(s) { s.queueCostMult = (s.queueCostMult || 1) * 0.8; } },
-    { id: 'ds_recorder', name: 'Call Recording Device', desc: 'All coping mechanisms +50%', cost: 1800, bought: false,
-      effect(s) { s.globalGenMultiplier *= 1.5; } },
-    { id: 'ds_directline', name: 'Executive Direct Line', desc: 'Queue advances cost 30% less', cost: 3000, bought: false,
-      effect(s) { s.queueCostMult = (s.queueCostMult || 1) * 0.7; } },
-  ];
-  let dustShopRevealed = false;
+  // Dust system is in dust.js
+  // Expose totalPPS for dust.js to access
+  function totalPPS() {
+    return state.patiencePerSec + Phase1.calcGeneratorPPS(state);
+  }
 
   // ===== TIMING =====
   let lastTick = 0, lastFlavorTime = 0, lastComboClick = -Infinity, lastClickTime = -Infinity;
   const CLICK_COOLDOWN = 110, COMBO_MAX = 4, COMBO_UP = 0.3, COMBO_DECAY = 0.4, FLAVOR_INTERVAL = 12000;
   function mins() { return ((Date.now() - state.realStartTime) / 60000).toFixed(1) + 'm'; }
-  function totalPPS() {
-    return state.patiencePerSec + Phase1.calcGeneratorPPS(state);
-  }
 
   // ===== INIT =====
   function init() {
@@ -308,56 +293,7 @@ const Game = (function() {
     }
   }
 
-  // ===== DUST SHOP =====
-  function buildDustShop() {
-    const container = document.getElementById('upgrades-container');
-    // Add dust shop column
-    const col = document.createElement('div');
-    col.className = 'upgrade-column dust-col';
-    col.id = 'dust-shop-col';
-    col.innerHTML = '<h2>Dust Artifacts</h2><div id="dust-shop-list"></div>';
-    container.appendChild(col);
-    container.style.gridTemplateColumns = '1fr 1fr 1fr';
-
-    const list = document.getElementById('dust-shop-list');
-    dustShop.forEach(item => {
-      const btn = document.createElement('button');
-      btn.className = 'upgrade-btn';
-      btn.id = 'dsbtn-' + item.id;
-      btn.innerHTML = `<strong>${item.name}</strong> — ${item.desc}<br><span class="upgrade-cost">${NumberFormat.formatDust(item.cost)}</span>`;
-      btn.onclick = () => buyDustItem(item);
-      list.appendChild(btn);
-    });
-  }
-
-  function buyDustItem(item) {
-    if (item.bought || state.dust < item.cost) return;
-    state.dust -= item.cost;
-    item.bought = true;
-    item.effect(state);
-    UI.addLog('Acquired: ' + item.name);
-    console.log('[METRICS] Dust shop "' + item.name + '" at ' + mins() + ' | dust:' + state.dust.toFixed(1) + ' | pps:' + totalPPS().toFixed(1));
-  }
-
-  function updateDustShop() {
-    if (!dustShopRevealed && state.dust >= 50) {
-      dustShopRevealed = true;
-      buildDustShop();
-      UI.showMilestone('The dust is accumulating. You notice it has... properties. You can shape it. Use it. This is probably fine.');
-    }
-    if (!dustShopRevealed) return;
-    dustShop.forEach(item => {
-      const btn = document.getElementById('dsbtn-' + item.id);
-      if (!btn) return;
-      if (item.bought && !btn.classList.contains('owned')) {
-        btn.classList.add('owned');
-        btn.innerHTML = '<strong>' + item.name + '</strong> ✓';
-        btn.disabled = true;
-      } else if (!item.bought) {
-        btn.disabled = state.dust < item.cost;
-      }
-    });
-  }
+  // Dust system UI handled by dust.js
 
   // ===== HANGUP =====
   function hangUp() {
@@ -392,11 +328,9 @@ const Game = (function() {
 
     state.realElapsed = (now - state.realStartTime) / 1000;
 
-    // Time multiplier: base from upgrades + logarithmic dust acceleration (CAPPED)
-    let dustTimeFactor = 1;
-    if (state.flags.dustStarted && state.dust > 10) {
-      dustTimeFactor = Math.min(50000, 1 + Math.pow(Math.log10(state.dust + 1), 2) * 10);
-    }
+    // Time multiplier for DISPLAY: uses Dust module
+    if (state.dust > state.maxDust) state.maxDust = state.dust;
+    let dustTimeFactor = Dust.calcDustTimeFactor(state.maxDust);
     let effectiveTimeMult = state.timeMultiplier * dustTimeFactor;
     state.inGameSeconds += dt * effectiveTimeMult;
 
@@ -406,7 +340,6 @@ const Game = (function() {
     }
 
     // WtL PASSIVE DRAIN: hold music erodes you over time
-    // Starts after 5 real minutes, escalates with in-game time
     const realMinutes = state.realElapsed / 60;
     if (realMinutes > 5) {
       const drainRate = 0.15 * Math.log2(realMinutes - 4);
@@ -429,16 +362,15 @@ const Game = (function() {
     state.patience += pps * dt;
     if (state.patience > state.maxPatience) state.maxPatience = state.patience;
 
-    // Dust: accumulates in REAL TIME only (like Sugar Lumps)
-    // Parallel resource, not tied to time acceleration
+    // Dust: uses Dust module for capped accumulation
     if (state.flags.dustStarted) {
-      state.dust += state.dustPerSec * state.dustMultiplier * dt;
+      state.dust += Dust.calcDustPerTick(state, dt, effectiveTimeMult);
     }
 
     // Phone tier check (based on in-game time)
     checkPhoneTier();
 
-    // Log time/dust state every 60 real seconds for debugging
+    // Log time/dust state every 60 real seconds
     if (Math.floor(state.realElapsed) % 60 === 0 && Math.floor(state.realElapsed) > 0 && Math.floor(state.realElapsed) !== state._lastTimeLog) {
       state._lastTimeLog = Math.floor(state.realElapsed);
       console.log('[METRICS] TIME at ' + mins() + ' | inGame:' + NumberFormat.formatHoldTime(state.inGameSeconds) + ' | timeMult:' + effectiveTimeMult.toFixed(1) + ' | dust:' + state.dust.toFixed(1) + ' | wtlDrain:' + (realMinutes > 5 ? (0.15 * Math.log2(realMinutes - 4)).toFixed(2) : '0') + '/s | wtl:' + state.wtl.toFixed(1));
@@ -454,7 +386,7 @@ const Game = (function() {
     UI.setDustOverlay(state.dust);
 
     updateDisplay();
-    updateDustShop();
+    Dust.updateUI(state);
     requestAnimationFrame(tick);
   }
 
@@ -563,7 +495,7 @@ const Game = (function() {
     };
   }
 
-  return { init, state, getState };
+  return { init, state, getState, totalPPS };
 })();
 
 document.addEventListener('DOMContentLoaded', Game.init);

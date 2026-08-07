@@ -93,21 +93,20 @@ const UI = (function() {
   }
 
   function showMilestone(msg) {
-    // Create a modal-style popup for milestones
     let modal = document.getElementById('milestone-modal');
     if (!modal) {
       modal = document.createElement('div');
       modal.id = 'milestone-modal';
-      modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:950;display:flex;justify-content:center;align-items:center;cursor:pointer;';
-      modal.onclick = () => { modal.style.display = 'none'; };
+      modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:950;display:flex;justify-content:center;align-items:center;';
       document.body.appendChild(modal);
     }
     const inner = document.createElement('div');
     inner.style.cssText = 'background:#1a1a2e;border:2px solid #c4a35a;border-radius:8px;padding:30px 40px;max-width:500px;text-align:center;color:#c4a35a;font-family:Courier New,monospace;';
-    inner.innerHTML = '<p style="font-size:1.1em;margin-bottom:12px;">★</p><p style="font-size:0.9em;color:#e0e0e0;line-height:1.6;">' + msg + '</p><p style="font-size:0.65em;color:#666;margin-top:15px;">(click anywhere to dismiss)</p>';
+    inner.innerHTML = '<p style="font-size:1.1em;margin-bottom:12px;">★</p><p style="font-size:0.9em;color:#e0e0e0;line-height:1.6;">' + msg + '</p><button id="milestone-ok-btn" style="margin-top:20px;background:#2a2a4a;border:1px solid #c4a35a;color:#c4a35a;padding:8px 24px;font-family:Courier New,monospace;font-size:0.85em;cursor:pointer;border-radius:3px;">OK</button>';
     modal.innerHTML = '';
     modal.appendChild(inner);
     modal.style.display = 'flex';
+    document.getElementById('milestone-ok-btn').onclick = () => { modal.style.display = 'none'; };
     addLog('★ ' + msg);
   }
 

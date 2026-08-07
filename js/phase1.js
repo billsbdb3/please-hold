@@ -87,7 +87,7 @@ const Phase1 = (function() {
     { id: 'u_allx3', name: 'Conference Call', desc: 'ALL coping mechanisms produce x2', cost: 1500000, currency: 'patience', revealAt: 800000,
       effect(s) { s.globalGenMultiplier *= 2; } },
     { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 4000000, currency: 'patience', revealAt: 2000000,
-      effect(s) { s.wtlPerClick = 0; s.wtlRegen += 5; s.flags.noWtlCost = true; },
+      effect(s) { s.wtlPerClick = 0; s.flags.noWtlCost = true; },
       narrative: "You no longer feel the drain. You and the hold music have reached an understanding." },
   ];
 
@@ -102,12 +102,12 @@ const Phase1 = (function() {
 
   function getGeneratorCost(gen) {
     let owned = gen.owned;
-    // Soft cap: after threshold, growth becomes extreme (looks attainable, then nope)
+    // Soft cap: after threshold, growth becomes extreme
+    // growthRate^8 makes each post-cap unit absurdly more expensive
     if (owned >= gen.softCapAt) {
       const base = gen.baseCost * Math.pow(gen.growthRate, gen.softCapAt);
       const excess = owned - gen.softCapAt;
-      // Growth rate to the power of 4 for post-cap units
-      const postCapGrowth = Math.pow(gen.growthRate, 4);
+      const postCapGrowth = Math.pow(gen.growthRate, 8);
       return Math.floor(base * Math.pow(postCapGrowth, excess));
     }
     return Math.floor(gen.baseCost * Math.pow(gen.growthRate, owned));
