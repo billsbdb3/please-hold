@@ -66,18 +66,19 @@ const Game = (function() {
   let currentPhoneTier = 0;
 
   // Dust shop items (spendable dust for permanent bonuses)
+  // Costs in particles. First dust bunny (1000) is a milestone.
   const dustShop = [
-    { id: 'ds_headphones', name: 'Noise-Canceling Headphones', desc: '+20% patience/sec', cost: 5, bought: false,
+    { id: 'ds_headphones', name: 'Noise-Canceling Headphones', desc: '+20% patience/sec', cost: 200, bought: false,
       effect(s) { s.globalGenMultiplier *= 1.2; } },
-    { id: 'ds_grip', name: 'Ergonomic Phone Grip', desc: '+2 patience/click', cost: 12, bought: false,
+    { id: 'ds_grip', name: 'Ergonomic Phone Grip', desc: '+2 patience/click', cost: 500, bought: false,
       effect(s) { s.patiencePerClick += 2; } },
-    { id: 'ds_room', name: 'Soundproofed Room', desc: '+10 max WtL, +1 WtL regen/sec', cost: 25, bought: false,
+    { id: 'ds_room', name: 'Soundproofed Room', desc: '+10 max WtL, +1 WtL regen/sec', cost: 1200, bought: false,
       effect(s) { s.wtlMax += 10; s.wtlRegen += 1; } },
-    { id: 'ds_map', name: 'Phone Tree Map', desc: 'Queue advances cost 20% less', cost: 50, bought: false,
+    { id: 'ds_map', name: 'Phone Tree Map', desc: 'Queue advances cost 20% less', cost: 3000, bought: false,
       effect(s) { s.queueCostMult = (s.queueCostMult || 1) * 0.8; } },
-    { id: 'ds_recorder', name: 'Call Recording Device', desc: 'All coping mechanisms +50%', cost: 100, bought: false,
+    { id: 'ds_recorder', name: 'Call Recording Device', desc: 'All coping mechanisms +50%', cost: 8000, bought: false,
       effect(s) { s.globalGenMultiplier *= 1.5; } },
-    { id: 'ds_directline', name: 'Executive Direct Line', desc: 'Queue advances cost 30% less', cost: 200, bought: false,
+    { id: 'ds_directline', name: 'Executive Direct Line', desc: 'Queue advances cost 30% less', cost: 20000, bought: false,
       effect(s) { s.queueCostMult = (s.queueCostMult || 1) * 0.7; } },
   ];
   let dustShopRevealed = false;
@@ -264,6 +265,7 @@ const Game = (function() {
         'You stare at the phone.',
         'You were not calling about your car.',
         'You have been on hold for ' + NumberFormat.formatHoldTime(state.inGameSeconds) + '.',
+        'You are covered in ' + NumberFormat.formatDust(state.dust) + ' of dust.',
         'For $1.47.',
         'And they want to talk about your CAR.',
       ],
@@ -321,7 +323,7 @@ const Game = (function() {
       const btn = document.createElement('button');
       btn.className = 'upgrade-btn';
       btn.id = 'dsbtn-' + item.id;
-      btn.innerHTML = `<strong>${item.name}</strong> — ${item.desc}<br><span class="upgrade-cost">${item.cost} dust</span>`;
+      btn.innerHTML = `<strong>${item.name}</strong> — ${item.desc}<br><span class="upgrade-cost">${NumberFormat.formatDust(item.cost)}</span>`;
       btn.onclick = () => buyDustItem(item);
       list.appendChild(btn);
     });
@@ -337,10 +339,10 @@ const Game = (function() {
   }
 
   function updateDustShop() {
-    if (!dustShopRevealed && state.dust >= 3) {
+    if (!dustShopRevealed && state.dust >= 100) {
       dustShopRevealed = true;
       buildDustShop();
-      UI.addLog('The dust is useful. You can feel it.');
+      UI.addLog('The dust is... useful? You can shape it. Somehow.');
     }
     if (!dustShopRevealed) return;
     dustShop.forEach(item => {
@@ -390,11 +392,11 @@ const Game = (function() {
     state.realElapsed = (now - state.realStartTime) / 1000;
 
     // Time multiplier: base from upgrades + logarithmic dust acceleration (CAPPED)
-    // Dust provides time boost but caps at x10000 to prevent runaway
+    // Dust provides time boost but caps at x50000 to prevent runaway
     let dustTimeFactor = 1;
-    if (state.flags.dustStarted && state.dust > 0.1) {
-      // log10 based: gentle curve. Capped at 10000x
-      dustTimeFactor = Math.min(10000, 1 + Math.pow(Math.log10(state.dust + 1), 3) * 20);
+    if (state.flags.dustStarted && state.dust > 10) {
+      // Particles-based: log10(dust)² × 10, capped at 50000
+      dustTimeFactor = Math.min(50000, 1 + Math.pow(Math.log10(state.dust + 1), 2) * 10);
     }
     let effectiveTimeMult = state.timeMultiplier * dustTimeFactor;
     state.inGameSeconds += dt * effectiveTimeMult;
@@ -458,7 +460,7 @@ const Game = (function() {
 
     if (state.flags.dustStarted) {
       UI.show('res-dust');
-      UI.setText('val-dust', NumberFormat.format(state.dust) + ' mm');
+      UI.setText('val-dust', NumberFormat.formatDust(state.dust));
     }
 
     // Rates bar

@@ -74,7 +74,7 @@ const Phase1 = (function() {
     { id: 'u_speed2x', name: 'Overclocked Modem', desc: 'Speed Dialers produce x3', cost: 50000, currency: 'patience', revealAt: 28000,
       effect(s) { s.genMultipliers.gen_speeddialer *= 3; } },
     { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 100000, currency: 'patience', revealAt: 55000,
-      effect(s) { s.dustPerSec = 0.0001; s.flags.dustStarted = true; },
+      effect(s) { s.dustPerSec = 1.0; s.flags.dustStarted = true; },
       narrative: "You glance down. There is a fine layer of dust on your arm. It wasn't there when you started this call. Was it? How long have you been sitting here?" },
     { id: 'u_timewarp1', name: 'Minutes Feel Like Hours', desc: 'Time perception shifts x10', cost: 200000, currency: 'patience', revealAt: 110000,
       effect(s) { s.timeMultiplier *= 10; },
