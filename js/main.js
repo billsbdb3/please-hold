@@ -41,7 +41,7 @@ const Game = (function() {
     entropy: 0,
 
     // Flags
-    flags: { dustStarted: false, noWtlCost: false, started: false, comboUnlocked: false },
+    flags: { dustStarted: false, noWtlCost: false, started: false, comboUnlocked: false, drainAnnounced: false },
 
     // Tracking
     maxPatience: 0,
@@ -193,6 +193,9 @@ const Game = (function() {
     if (state.patience >= state.refillCost) {
       state.patience -= state.refillCost;
       state.wtl = Math.min(state.wtlMax, state.wtl + state.refillAmount);
+      // Visual flash on WtL bar
+      const bar = document.getElementById('bar-wtl');
+      if (bar) { bar.style.background = '#fff'; setTimeout(() => { bar.style.background = ''; }, 150); }
       console.log('[METRICS] Deep Breath at ' + mins() + ' | patience:' + Math.floor(state.patience) + ' | wtl:' + Math.floor(state.wtl) + '/' + state.wtlMax);
     }
   }
@@ -229,14 +232,9 @@ const Game = (function() {
     u.effect(state);
     console.log('[METRICS] Bought upgrade "' + u.name + '" at ' + mins() + ' | patience:' + Math.floor(state.patience) + ' | pps:' + totalPPS().toFixed(1) + ' | clicks:' + state.totalClicks + ' | maxP:' + Math.floor(state.maxPatience));
     UI.addLog('Purchased: ' + u.name);
-    // Show narrative if present
+    // Show narrative in modal if present
     if (u.narrative) {
-      const flavorEl = document.getElementById('flavor-text');
-      if (flavorEl) {
-        flavorEl.textContent = u.narrative;
-        flavorEl.style.color = '#c4a35a';
-        setTimeout(() => { flavorEl.style.color = ''; }, 15000);
-      }
+      UI.showMilestone(u.narrative);
     }
   }
 
@@ -342,6 +340,11 @@ const Game = (function() {
     // WtL PASSIVE DRAIN: hold music erodes you over time
     const realMinutes = state.realElapsed / 60;
     if (realMinutes > 5) {
+      // Announce drain the first time
+      if (!state.flags.drainAnnounced) {
+        state.flags.drainAnnounced = true;
+        UI.showMilestone('The hold music is getting to you. You can feel your will to live... slipping. Slowly. Inevitably. You should probably take deep breaths more often.');
+      }
       const drainRate = 0.15 * Math.log2(realMinutes - 4);
       state.wtl = Math.max(0, state.wtl - drainRate * dt);
     }
