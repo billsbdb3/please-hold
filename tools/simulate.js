@@ -12,12 +12,12 @@
 
 // === GAME CONSTANTS (mirrors phase1.js and main.js) ===
 const GENERATORS = [
-  { id: 'doodle', name: 'Doodle Pad', baseCost: 15, growthRate: 1.18, baseProduction: 0.1, softCapAt: 15, owned: 0 },
-  { id: 'fidget', name: 'Fidget Spinner', baseCost: 100, growthRate: 1.17, baseProduction: 0.5, softCapAt: 15, unlocksAt: 50, owned: 0 },
-  { id: 'autodialer', name: 'Autodialer', baseCost: 600, growthRate: 1.16, baseProduction: 3.0, softCapAt: 18, unlocksAt: 400, owned: 0 },
-  { id: 'speeddialer', name: 'Speed Dialer', baseCost: 4000, growthRate: 1.15, baseProduction: 15.0, softCapAt: 18, unlocksAt: 3000, owned: 0 },
-  { id: 'robocaller', name: 'Robo-Caller', baseCost: 30000, growthRate: 1.14, baseProduction: 80.0, softCapAt: 15, unlocksAt: 25000, owned: 0 },
-  { id: 'callcenter', name: 'Shadow Call Center', baseCost: 250000, growthRate: 1.13, baseProduction: 500.0, softCapAt: 12, unlocksAt: 200000, owned: 0 },
+  { id: 'doodle', name: 'Doodle Pad', baseCost: 15, growthRate: 1.18, baseProduction: 0.08, softCapAt: 15, owned: 0 },
+  { id: 'fidget', name: 'Fidget Spinner', baseCost: 100, growthRate: 1.17, baseProduction: 0.35, softCapAt: 15, unlocksAt: 50, owned: 0 },
+  { id: 'autodialer', name: 'Autodialer', baseCost: 600, growthRate: 1.16, baseProduction: 2.0, softCapAt: 18, unlocksAt: 400, owned: 0 },
+  { id: 'speeddialer', name: 'Speed Dialer', baseCost: 4000, growthRate: 1.15, baseProduction: 10.0, softCapAt: 18, unlocksAt: 3000, owned: 0 },
+  { id: 'robocaller', name: 'Robo-Caller', baseCost: 30000, growthRate: 1.14, baseProduction: 50.0, softCapAt: 15, unlocksAt: 25000, owned: 0 },
+  { id: 'callcenter', name: 'Shadow Call Center', baseCost: 250000, growthRate: 1.13, baseProduction: 300.0, softCapAt: 12, unlocksAt: 200000, owned: 0 },
 ];
 
 const UPGRADES = [
@@ -40,23 +40,23 @@ const UPGRADES = [
 ];
 
 const DUST_COLLECTORS = [
-  { id: 'cloth', name: 'Microfiber Cloth', cost: 50, effect: 'gen_x1.1' },
-  { id: 'mask', name: 'Dust Mask', cost: 120, effect: 'wtl_regen_0.3' },
-  { id: 'filter', name: 'Air Filter', cost: 250, effect: 'gen_x1.25' },
-  { id: 'broom', name: 'Industrial Broom', cost: 450, effect: 'dust+1' },
-  { id: 'map', name: 'Phone Tree Map', cost: 700, effect: 'queue_x0.85' },
-  { id: 'vacuum', name: 'Robotic Vacuum', cost: 1000, effect: 'gen_x1.5_wtl_0.5' },
-  { id: 'hepa', name: 'HEPA System', cost: 1500, effect: 'dust+2_wtl+5' },
-  { id: 'static', name: 'Static Collector', cost: 2200, effect: 'gen_x2' },
-  { id: 'direct', name: 'Executive Direct Line', cost: 3200, effect: 'queue_x0.7' },
-  { id: 'industrial', name: 'Industrial Extraction', cost: 4200, effect: 'dust+5_wtl+1' },
-  { id: 'singularity', name: 'Dust Singularity', cost: 5500, effect: 'gen_x3' },
+  { id: 'cloth', name: 'Microfiber Cloth', cost: 200, effect: 'gen_x1.1' },
+  { id: 'mask', name: 'Dust Mask', cost: 500, effect: 'wtl_regen_0.3' },
+  { id: 'filter', name: 'Air Filter', cost: 1200, effect: 'gen_x1.25' },
+  { id: 'broom', name: 'Industrial Broom', cost: 2500, effect: 'dust+1' },
+  { id: 'map', name: 'Phone Tree Map', cost: 5000, effect: 'queue_x0.85' },
+  { id: 'vacuum', name: 'Robotic Vacuum', cost: 8000, effect: 'gen_x1.5_wtl_0.5' },
+  { id: 'hepa', name: 'HEPA System', cost: 15000, effect: 'dust+2_wtl+5' },
+  { id: 'static', name: 'Static Collector', cost: 30000, effect: 'gen_x2' },
+  { id: 'direct', name: 'Executive Direct Line', cost: 50000, effect: 'queue_x0.7' },
+  { id: 'industrial', name: 'Industrial Extraction', cost: 80000, effect: 'dust+5_wtl+1' },
+  { id: 'singularity', name: 'Dust Singularity', cost: 150000, effect: 'gen_x3' },
 ];
 
 const QUEUE_START = 150;
 const QUEUE_BASE_COST = 30;
 const QUEUE_GROWTH = 1.095;
-const DUST_TIME_CAP = 100; // Max time mult applied to dust accumulation
+const DUST_TIME_CAP = 10; // Max time mult applied to dust accumulation
 
 // === STATE ===
 let state = {};
