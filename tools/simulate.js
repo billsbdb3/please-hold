@@ -214,7 +214,7 @@ function simulate(playerType = 'active') {
     if (realMinutes > 5) {
       const baseDrain = 0.15 * Math.log2(realMinutes - 4);
       const lateDrain = realMinutes > 30 ? (realMinutes - 30) * 0.02 : 0;
-      const drainRate = baseDrain + lateDrain;
+      const drainRate = Math.min(1.5, baseDrain + lateDrain);
       state.wtl = Math.max(0, state.wtl - drainRate * dt);
     }
 

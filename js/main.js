@@ -346,7 +346,7 @@ const Game = (function() {
     }
 
     // WtL PASSIVE DRAIN: hold music erodes you over time
-    // Escalates faster at higher real-time to threaten even with regen
+    // Capped at 1.5/s so it's always survivable with Deep Breath
     const realMinutes = state.realElapsed / 60;
     if (realMinutes > 5) {
       // Announce drain the first time
@@ -354,10 +354,9 @@ const Game = (function() {
         state.flags.drainAnnounced = true;
         UI.showMilestone('The hold music is getting to you. You can feel your will to live... slipping. Slowly. Inevitably. You should probably take deep breaths more often.');
       }
-      // Drain accelerates: 0.15*log2 early, adds a linear component late game
       const baseDrain = 0.15 * Math.log2(realMinutes - 4);
       const lateDrain = realMinutes > 30 ? (realMinutes - 30) * 0.02 : 0;
-      const drainRate = baseDrain + lateDrain;
+      const drainRate = Math.min(1.5, baseDrain + lateDrain);
       state.wtl = Math.max(0, state.wtl - drainRate * dt);
     }
 
