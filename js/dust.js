@@ -4,31 +4,32 @@
  */
 const Dust = (function() {
 
-  // Dust Collectors: 11 items spread across late Phase 1
-  // At dustPerSec=1 with x100 time cap: ~100 particles/real-sec max
-  // Over 30 min endgame: ~180,000 particles. Costs spread 50-5500.
+  // Dust Collectors: 11 items spread across Phase 1
+  // With dustPerSec=0.2 base, x30 time cap, and dust/sec boosts from collectors:
+  // At peak (after broom+hepa+industrial): ~4.7 dust/sec × 30 = 141 dust/real-sec
+  // All 11 should be purchasable within Phase 1
   const collectors = [
-    { id: 'ds_cloth', name: 'Microfiber Cloth', desc: '+10% patience/sec', cost: 200, bought: false,
+    { id: 'ds_cloth', name: 'Microfiber Cloth', desc: '+10% patience/sec', cost: 300, bought: false,
       effect(s) { s.globalGenMultiplier *= 1.1; } },
-    { id: 'ds_mask', name: 'Dust Mask', desc: '+0.3 WtL regen/sec', cost: 500, bought: false,
+    { id: 'ds_mask', name: 'Dust Mask', desc: '+0.3 WtL regen/sec', cost: 800, bought: false,
       effect(s) { s.wtlRegen += 0.3; } },
-    { id: 'ds_filter', name: 'Air Filter', desc: '+25% patience/sec', cost: 1200, bought: false,
+    { id: 'ds_filter', name: 'Air Filter', desc: '+25% patience/sec', cost: 2000, bought: false,
       effect(s) { s.globalGenMultiplier *= 1.25; } },
-    { id: 'ds_broom', name: 'Industrial Broom', desc: '+1 dust/sec base rate', cost: 2500, bought: false,
-      effect(s) { s.dustPerSec += 1; } },
-    { id: 'ds_map', name: 'Phone Tree Map', desc: 'Queue advances cost 15% less', cost: 5000, bought: false,
+    { id: 'ds_broom', name: 'Industrial Broom', desc: '+0.5 dust/sec base rate', cost: 4000, bought: false,
+      effect(s) { s.dustPerSec += 0.5; } },
+    { id: 'ds_map', name: 'Phone Tree Map', desc: 'Queue advances cost 15% less', cost: 7000, bought: false,
       effect(s) { s.queueCostMult *= 0.85; } },
-    { id: 'ds_vacuum', name: 'Robotic Vacuum', desc: '+50% patience/sec, +0.5 WtL regen', cost: 8000, bought: false,
+    { id: 'ds_vacuum', name: 'Robotic Vacuum', desc: '+50% patience/sec, +0.5 WtL regen', cost: 12000, bought: false,
       effect(s) { s.globalGenMultiplier *= 1.5; s.wtlRegen += 0.5; } },
-    { id: 'ds_hepa', name: 'HEPA System', desc: '+2 dust/sec, +5 max WtL', cost: 15000, bought: false,
-      effect(s) { s.dustPerSec += 2; s.wtlMax += 5; } },
-    { id: 'ds_static', name: 'Static Collector', desc: '+100% patience/sec (x2)', cost: 30000, bought: false,
+    { id: 'ds_hepa', name: 'HEPA System', desc: '+1 dust/sec, +5 max WtL', cost: 20000, bought: false,
+      effect(s) { s.dustPerSec += 1; s.wtlMax += 5; } },
+    { id: 'ds_static', name: 'Static Collector', desc: '+100% patience/sec (x2)', cost: 32000, bought: false,
       effect(s) { s.globalGenMultiplier *= 2; } },
     { id: 'ds_directline', name: 'Executive Direct Line', desc: 'Queue advances cost 30% less', cost: 50000, bought: false,
       effect(s) { s.queueCostMult *= 0.7; } },
-    { id: 'ds_industrial', name: 'Industrial Extraction', desc: '+5 dust/sec, +1 WtL regen', cost: 80000, bought: false,
-      effect(s) { s.dustPerSec += 5; s.wtlRegen += 1; } },
-    { id: 'ds_singularity', name: 'Dust Singularity', desc: 'ALL production x3', cost: 150000, bought: false,
+    { id: 'ds_industrial', name: 'Industrial Extraction', desc: '+3 dust/sec, +1 WtL regen', cost: 75000, bought: false,
+      effect(s) { s.dustPerSec += 3; s.wtlRegen += 1; } },
+    { id: 'ds_singularity', name: 'Dust Singularity', desc: 'ALL production x3', cost: 120000, bought: false,
       effect(s) { s.globalGenMultiplier *= 3; } },
   ];
 
@@ -36,15 +37,15 @@ const Dust = (function() {
   let built = false;
 
   // Reveal threshold
-  const REVEAL_AT = 30; // particles
+  const REVEAL_AT = 200; // particles (gives time between Entropy popup and shop reveal)
 
   /**
    * Calculate dust accumulation per real-time tick.
-   * Dust uses in-game time but with its own cap (x100) to prevent explosion.
+   * Dust uses in-game time but with its own cap (x30) to prevent explosion.
    */
   function calcDustPerTick(state, dt, effectiveTimeMult) {
     if (!state.flags.dustStarted) return 0;
-    const dustTimeCap = Math.min(10, effectiveTimeMult);
+    const dustTimeCap = Math.min(30, effectiveTimeMult);
     return state.dustPerSec * state.dustMultiplier * dt * dustTimeCap;
   }
 

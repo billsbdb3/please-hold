@@ -15,38 +15,45 @@
 const Phase1 = (function() {
 
   // === GENERATORS (column title: "Coping Mechanisms") ===
-  // Soft cap: after softCapAt, growthRate doubles.
-  // cost_next = baseCost * effectiveGrowth^owned
+  // Soft cap: after softCapAt, growthRate^8 kicks in (extreme cost spike).
+  // NESTED: Each tier boosts the tier below by boostPercent per owned unit.
+  // Shadow Call Center boosts Robo-Callers, Robo-Callers boost Speed Dialers, etc.
   const generators = [
     {
       id: 'gen_doodle', name: 'Doodle Pad', desc: 'Doodle to pass the time',
       baseCost: 15, growthRate: 1.18, baseProduction: 0.1,
       owned: 0, unlocked: true, unlocksAt: 0, softCapAt: 15,
+      boostPercent: 0, boostsId: null, // bottom tier, boosts nothing
     },
     {
       id: 'gen_fidget', name: 'Fidget Spinner', desc: 'Idle hands, idle minds',
       baseCost: 100, growthRate: 1.17, baseProduction: 0.35,
       owned: 0, unlocked: false, unlocksAt: 50, softCapAt: 15,
+      boostPercent: 0.005, boostsId: 'gen_doodle', // each boosts Doodle Pads +0.5%
     },
     {
       id: 'gen_autodialer', name: 'Autodialer', desc: 'It redials for you. Endlessly.',
       baseCost: 600, growthRate: 1.16, baseProduction: 2.0,
       owned: 0, unlocked: false, unlocksAt: 400, softCapAt: 18,
+      boostPercent: 0.01, boostsId: 'gen_fidget', // each boosts Fidget Spinners +1%
     },
     {
       id: 'gen_speeddialer', name: 'Speed Dialer', desc: 'Faster. Angrier. More persistent.',
       baseCost: 5000, growthRate: 1.15, baseProduction: 10.0,
       owned: 0, unlocked: false, unlocksAt: 4000, softCapAt: 18,
+      boostPercent: 0.02, boostsId: 'gen_autodialer', // each boosts Autodialers +2%
     },
     {
       id: 'gen_robocaller', name: 'Robo-Caller', desc: 'An army of robotic patience.',
       baseCost: 40000, growthRate: 1.14, baseProduction: 50.0,
       owned: 0, unlocked: false, unlocksAt: 30000, softCapAt: 15,
+      boostPercent: 0.03, boostsId: 'gen_speeddialer', // each boosts Speed Dialers +3%
     },
     {
       id: 'gen_callcenter', name: 'Shadow Call Center', desc: 'They hold for you. All of them.',
       baseCost: 350000, growthRate: 1.13, baseProduction: 300.0,
       owned: 0, unlocked: false, unlocksAt: 250000, softCapAt: 12,
+      boostPercent: 0.05, boostsId: 'gen_robocaller', // each boosts Robo-Callers +5%
     },
   ];
 
@@ -74,24 +81,27 @@ const Phase1 = (function() {
     { id: 'u_speed2x', name: 'Overclocked Modem', desc: 'Speed Dialers produce x3', cost: 50000, currency: 'patience', revealAt: 28000,
       effect(s) { s.genMultipliers.gen_speeddialer *= 3; } },
     { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 100000, currency: 'patience', revealAt: 55000,
-      effect(s) { s.dustPerSec = 1.0; s.flags.dustStarted = true; },
+      effect(s) { s.dustPerSec = 0.2; s.flags.dustStarted = true; },
       narrative: "You glance down. There is a fine layer of dust on your arm. It wasn't there when you started this call. Was it? How long have you been sitting here?" },
-    { id: 'u_timewarp1', name: 'Minutes Feel Like Hours', desc: 'Time perception shifts x10', cost: 200000, currency: 'patience', revealAt: 110000,
+    { id: 'u_timewarp1', name: 'Time Blur I', desc: 'Hold perception shifts. (x10)', cost: 200000, currency: 'patience', revealAt: 110000,
       effect(s) { s.timeMultiplier *= 10; },
       narrative: "Was that a minute? An hour? You can't tell anymore. The clock on the wall has stopped making sense." },
     { id: 'u_robo3x', name: 'Machine Learning', desc: 'Robo-Callers produce x3', cost: 350000, currency: 'patience', revealAt: 200000,
       effect(s) { s.genMultipliers.gen_robocaller *= 3; } },
-    { id: 'u_timewarp2', name: 'Time Perception Decay', desc: 'Time slips further x10', cost: 600000, currency: 'patience', revealAt: 380000,
+    { id: 'u_timewarp2', name: 'Time Blur II', desc: 'Days merge. (x10)', cost: 600000, currency: 'patience', revealAt: 380000,
       effect(s) { s.timeMultiplier *= 10; },
       narrative: "Days? Weeks? The concept of 'today' has become philosophical. You're not sure it applies to you anymore." },
     { id: 'u_allx3', name: 'Conference Call', desc: 'ALL coping mechanisms produce x2', cost: 1500000, currency: 'patience', revealAt: 800000,
       effect(s) { s.globalGenMultiplier *= 2; } },
-    { id: 'u_timewarp3', name: 'Days Blur Into Weeks', desc: 'Time slips even further...', cost: 2500000, currency: 'patience', revealAt: 1200000,
+    { id: 'u_timewarp3', name: 'Time Blur III', desc: 'Calendar irrelevant. (x12)', cost: 2500000, currency: 'patience', revealAt: 1200000,
       effect(s) { s.timeMultiplier *= 12; },
       narrative: "You blink. Was that a day? A week? The calendar on the wall is meaningless. You've been here longer than you can comprehend." },
-    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 4000000, currency: 'patience', revealAt: 2000000,
+    { id: 'u_qfamiliar', name: 'Queue Familiarity', desc: 'Rapid advances reduce next cost by 2% (max 25%)', cost: 500000, currency: 'patience', revealAt: 300000,
+      effect(s) { s.flags.queueFamiliarity = true; },
+      narrative: "You've been in this queue so long you know the patterns. Each advance builds on the last — if you're quick enough." },
+    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL. The hold music still wears on you.', cost: 4000000, currency: 'patience', revealAt: 2000000,
       effect(s) { s.wtlPerClick = 0; s.flags.noWtlCost = true; },
-      narrative: "You no longer feel the drain. You and the hold music have reached an understanding." },
+      narrative: "You no longer feel the drain from clicking. But the hold music... it still gets to you. Slowly. Inevitably." },
   ];
 
   // === QUEUE ===
@@ -116,15 +126,45 @@ const Phase1 = (function() {
     return Math.floor(gen.baseCost * Math.pow(gen.growthRate, owned));
   }
 
+  /**
+   * Calculate total patience/sec from all generators.
+   * NESTED BOOST: each tier gives a % bonus to the tier it boosts.
+   * We calculate boost multipliers first (top-down), then sum production.
+   */
   function calcGeneratorPPS(state) {
+    // Build a map of nested boost multipliers: id -> multiplier from higher tiers
+    const nestedBoost = {};
+    generators.forEach(g => { nestedBoost[g.id] = 1; });
+
+    // Apply boosts top-down (higher tiers boost lower tiers)
+    for (let i = generators.length - 1; i >= 0; i--) {
+      const g = generators[i];
+      if (g.owned > 0 && g.boostsId) {
+        // Each owned unit of g gives boostPercent to the tier below
+        nestedBoost[g.boostsId] += g.owned * g.boostPercent;
+      }
+    }
+
     let total = 0;
     generators.forEach(g => {
       if (g.owned > 0) {
-        const mult = (state.genMultipliers[g.id] || 1) * (state.globalGenMultiplier || 1);
-        total += g.baseProduction * g.owned * mult;
+        const upgradeMult = (state.genMultipliers[g.id] || 1) * (state.globalGenMultiplier || 1);
+        const nested = nestedBoost[g.id] || 1;
+        total += g.baseProduction * g.owned * upgradeMult * nested;
       }
     });
     return total;
+  }
+
+  /** Get the nested boost multiplier for a specific generator (for UI display) */
+  function getNestedBoost(genId) {
+    let boost = 1;
+    generators.forEach(g => {
+      if (g.owned > 0 && g.boostsId === genId) {
+        boost += g.owned * g.boostPercent;
+      }
+    });
+    return boost;
   }
 
   // Milestones
@@ -153,6 +193,6 @@ const Phase1 = (function() {
 
   return {
     generators, upgrades, getAdvanceCost, getGeneratorCost,
-    calcGeneratorPPS, checkMilestones, QUEUE_START, QUEUE_BASE_COST, QUEUE_GROWTH
+    calcGeneratorPPS, getNestedBoost, checkMilestones, QUEUE_START, QUEUE_BASE_COST, QUEUE_GROWTH
   };
 })();
