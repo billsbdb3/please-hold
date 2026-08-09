@@ -16,13 +16,15 @@ Open `index.html` in a browser. No build step, no dependencies, no server requir
 
 ## Game Structure
 
-**Phase 1: The Call** (~1.5-2 hours)
+**Phase 1: The Call** (~90-120 minutes)
 - Click [ ENDURE ] to generate Patience
 - Manage your Will to Live (it drains — the hold music is getting to you)
 - Buy Coping Mechanisms (generators) for passive Patience income
 - Purchase upgrades that multiply your generators
-- Advance through the queue toward the front of the line
-- Watch as dust accumulates and time slips away from you
+- Advance through a 150-position queue toward the front of the line
+- Watch as dust particles accumulate and time perception decays
+- In-game time reaches ~10 years by Phase 1 end
+- 17 upgrades + 11 dust collectors to discover
 
 **Phase 2: The Escalation** (coming soon)
 - Someone answers. They want to talk about your car's extended warranty.
@@ -52,11 +54,24 @@ please-hold/
 │   ├── phase1.js       — generators, upgrades, queue
 │   ├── phase2.js       — (placeholder)
 │   ├── phase3.js       — (placeholder)
+│   ├── dust.js         — dust system (collectors, accumulation, time factor)
 │   ├── ui.js           — DOM utilities, overlays, modals
 │   ├── flavor.js       — all flavor text pools
 │   ├── save.js         — localStorage auto-save
-│   └── numbers.js      — big number + dust formatting
+│   └── numbers.js      — big number + dust unit formatting
+├── tools/
+│   └── simulate.js     — Node.js balance simulator
 └── README.md
+```
+
+## Balance Simulator
+
+Tune game balance without manual playtesting:
+
+```
+node tools/simulate.js --player=active    # ~98 min, matches real player
+node tools/simulate.js --player=casual    # ~101 min
+node tools/simulate.js --player=idle      # cannot complete (by design)
 ```
 
 ## Save System

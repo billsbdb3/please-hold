@@ -73,7 +73,7 @@ Soft cap at threshold: post-cap growth = `growthRate^8` (extremely punishing)
 
 | Name | Base Cost | Growth | Production | Soft Cap | Unlock At |
 |------|-----------|--------|------------|----------|-----------|
-| Doodle Pad | 15 | 1.18 | 0.08/s | 15 | 0 |
+| Doodle Pad | 15 | 1.18 | 0.1/s | 15 | 0 |
 | Fidget Spinner | 100 | 1.17 | 0.35/s | 15 | 50 maxP |
 | Autodialer | 600 | 1.16 | 2.0/s | 18 | 400 maxP |
 | Speed Dialer | 5000 | 1.15 | 10.0/s | 18 | 4000 maxP |
@@ -81,7 +81,7 @@ Soft cap at threshold: post-cap growth = `growthRate^8` (extremely punishing)
 | Shadow Call Center | 350000 | 1.13 | 300.0/s | 12 | 250000 maxP |
 
 ### Upgrades (One-time purchases, patience-based)
-14 upgrades ranging from 50 to 4,000,000 patience. Include:
+15 upgrades ranging from 50 to 4,000,000 patience. Include:
 - Snack Drawer (cheaper Deep Breath)
 - Hold Music Tolerance (+click power)
 - Colored Pencils (Doodle Pads x2)
@@ -95,8 +95,9 @@ Soft cap at threshold: post-cap growth = `growthRate^8` (extremely punishing)
 - Entropy Noticed (starts dust accumulation)
 - Minutes Feel Like Hours (time x10)
 - Machine Learning (Robo-Callers x3)
-- Time Perception Decay (time x10 again)
+- Time Perception Decay (time x10)
 - Conference Call (ALL generators x2)
+- Days Blur Into Weeks (time x12)
 - Corporate Insider (clicking costs 0 WtL)
 
 ### Dust Collectors (Dust-purchased, in dust.js)
@@ -113,9 +114,11 @@ Soft cap at threshold: post-cap growth = `growthRate^8` (extremely punishing)
 
 ### Time System
 - `effectiveTimeMult = state.timeMultiplier × dustTimeFactor`
+- Time upgrades: x10 ("Minutes Feel Like Hours") × x10 ("Time Perception Decay") × x12 ("Days Blur Into Weeks") = x1200 base
 - `dustTimeFactor = min(50000, 1 + log10(maxDust+1)² × 10)` — uses MAX dust (never drops)
 - Dust accumulation uses SEPARATE cap: `min(10, effectiveTimeMult)` — prevents dust explosion
 - Phone tiers trigger at in-game time thresholds (1 week, 3 months, 5 years)
+- Target: Phase 1 ends at ~10 years in-game time
 
 ### WtL Passive Drain
 - Starts at 5 real minutes
@@ -146,21 +149,33 @@ Soft cap at threshold: post-cap growth = `growthRate^8` (extremely punishing)
 ## Known Issues / TODO
 
 ### Bugs
-- WtL display: Deep Breath doesn't visually show "FULL" because drain ticks between frames
-- After Corporate Insider, WtL stays at max (drain too weak vs regen) — need to increase late drain or reduce regen from collectors
+- WtL display: Deep Breath doesn't visually show "FULL" clearly because drain ticks between frames. Bar flashes white but may not be noticeable enough. Consider holding "MAX" text for 0.5s after refill.
+- Entropy Noticed and first Dust Collector popups appear too close together (need more spacing between reveal thresholds)
 
 ### UI Issues
-- Important narrative text (Entropy Noticed, milestones) needs to be in MODALS not flavor text area
-- Modal needs OK button (implemented) but still can be missed while clicking fast
-- No indication when/why WtL starts passively draining — needs narrative modal at 5 min mark
-- Screen should tint red when WtL drops below 40% (implemented but verify)
-- Hangup screen redial button needs better centering
-- Purchased upgrades should collapse to save space (partially implemented)
+- Important narrative text now in modals with OK button ✓
+- WtL drain announces at 5 min mark via modal ✓
+- Screen tints red when WtL drops below 40% ✓
+- Deep Breath flashes WtL bar white ✓
+- Hangup screen centering ✓
+- Purchased upgrades collapse to save space ✓
+- Dust collectors column header: "Dust Collectors" ✓
 
-### Balance Issues (confirmed by simulator)
-- Late Phase 1 (last 10 min) has a dead zone where you're just waiting for patience to accumulate for final queue advances
-- Clicking becomes irrelevant late game — +7/click means nothing at 100K+ pps. This is OK design-wise (automation takes over) but any dust collectors that boost clicking should be removed
-- Soft cap at growthRate^8 now confirmed working — prevents low-tier spam
+### Balance (Sim-Verified)
+- Phase 1 completion: ~98 min active player (target 90-120 ✓)
+- In-game time at end: ~10 years (target ✓)
+- Upgrades: 17 total, spread every 3-7 min ✓
+- Dust collectors: 11 total, costs 200-150,000, spread over 30 min ✓
+- Queue momentum prevents dead zone at end ✓
+- WtL drain escalates after 30 min with linear component ✓
+- Soft cap: growthRate^8 post-cap ✓
+
+### Remaining Issues
+- WtL regen from collectors still exceeds drain after Corporate Insider in very late game
+- Clicking at +4/click becomes irrelevant at 100K+ pps (design intent: automation takes over)
+- After Corporate Insider, Deep Breath needs repurposing or the passive drain needs to threaten more
+- Need indicator showing WHAT is draining WtL (not just that it's happening)
+- Dust starts too fast after Entropy Noticed (first collector available almost immediately)
 
 ### Design Decisions Made
 - Dust accumulates in in-game time (narratively correct) but with x10 cap specifically for dust
@@ -168,12 +183,23 @@ Soft cap at threshold: post-cap growth = `growthRate^8` (extremely punishing)
 - "Coping Mechanisms" is the column name for generators (not "Generators")
 - "Dust Collectors" is the name for the dust shop (you're collecting/cleaning dust)
 - Deep Breath stays named "Deep Breath" in Phase 1. Phase 2 will rename to something anger-related.
-- Phase 1 ends showing "months" of in-game time (approaching 1 year)
+- Phase 1 ends showing ~10 years of in-game time
+- Time upgrades: x10 × x10 × x12 = x1200 base (with dustTimeFactor on top)
+- Doodle Pad production: 0.1 (clean mental math)
+- Queue Momentum: +2% discount per advance, caps at 30%, decays after 10s idle
 
 ### Simulator
 Run: `node tools/simulate.js --player=active`
 Options: `--player=active`, `--player=casual`, `--player=idle`
-Current result: 82 min for active player (optimal). Real player likely 90-110 min.
+
+Active player profile (matches real playtest data):
+- 2.5 clicks/sec with 10s burst / 4s rest
+- Autoclicker at 2/sec after 60 real minutes
+- Deep Breath triggered randomly when WtL reaches 1-5
+- Result: 98.2 min, 10.0 years in-game, ~11K clicks, 1 hangup
+
+Casual: ~2/sec, 8s burst, 6s rest → ~101 min
+Idle: ~1.5/sec, 5s burst, 15s rest → cannot complete Phase 1 (correct)
 
 ## Phase 2 Design (Planned, Not Built)
 - Extended warranty call triggers rage
