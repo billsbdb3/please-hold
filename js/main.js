@@ -50,7 +50,7 @@ const Game = (function() {
     entropy: 0,
 
     // Flags
-    flags: { dustStarted: false, noWtlCost: false, started: false, comboUnlocked: false, drainAnnounced: false, queueFamiliarity: false },
+    flags: { dustStarted: false, noWtlCost: false, started: false, comboUnlocked: false, comboLocked: false, drainAnnounced: false, queueFamiliarity: false },
 
     // Tracking
     maxPatience: 0,
@@ -199,10 +199,12 @@ const Game = (function() {
     const softCapNote = g.owned >= g.softCapAt ? ' ⚠️' : '';
     let html = `<strong>${g.name}</strong> (${g.owned})${softCapNote}<br><span class="btn-sub">${g.desc} | +${prodEach}/sec each</span>`;
     // Show what this generator boosts (only visible after owning 3+)
-    if (g.boostsId && g.owned >= 3) {
-      const boostTarget = Phase1.generators.find(x => x.id === g.boostsId);
-      if (boostTarget) {
-        html += `<br><span class="btn-sub boost-info">Boosts ${boostTarget.name} +${(g.owned * g.boostPercent * 100).toFixed(0)}%</span>`;
+    // Cascading: boosts ALL tiers below
+    if (g.boostPercent > 0 && g.owned >= 3) {
+      const tierIdx = Phase1.generators.findIndex(x => x.id === g.id);
+      if (tierIdx > 0) {
+        const totalBoost = (g.owned * g.boostPercent * 100).toFixed(0);
+        html += `<br><span class="btn-sub boost-info">Boosts all below +${totalBoost}%</span>`;
       }
     }
     html += `<br><span class="upgrade-cost">${NumberFormat.format(cost)} patience</span>`;
@@ -418,8 +420,8 @@ const Game = (function() {
     let effectiveTimeMult = state.timeMultiplier * dustTimeFactor;
     state.inGameSeconds += dt * effectiveTimeMult;
 
-    // Combo decay (only if unlocked)
-    if (state.flags.comboUnlocked && now - lastComboClick > 600 && state.combo > 1) {
+    // Combo decay (only if unlocked AND not locked by Muscle Memory)
+    if (state.flags.comboUnlocked && !state.flags.comboLocked && now - lastComboClick > 600 && state.combo > 1) {
       state.combo = Math.max(1, state.combo - COMBO_DECAY * dt);
     }
 

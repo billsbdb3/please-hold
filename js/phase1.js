@@ -16,44 +16,44 @@ const Phase1 = (function() {
 
   // === GENERATORS (column title: "Coping Mechanisms") ===
   // Soft cap: after softCapAt, growthRate^8 kicks in (extreme cost spike).
-  // NESTED: Each tier boosts the tier below by boostPercent per owned unit.
-  // Shadow Call Center boosts Robo-Callers, Robo-Callers boost Speed Dialers, etc.
+  // CASCADING BOOST: Each tier boosts ALL tiers below it by boostPercent per owned unit.
+  // Shadow Call Center boosts Robo, Speed, Auto, Fidget, AND Doodle.
   const generators = [
     {
       id: 'gen_doodle', name: 'Doodle Pad', desc: 'Doodle to pass the time',
       baseCost: 15, growthRate: 1.18, baseProduction: 0.1,
-      owned: 0, unlocked: true, unlocksAt: 0, softCapAt: 15,
-      boostPercent: 0, boostsId: null, // bottom tier, boosts nothing
+      owned: 0, unlocked: true, unlocksAt: 0, softCapAt: 25,
+      boostPercent: 0, // bottom tier, boosts nothing
     },
     {
       id: 'gen_fidget', name: 'Fidget Spinner', desc: 'Idle hands, idle minds',
       baseCost: 100, growthRate: 1.17, baseProduction: 0.35,
-      owned: 0, unlocked: false, unlocksAt: 50, softCapAt: 15,
-      boostPercent: 0.005, boostsId: 'gen_doodle', // each boosts Doodle Pads +0.5%
+      owned: 0, unlocked: false, unlocksAt: 50, softCapAt: 25,
+      boostPercent: 0.005, // each boosts ALL below +0.5%
     },
     {
       id: 'gen_autodialer', name: 'Autodialer', desc: 'It redials for you. Endlessly.',
       baseCost: 600, growthRate: 1.16, baseProduction: 2.0,
-      owned: 0, unlocked: false, unlocksAt: 400, softCapAt: 18,
-      boostPercent: 0.01, boostsId: 'gen_fidget', // each boosts Fidget Spinners +1%
+      owned: 0, unlocked: false, unlocksAt: 400, softCapAt: 22,
+      boostPercent: 0.01, // each boosts ALL below +1%
     },
     {
       id: 'gen_speeddialer', name: 'Speed Dialer', desc: 'Faster. Angrier. More persistent.',
       baseCost: 5000, growthRate: 1.15, baseProduction: 10.0,
-      owned: 0, unlocked: false, unlocksAt: 4000, softCapAt: 18,
-      boostPercent: 0.02, boostsId: 'gen_autodialer', // each boosts Autodialers +2%
+      owned: 0, unlocked: false, unlocksAt: 4000, softCapAt: 20,
+      boostPercent: 0.02, // each boosts ALL below +2%
     },
     {
       id: 'gen_robocaller', name: 'Robo-Caller', desc: 'An army of robotic patience.',
       baseCost: 40000, growthRate: 1.14, baseProduction: 50.0,
       owned: 0, unlocked: false, unlocksAt: 30000, softCapAt: 15,
-      boostPercent: 0.03, boostsId: 'gen_speeddialer', // each boosts Speed Dialers +3%
+      boostPercent: 0.03, // each boosts ALL below +3%
     },
     {
       id: 'gen_callcenter', name: 'Shadow Call Center', desc: 'They hold for you. All of them.',
       baseCost: 350000, growthRate: 1.13, baseProduction: 300.0,
       owned: 0, unlocked: false, unlocksAt: 250000, softCapAt: 12,
-      boostPercent: 0.05, boostsId: 'gen_robocaller', // each boosts Robo-Callers +5%
+      boostPercent: 0.05, // each boosts ALL below +5%
     },
   ];
 
@@ -88,6 +88,9 @@ const Phase1 = (function() {
       narrative: "Was that a minute? An hour? You can't tell anymore. The clock on the wall has stopped making sense." },
     { id: 'u_robo3x', name: 'Machine Learning', desc: 'Robo-Callers produce x3', cost: 350000, currency: 'patience', revealAt: 200000,
       effect(s) { s.genMultipliers.gen_robocaller *= 3; } },
+    { id: 'u_muscle', name: 'Muscle Memory', desc: 'Click streak no longer decays', cost: 750000, currency: 'patience', revealAt: 500000,
+      effect(s) { s.flags.comboLocked = true; },
+      narrative: "Your fingers remember. The rhythm is in your bones now. You don't even think about it. The streak... stays." },
     { id: 'u_timewarp2', name: 'Time Blur II', desc: 'Days merge. (x10)', cost: 600000, currency: 'patience', revealAt: 380000,
       effect(s) { s.timeMultiplier *= 10; },
       narrative: "Days? Weeks? The concept of 'today' has become philosophical. You're not sure it applies to you anymore." },
@@ -110,7 +113,15 @@ const Phase1 = (function() {
   const QUEUE_GROWTH = 1.095;
 
   function getAdvanceCost(advances) {
-    return Math.floor(QUEUE_BASE_COST * Math.pow(QUEUE_GROWTH, advances));
+    const baseCost = Math.floor(QUEUE_BASE_COST * Math.pow(QUEUE_GROWTH, advances));
+    // Super-exponential scaling for last 30 positions (advances 120+)
+    // Makes endgame queue require full dust collector + coping mechanism power
+    if (advances >= 120) {
+      const depth = advances - 120; // 0-30
+      const lateMultiplier = 1 + Math.pow(depth, 1.5) / 20;
+      return Math.floor(baseCost * lateMultiplier);
+    }
+    return baseCost;
   }
 
   function getGeneratorCost(gen) {
@@ -128,20 +139,22 @@ const Phase1 = (function() {
 
   /**
    * Calculate total patience/sec from all generators.
-   * NESTED BOOST: each tier gives a % bonus to the tier it boosts.
-   * We calculate boost multipliers first (top-down), then sum production.
+   * CASCADING BOOST: each tier gives a % bonus to ALL tiers below it.
+   * Shadow boosts Robo+Speed+Auto+Fidget+Doodle. Robo boosts Speed+Auto+Fidget+Doodle. Etc.
    */
   function calcGeneratorPPS(state) {
-    // Build a map of nested boost multipliers: id -> multiplier from higher tiers
+    // Build a map of cascading boost multipliers: id -> total multiplier from all higher tiers
     const nestedBoost = {};
     generators.forEach(g => { nestedBoost[g.id] = 1; });
 
-    // Apply boosts top-down (higher tiers boost lower tiers)
-    for (let i = generators.length - 1; i >= 0; i--) {
+    // For each generator tier, apply its boost to ALL tiers below it (lower index)
+    for (let i = generators.length - 1; i >= 1; i--) {
       const g = generators[i];
-      if (g.owned > 0 && g.boostsId) {
-        // Each owned unit of g gives boostPercent to the tier below
-        nestedBoost[g.boostsId] += g.owned * g.boostPercent;
+      if (g.owned > 0 && g.boostPercent > 0) {
+        // Boost ALL tiers below (index 0 to i-1)
+        for (let j = 0; j < i; j++) {
+          nestedBoost[generators[j].id] += g.owned * g.boostPercent;
+        }
       }
     }
 
@@ -156,14 +169,18 @@ const Phase1 = (function() {
     return total;
   }
 
-  /** Get the nested boost multiplier for a specific generator (for UI display) */
+  /** Get the total cascading boost for a specific generator (for UI display) */
   function getNestedBoost(genId) {
+    const targetIdx = generators.findIndex(g => g.id === genId);
+    if (targetIdx < 0) return 1;
     let boost = 1;
-    generators.forEach(g => {
-      if (g.owned > 0 && g.boostsId === genId) {
+    // All tiers ABOVE this one contribute their boost
+    for (let i = targetIdx + 1; i < generators.length; i++) {
+      const g = generators[i];
+      if (g.owned > 0 && g.boostPercent > 0) {
         boost += g.owned * g.boostPercent;
       }
-    });
+    }
     return boost;
   }
 

@@ -42,11 +42,15 @@ const Dust = (function() {
   /**
    * Calculate dust accumulation per real-time tick.
    * Dust uses in-game time but with its own cap (x30) to prevent explosion.
+   * Also gets a bonus from total PPS (ties patience economy to dust economy).
    */
   function calcDustPerTick(state, dt, effectiveTimeMult) {
     if (!state.flags.dustStarted) return 0;
     const dustTimeCap = Math.min(30, effectiveTimeMult);
-    return state.dustPerSec * state.dustMultiplier * dt * dustTimeCap;
+    // PPS-linked dust: generators produce dust as a byproduct
+    const ppsBonus = (Game.totalPPS() * 0.0001);
+    const totalDustRate = (state.dustPerSec + ppsBonus) * state.dustMultiplier;
+    return totalDustRate * dt * dustTimeCap;
   }
 
   /**

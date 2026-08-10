@@ -13,12 +13,12 @@
 
 // === GAME CONSTANTS (mirrors phase1.js) ===
 const GENERATORS = [
-  { id: 'doodle', name: 'Doodle Pad', baseCost: 15, growthRate: 1.18, baseProduction: 0.1, softCapAt: 15, owned: 0, boostPercent: 0, boostsId: null },
-  { id: 'fidget', name: 'Fidget Spinner', baseCost: 100, growthRate: 1.17, baseProduction: 0.35, softCapAt: 15, unlocksAt: 50, owned: 0, boostPercent: 0.005, boostsId: 'doodle' },
-  { id: 'autodialer', name: 'Autodialer', baseCost: 600, growthRate: 1.16, baseProduction: 2.0, softCapAt: 18, unlocksAt: 400, owned: 0, boostPercent: 0.01, boostsId: 'fidget' },
-  { id: 'speeddialer', name: 'Speed Dialer', baseCost: 5000, growthRate: 1.15, baseProduction: 10.0, softCapAt: 18, unlocksAt: 4000, owned: 0, boostPercent: 0.02, boostsId: 'autodialer' },
-  { id: 'robocaller', name: 'Robo-Caller', baseCost: 40000, growthRate: 1.14, baseProduction: 50.0, softCapAt: 15, unlocksAt: 30000, owned: 0, boostPercent: 0.03, boostsId: 'speeddialer' },
-  { id: 'callcenter', name: 'Shadow Call Center', baseCost: 350000, growthRate: 1.13, baseProduction: 300.0, softCapAt: 12, unlocksAt: 250000, owned: 0, boostPercent: 0.05, boostsId: 'robocaller' },
+  { id: 'doodle', name: 'Doodle Pad', baseCost: 15, growthRate: 1.18, baseProduction: 0.1, softCapAt: 25, owned: 0, boostPercent: 0 },
+  { id: 'fidget', name: 'Fidget Spinner', baseCost: 100, growthRate: 1.17, baseProduction: 0.35, softCapAt: 25, unlocksAt: 50, owned: 0, boostPercent: 0.005 },
+  { id: 'autodialer', name: 'Autodialer', baseCost: 600, growthRate: 1.16, baseProduction: 2.0, softCapAt: 22, unlocksAt: 400, owned: 0, boostPercent: 0.01 },
+  { id: 'speeddialer', name: 'Speed Dialer', baseCost: 5000, growthRate: 1.15, baseProduction: 10.0, softCapAt: 20, unlocksAt: 4000, owned: 0, boostPercent: 0.02 },
+  { id: 'robocaller', name: 'Robo-Caller', baseCost: 40000, growthRate: 1.14, baseProduction: 50.0, softCapAt: 15, unlocksAt: 30000, owned: 0, boostPercent: 0.03 },
+  { id: 'callcenter', name: 'Shadow Call Center', baseCost: 350000, growthRate: 1.13, baseProduction: 300.0, softCapAt: 12, unlocksAt: 250000, owned: 0, boostPercent: 0.05 },
 ];
 
 const UPGRADES = [
@@ -35,6 +35,7 @@ const UPGRADES = [
   { id: 'dust', name: 'Entropy Noticed', cost: 100000, revealAt: 55000, effect: 'dust_start' },
   { id: 'time1', name: 'Time Blur I', cost: 200000, revealAt: 110000, effect: 'time_x10' },
   { id: 'robo3x', name: 'Machine Learning', cost: 350000, revealAt: 200000, effect: 'robo_x3' },
+  { id: 'muscle', name: 'Muscle Memory', cost: 750000, revealAt: 500000, effect: 'combo_lock' },
   { id: 'time2', name: 'Time Blur II', cost: 600000, revealAt: 380000, effect: 'time_x10' },
   { id: 'qfamiliar', name: 'Queue Familiarity', cost: 500000, revealAt: 300000, effect: 'queue_familiar' },
   { id: 'allx2b', name: 'Conference Call', cost: 1500000, revealAt: 800000, effect: 'all_x2' },
@@ -87,6 +88,7 @@ function resetState() {
     queueAdvances: 0,
     combo: 1,
     comboUnlocked: false,
+    comboLocked: false,
     refillCost: 5,
     refillAmount: 12,
     dustStarted: false,
@@ -107,16 +109,18 @@ function resetState() {
   GENERATORS.forEach(g => { g.owned = 0; });
 }
 
-// === NESTED GENERATOR PPS (mirrors phase1.js calcGeneratorPPS) ===
+// === CASCADING GENERATOR PPS (mirrors phase1.js calcGeneratorPPS) ===
 function calcPPS() {
-  // Calculate nested boosts top-down
+  // Calculate cascading boosts: each tier boosts ALL tiers below
   const nestedBoost = {};
   GENERATORS.forEach(g => { nestedBoost[g.id] = 1; });
 
-  for (let i = GENERATORS.length - 1; i >= 0; i--) {
+  for (let i = GENERATORS.length - 1; i >= 1; i--) {
     const g = GENERATORS[i];
-    if (g.owned > 0 && g.boostsId) {
-      nestedBoost[g.boostsId] += g.owned * g.boostPercent;
+    if (g.owned > 0 && g.boostPercent > 0) {
+      for (let j = 0; j < i; j++) {
+        nestedBoost[GENERATORS[j].id] += g.owned * g.boostPercent;
+      }
     }
   }
 
@@ -145,7 +149,15 @@ function getGenCost(gen) {
 
 function getAdvanceCost() {
   const discount = (state.queueFamiliarityUnlocked && state.queueFamiliarityDiscount > 0) ? state.queueFamiliarityDiscount : 0;
-  return Math.floor(QUEUE_BASE_COST * Math.pow(QUEUE_GROWTH, state.queueAdvances) * state.queueCostMult * (1 - discount));
+  const baseCost = QUEUE_BASE_COST * Math.pow(QUEUE_GROWTH, state.queueAdvances);
+  // Super-exponential for last 30 positions (advances 120+)
+  let cost = baseCost;
+  if (state.queueAdvances >= 120) {
+    const depth = state.queueAdvances - 120;
+    const lateMultiplier = 1 + Math.pow(depth, 1.5) / 20;
+    cost = baseCost * lateMultiplier;
+  }
+  return Math.floor(cost * state.queueCostMult * (1 - discount));
 }
 
 function calcDustTimeFactor() {
@@ -170,6 +182,7 @@ function applyUpgrade(u) {
     case 'time_x10': state.timeMultiplier *= 10; break;
     case 'time_x12': state.timeMultiplier *= 12; break;
     case 'robo_x3': state.genMults.robocaller *= 3; break;
+    case 'combo_lock': state.comboLocked = true; break;
     case 'queue_familiar': state.queueFamiliarityUnlocked = true; break;
     case 'insider': state.wtlPerClick = 0; state.noWtlCost = true; break;
   }
@@ -265,8 +278,8 @@ function simulate(playerType = 'active') {
 
     // --- Player rest periods (simulates looking at phone, reading text) ---
     if (state.realSeconds < restingUntil) {
-      // Player is resting — no clicks, combo decays
-      if (state.combo > 1) {
+      // Player is resting — no clicks, combo decays (unless locked)
+      if (state.combo > 1 && !state.comboLocked) {
         state.combo = Math.max(1, state.combo - 0.4 * dt);
       }
     } else {
@@ -315,7 +328,9 @@ function simulate(playerType = 'active') {
     // --- Dust ---
     if (state.dustStarted) {
       const dustTimeCap = Math.min(DUST_TIME_CAP, effectiveTimeMult);
-      state.dust += state.dustPerSec * state.dustMultiplier * dt * dustTimeCap;
+      const ppsBonus = calcPPS() * 0.0001;
+      const totalDustRate = (state.dustPerSec + ppsBonus) * state.dustMultiplier;
+      state.dust += totalDustRate * dt * dustTimeCap;
     }
 
     // --- AI Purchase Logic (with thinking time) ---
