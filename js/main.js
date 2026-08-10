@@ -33,10 +33,6 @@ const Game = (function() {
     lastInteractionTime: 0, // timestamp of last click/purchase/advance
     isIdle: false, // true if no interaction for 60s
 
-    // WtL display hold (shows max for 1s after Deep Breath)
-    wtlDisplayHold: false,
-    wtlDisplayHoldUntil: 0,
-
     // Queue Familiarity (replaces auto momentum)
     queueFamiliarityDiscount: 0, // current discount 0-0.25
     lastAdvanceTime: 0, // timestamp of last queue advance
@@ -202,8 +198,8 @@ const Game = (function() {
     const prodEach = (g.baseProduction * upgradeMult * nestedBoost).toFixed(1);
     const softCapNote = g.owned >= g.softCapAt ? ' ⚠️' : '';
     let html = `<strong>${g.name}</strong> (${g.owned})${softCapNote}<br><span class="btn-sub">${g.desc} | +${prodEach}/sec each</span>`;
-    // Show what this generator boosts
-    if (g.boostsId && g.owned > 0) {
+    // Show what this generator boosts (only visible after owning 3+)
+    if (g.boostsId && g.owned >= 3) {
       const boostTarget = Phase1.generators.find(x => x.id === g.boostsId);
       if (boostTarget) {
         html += `<br><span class="btn-sub boost-info">Boosts ${boostTarget.name} +${(g.owned * g.boostPercent * 100).toFixed(0)}%</span>`;
@@ -238,12 +234,9 @@ const Game = (function() {
       registerInteraction();
       state.patience -= state.refillCost;
       state.wtl = Math.min(state.wtlMax, state.wtl + state.refillAmount);
-      // WtL display hold: show max for 1 second after Deep Breath
-      state.wtlDisplayHold = true;
-      state.wtlDisplayHoldUntil = Date.now() + 1000;
-      // Visual flash on WtL bar
+      // Quick visual flash on WtL bar (200ms) — no display hold, just feedback
       const bar = document.getElementById('bar-wtl');
-      if (bar) { bar.style.background = '#fff'; setTimeout(() => { bar.style.background = ''; }, 150); }
+      if (bar) { bar.style.background = '#fff'; setTimeout(() => { bar.style.background = ''; }, 200); }
       console.log('[METRICS] Deep Breath at ' + mins() + ' | patience:' + Math.floor(state.patience) + ' | wtl:' + Math.floor(state.wtl) + '/' + state.wtlMax);
     }
   }
@@ -452,11 +445,6 @@ const Game = (function() {
       state.wtl = Math.min(state.wtlMax, state.wtl + state.wtlRegen * dt);
     }
 
-    // WtL display hold expiration
-    if (state.wtlDisplayHold && now > state.wtlDisplayHoldUntil) {
-      state.wtlDisplayHold = false;
-    }
-
     // Hangup check: WtL below threshold (only when not idle)
     if (!state.isIdle && state.wtl < 0.1) {
       hangUp(); return;
@@ -464,16 +452,16 @@ const Game = (function() {
 
     // Patience per sec: generators + base + combo
     let pps = totalPPS();
-    // If idle, generators run at reduced rate (25%)
-    if (state.isIdle) pps *= 0.25;
+    // If idle, generators produce NOTHING (Welcome Back modal handles offline rewards)
+    if (state.isIdle) pps = 0;
     pps *= state.combo;
     state.patience += pps * dt;
     if (state.patience > state.maxPatience) state.maxPatience = state.patience;
 
     // Dust: uses Dust module for capped accumulation
-    if (state.flags.dustStarted) {
-      const dustRate = state.isIdle ? 0.25 : 1;
-      state.dust += Dust.calcDustPerTick(state, dt, effectiveTimeMult) * dustRate;
+    // No dust generation while idle (handled by Welcome Back)
+    if (state.flags.dustStarted && !state.isIdle) {
+      state.dust += Dust.calcDustPerTick(state, dt, effectiveTimeMult);
     }
 
     // Phone tier check (based on in-game time)
@@ -518,13 +506,7 @@ const Game = (function() {
   // ===== DISPLAY =====
   function updateDisplay() {
     UI.setText('val-patience', NumberFormat.format(state.patience));
-
-    // WtL display: if display hold active, show max
-    if (state.wtlDisplayHold) {
-      UI.setText('val-wtl', state.wtlMax + '/' + state.wtlMax);
-    } else {
-      UI.setText('val-wtl', Math.floor(state.wtl) + '/' + state.wtlMax);
-    }
+    UI.setText('val-wtl', Math.floor(state.wtl) + '/' + state.wtlMax);
     UI.setText('val-queue', '#' + state.queue);
 
     if (state.flags.dustStarted) {
@@ -556,12 +538,12 @@ const Game = (function() {
     }
 
     // WtL bar
-    const wtlPct = state.wtlDisplayHold ? 100 : (state.wtl / state.wtlMax) * 100;
+    const wtlPct = (state.wtl / state.wtlMax) * 100;
     UI.setWidth('bar-wtl', wtlPct);
     UI.setBarColor('bar-wtl', wtlPct);
 
     // WtL danger overlay (screen goes red as WtL drains)
-    UI.setWtlOverlay(state.wtlDisplayHold ? 100 : (state.wtl / state.wtlMax) * 100);
+    UI.setWtlOverlay(wtlPct);
 
     // Buttons
     const endureBtn = document.getElementById('btn-endure');
