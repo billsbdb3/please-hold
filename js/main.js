@@ -89,7 +89,7 @@ const Game = (function() {
   // ===== TIMING =====
   let lastTick = 0, lastFlavorTime = 0, lastComboClick = -Infinity, lastClickTime = -Infinity;
   const CLICK_COOLDOWN = 110, COMBO_MAX = 4, COMBO_UP = 0.3, COMBO_DECAY = 0.4, FLAVOR_INTERVAL = 12000;
-  const IDLE_THRESHOLD = 60000; // 60 seconds without interaction = idle
+  const IDLE_THRESHOLD = 180000; // 180 seconds (3 min) without interaction = idle
   const QUEUE_FAMILIARITY_TIMEOUT = 15000; // 15s to sustain momentum
   function mins() { return ((Date.now() - state.realStartTime) / 60000).toFixed(1) + 'm'; }
 
@@ -113,6 +113,11 @@ const Game = (function() {
     state.realStartTime = Date.now();
     state.lastInteractionTime = Date.now();
     lastTick = Date.now();
+
+    // Register mouse/keyboard activity as interactions (prevents false idle)
+    document.addEventListener('mousemove', registerInteraction);
+    document.addEventListener('keypress', registerInteraction);
+    document.addEventListener('touchstart', registerInteraction);
 
     document.getElementById('pre-call').style.display = 'none';
     document.getElementById('game-area').style.display = 'block';

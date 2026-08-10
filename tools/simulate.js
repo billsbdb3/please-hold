@@ -14,11 +14,11 @@
 // === GAME CONSTANTS (mirrors phase1.js) ===
 const GENERATORS = [
   { id: 'doodle', name: 'Doodle Pad', baseCost: 15, growthRate: 1.18, baseProduction: 0.1, softCapAt: 25, owned: 0, boostPercent: 0 },
-  { id: 'fidget', name: 'Fidget Spinner', baseCost: 100, growthRate: 1.17, baseProduction: 0.35, softCapAt: 25, unlocksAt: 50, owned: 0, boostPercent: 0.005 },
-  { id: 'autodialer', name: 'Autodialer', baseCost: 600, growthRate: 1.16, baseProduction: 2.0, softCapAt: 22, unlocksAt: 400, owned: 0, boostPercent: 0.01 },
-  { id: 'speeddialer', name: 'Speed Dialer', baseCost: 5000, growthRate: 1.15, baseProduction: 10.0, softCapAt: 20, unlocksAt: 4000, owned: 0, boostPercent: 0.02 },
-  { id: 'robocaller', name: 'Robo-Caller', baseCost: 40000, growthRate: 1.14, baseProduction: 50.0, softCapAt: 15, unlocksAt: 30000, owned: 0, boostPercent: 0.03 },
-  { id: 'callcenter', name: 'Shadow Call Center', baseCost: 350000, growthRate: 1.13, baseProduction: 300.0, softCapAt: 12, unlocksAt: 250000, owned: 0, boostPercent: 0.05 },
+  { id: 'fidget', name: 'Fidget Spinner', baseCost: 100, growthRate: 1.17, baseProduction: 0.35, softCapAt: 25, unlocksAt: 50, owned: 0, boostPercent: 0.003 },
+  { id: 'autodialer', name: 'Autodialer', baseCost: 600, growthRate: 1.16, baseProduction: 2.0, softCapAt: 22, unlocksAt: 400, owned: 0, boostPercent: 0.008 },
+  { id: 'speeddialer', name: 'Speed Dialer', baseCost: 5000, growthRate: 1.15, baseProduction: 10.0, softCapAt: 20, unlocksAt: 4000, owned: 0, boostPercent: 0.015 },
+  { id: 'robocaller', name: 'Robo-Caller', baseCost: 40000, growthRate: 1.14, baseProduction: 50.0, softCapAt: 15, unlocksAt: 30000, owned: 0, boostPercent: 0.02 },
+  { id: 'callcenter', name: 'Shadow Call Center', baseCost: 350000, growthRate: 1.13, baseProduction: 300.0, softCapAt: 12, unlocksAt: 250000, owned: 0, boostPercent: 0.03 },
 ];
 
 const UPGRADES = [
@@ -154,7 +154,7 @@ function getAdvanceCost() {
   let cost = baseCost;
   if (state.queueAdvances >= 120) {
     const depth = state.queueAdvances - 120;
-    const lateMultiplier = 1 + Math.pow(depth, 1.5) / 20;
+    const lateMultiplier = 1 + Math.pow(depth, 1.7) / 18;
     cost = baseCost * lateMultiplier;
   }
   return Math.floor(cost * state.queueCostMult * (1 - discount));

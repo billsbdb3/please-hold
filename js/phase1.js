@@ -29,31 +29,31 @@ const Phase1 = (function() {
       id: 'gen_fidget', name: 'Fidget Spinner', desc: 'Idle hands, idle minds',
       baseCost: 100, growthRate: 1.17, baseProduction: 0.35,
       owned: 0, unlocked: false, unlocksAt: 50, softCapAt: 25,
-      boostPercent: 0.005, // each boosts ALL below +0.5%
+      boostPercent: 0.003, // each boosts ALL below +0.3%
     },
     {
       id: 'gen_autodialer', name: 'Autodialer', desc: 'It redials for you. Endlessly.',
       baseCost: 600, growthRate: 1.16, baseProduction: 2.0,
       owned: 0, unlocked: false, unlocksAt: 400, softCapAt: 22,
-      boostPercent: 0.01, // each boosts ALL below +1%
+      boostPercent: 0.008, // each boosts ALL below +0.8%
     },
     {
       id: 'gen_speeddialer', name: 'Speed Dialer', desc: 'Faster. Angrier. More persistent.',
       baseCost: 5000, growthRate: 1.15, baseProduction: 10.0,
       owned: 0, unlocked: false, unlocksAt: 4000, softCapAt: 20,
-      boostPercent: 0.02, // each boosts ALL below +2%
+      boostPercent: 0.015, // each boosts ALL below +1.5%
     },
     {
       id: 'gen_robocaller', name: 'Robo-Caller', desc: 'An army of robotic patience.',
       baseCost: 40000, growthRate: 1.14, baseProduction: 50.0,
       owned: 0, unlocked: false, unlocksAt: 30000, softCapAt: 15,
-      boostPercent: 0.03, // each boosts ALL below +3%
+      boostPercent: 0.02, // each boosts ALL below +2%
     },
     {
       id: 'gen_callcenter', name: 'Shadow Call Center', desc: 'They hold for you. All of them.',
       baseCost: 350000, growthRate: 1.13, baseProduction: 300.0,
       owned: 0, unlocked: false, unlocksAt: 250000, softCapAt: 12,
-      boostPercent: 0.05, // each boosts ALL below +5%
+      boostPercent: 0.03, // each boosts ALL below +3%
     },
   ];
 
@@ -118,7 +118,7 @@ const Phase1 = (function() {
     // Makes endgame queue require full dust collector + coping mechanism power
     if (advances >= 120) {
       const depth = advances - 120; // 0-30
-      const lateMultiplier = 1 + Math.pow(depth, 1.5) / 20;
+      const lateMultiplier = 1 + Math.pow(depth, 1.7) / 18;
       return Math.floor(baseCost * lateMultiplier);
     }
     return baseCost;
