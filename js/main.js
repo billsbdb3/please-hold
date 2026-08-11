@@ -50,7 +50,10 @@ const Game = (function() {
     entropy: 0,
 
     // Flags
-    flags: { dustStarted: false, noWtlCost: false, started: false, comboUnlocked: false, comboLocked: false, drainAnnounced: false, queueFamiliarity: false },
+    flags: { dustStarted: false, noWtlCost: false, started: false, comboUnlocked: false, comboLocked: false, drainAnnounced: false, queueFamiliarity: false, timeFrozen: false, departmentTransferred: false },
+
+    // Combo cap (raised secretly by Time Blurs)
+    comboCapMax: 4,
 
     // Tracking
     maxPatience: 0,
@@ -232,7 +235,7 @@ const Game = (function() {
     // Combo only if unlocked
     if (state.flags.comboUnlocked) {
       lastComboClick = now;
-      state.combo = Math.min(COMBO_MAX, state.combo + COMBO_UP);
+      state.combo = Math.min(state.comboCapMax, state.combo + COMBO_UP);
     }
   }
 
@@ -255,16 +258,55 @@ const Game = (function() {
       state.patience -= cost;
       state.queue--;
       state.queueAdvances++;
+
+      // Time Freeze: each advance moves time + grants dust
+      if (state.flags.timeFrozen) {
+        const TEN_YEARS = 86400 * 365 * 10;
+        const remaining = state.queue + 1; // positions left before this advance
+        const timeChunk = (TEN_YEARS - state.inGameSeconds) / Math.max(1, remaining);
+        state.inGameSeconds += timeChunk;
+        // Dust burst: dustPerSec × timeChunk (raw, no cap)
+        if (state.flags.dustStarted) {
+          const dustBurst = state.dustPerSec * timeChunk;
+          state.dust += dustBurst;
+        }
+      }
+
       // Queue Familiarity: if upgrade purchased, build discount on rapid advances
       if (state.flags.queueFamiliarity) {
         state.queueFamiliarityDiscount = Math.min(0.25, state.queueFamiliarityDiscount + 0.02);
         state.lastAdvanceTime = Date.now();
       }
-      console.log('[METRICS] Queue #' + state.queue + ' at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | dust:' + state.dust.toFixed(1) + ' | clicks:' + state.totalClicks + (state.flags.queueFamiliarity ? ' | momentum:-' + (state.queueFamiliarityDiscount * 100).toFixed(0) + '%' : ''));
+      console.log('[METRICS] Queue #' + state.queue + ' at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | dust:' + state.dust.toFixed(1) + ' | clicks:' + state.totalClicks + (state.flags.queueFamiliarity ? ' | momentum:-' + (state.queueFamiliarityDiscount * 100).toFixed(0) + '%' : '') + (state.flags.timeFrozen ? ' [FROZEN]' : ''));
       Phase1.checkMilestones(state.queue, state.triggeredMilestones);
       UI.addLog('Advanced to #' + state.queue + '.');
-      if (state.queue <= 0) endPhase1();
+
+      // Check end condition
+      if (state.queue <= 0) {
+        // Department Transfer: if time < 9 years and not already transferred
+        const NINE_YEARS = 86400 * 365 * 9;
+        if (state.inGameSeconds < NINE_YEARS && !state.flags.departmentTransferred) {
+          departmentTransfer();
+        } else {
+          endPhase1();
+        }
+      }
     }
+  }
+
+  /** Department Transfer: queue resets to 75, costs stay, narrative plays */
+  function departmentTransfer() {
+    state.flags.departmentTransferred = true;
+    state.queue = 75;
+    // queueAdvances stays the same — costs continue scaling
+    UI.showMilestone(
+      '"Thank you for holding. I\'m transferring you to our Specialist Department."<br><br>' +
+      '<em>*click*</em><br><br>' +
+      '"Your queue position is: seventy-five."<br><br>' +
+      'The hold music changes. It\'s worse.'
+    );
+    UI.addLog('TRANSFERRED. Queue: #75. The hold music changes. It\'s worse.');
+    console.log('[METRICS] DEPARTMENT TRANSFER at ' + mins() + ' | inGame:' + NumberFormat.formatHoldTime(state.inGameSeconds) + ' | pps:' + totalPPS().toFixed(1));
   }
 
   function buyGenerator(g) {
@@ -423,7 +465,22 @@ const Game = (function() {
     if (state.dust > state.maxDust) state.maxDust = state.dust;
     let dustTimeFactor = Dust.calcDustTimeFactor(state.maxDust);
     let effectiveTimeMult = state.timeMultiplier * dustTimeFactor;
-    state.inGameSeconds += dt * effectiveTimeMult;
+
+    // TIME FREEZE: at 9 years, time stops passively. Only queue advances move it.
+    const NINE_YEARS = 86400 * 365 * 9;
+    if (state.inGameSeconds >= NINE_YEARS && !state.flags.timeFrozen) {
+      state.flags.timeFrozen = true;
+      state.inGameSeconds = NINE_YEARS; // clamp exactly
+      document.body.classList.add('time-frozen');
+      UI.showMilestone('The clock on the wall has stopped. You\'ve been here so long that time itself has given up. Only forward movement matters now.');
+      UI.addLog('Time has frozen. Only advancing the queue will move you forward.');
+      console.log('[METRICS] TIME FROZEN at ' + mins() + ' | queue:#' + state.queue + ' | pps:' + totalPPS().toFixed(1));
+    }
+
+    // Only accumulate time passively if NOT frozen
+    if (!state.flags.timeFrozen) {
+      state.inGameSeconds += dt * effectiveTimeMult;
+    }
 
     // Combo decay (only if unlocked AND not locked by Muscle Memory)
     if (state.flags.comboUnlocked && !state.flags.comboLocked && now - lastComboClick > 600 && state.combo > 1) {
@@ -466,8 +523,8 @@ const Game = (function() {
     if (state.patience > state.maxPatience) state.maxPatience = state.patience;
 
     // Dust: uses Dust module for capped accumulation
-    // No dust generation while idle (handled by Welcome Back)
-    if (state.flags.dustStarted && !state.isIdle) {
+    // No dust generation while idle OR time frozen (handled by Welcome Back / queue advance)
+    if (state.flags.dustStarted && !state.isIdle && !state.flags.timeFrozen) {
       state.dust += Dust.calcDustPerTick(state, dt, effectiveTimeMult);
     }
 
@@ -564,9 +621,15 @@ const Game = (function() {
       UI.setText('sub-refill', state.refillCost + ' patience → +' + state.refillAmount + ' WtL');
     }
     if (advanceBtn) {
-      const cost = getEffectiveAdvanceCost();
-      advanceBtn.disabled = state.patience < cost;
-      UI.setText('sub-advance', 'costs ' + NumberFormat.format(cost) + ' patience');
+      // Lock advance button for first 5 min of active play
+      if (state.activePlayTime < 300) {
+        advanceBtn.disabled = true;
+        UI.setText('sub-advance', 'Queue not responding yet...');
+      } else {
+        const cost = getEffectiveAdvanceCost();
+        advanceBtn.disabled = state.patience < cost;
+        UI.setText('sub-advance', 'costs ' + NumberFormat.format(cost) + ' patience' + (state.flags.timeFrozen ? ' ⏱️' : ''));
+      }
     }
 
     UI.setText('sub-endure', '+' + state.patiencePerClick + ' patience' + (state.wtlPerClick > 0 ? ' | -' + state.wtlPerClick + ' WtL' : ''));
@@ -587,18 +650,24 @@ const Game = (function() {
       }
     });
 
-    // Upgrade visibility and state
+    // Upgrade visibility and state (with queue-gating and time-gating)
     Phase1.upgrades.forEach(u => {
       const btn = document.getElementById('ubtn-' + u.id);
       if (!btn) return;
       if (!state.boughtUpgrades.has(u.id)) {
-        if (state.maxPatience >= u.revealAt) btn.style.display = 'block';
+        // Check ALL reveal conditions
+        let visible = true;
+        if (u.revealAt && state.maxPatience < u.revealAt) visible = false;
+        if (u.revealAtQueue && state.queue > u.revealAtQueue) visible = false;
+        if (u.revealAtActiveTime && state.activePlayTime < u.revealAtActiveTime) visible = false;
+        btn.style.display = visible ? 'block' : 'none';
         btn.disabled = state.patience < u.cost;
       } else {
         btn.style.display = 'block';
         if (!btn.classList.contains('owned')) {
           btn.classList.add('owned');
           btn.innerHTML = '<strong>' + u.name + '</strong> ✓';
+          btn.title = u.desc; // Tooltip with description
           btn.disabled = true;
         }
       }

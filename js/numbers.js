@@ -44,6 +44,11 @@ const NumberFormat = (function() {
 
     const divisor = Math.pow(10, tier * 3);
     const value = n / divisor;
+    // Use short suffixes for billion+ to keep UI tight
+    if (tier >= 3) {
+      const shortSuffix = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'][tier] || SUFFIXES[tier];
+      return value.toFixed(2) + shortSuffix;
+    }
     return value.toFixed(2) + ' ' + SUFFIXES[tier];
   }
 

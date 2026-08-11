@@ -8,6 +8,7 @@ body {
   min-height: 100vh;
   padding: 20px;
   line-height: 1.6;
+  font-size: 15px;
 }
 
 #game-container {
@@ -141,14 +142,14 @@ h1 {
 }
 
 .resource-label {
-  font-size: 0.55em;
+  font-size: 0.65em;
   color: #888;
   text-transform: uppercase;
   letter-spacing: 2px;
 }
 
 .resource-value {
-  font-size: 1.1em;
+  font-size: 1.2em;
   font-weight: bold;
 }
 
@@ -182,11 +183,14 @@ h1 {
 /* === RATES === */
 #rates-bar {
   text-align: center;
-  font-size: 0.7em;
-  color: #666;
+  font-size: 0.85em;
+  color: #888;
   margin-bottom: 10px;
   display: none;
 }
+
+.streak-display { color: #e8c46a; font-weight: bold; }
+.momentum-display { color: #7ec8e3; }
 
 /* === MAIN AREA === */
 #main-area {
@@ -243,9 +247,9 @@ h1 {
   background: #1f1f35;
   border: 1px solid #444;
   color: #ccc;
-  padding: 8px 10px;
+  padding: 9px 12px;
   font-family: 'Courier New', monospace;
-  font-size: 0.7em;
+  font-size: 0.78em;
   cursor: pointer;
   border-radius: 3px;
   margin-bottom: 6px;
@@ -259,11 +263,13 @@ h1 {
   border-color: #4a4;
   color: #4a4;
   opacity: 0.55;
-  padding: 4px 10px;
-  font-size: 0.6em;
+  padding: 5px 12px;
+  font-size: 0.68em;
   margin-bottom: 3px;
+  cursor: help;
 }
 .upgrade-cost { font-size: 0.85em; color: #999; }
+.boost-info { color: #7ec8e3; font-style: italic; }
 
 /* === LOG === */
 #log {
@@ -362,4 +368,19 @@ h1 {
   pointer-events: none;
   z-index: 500;
   background: rgba(160, 130, 80, 0);
+  transition: background 0.5s;
 }
+
+/* Grain texture on top of dust */
+#dust-overlay::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Time frozen indicator */
+.time-frozen #phone-bar .elapsed { color: #e07070; animation: pulse-frozen 2s ease-in-out infinite; }
+@keyframes pulse-frozen { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }

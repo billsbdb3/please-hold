@@ -1,17 +1,13 @@
 #!/usr/bin/env node
 /**
  * PLEASE HOLD - Phase 1 Simulator
- * Runs the game loop mathematically without a browser.
- * Simulates different player types and outputs timing data.
+ * Matches: queue-gated upgrades, time-gated Time Blurs, department transfer,
+ * time freeze at 9 years, cascading boosts, pps-linked dust, combo cap boost.
  *
  * Usage: node tools/simulate.js [--player active|casual|idle]
- *
- * Matches game logic in: main.js, phase1.js, dust.js
- * Key systems: nested generators, active session time, Queue Familiarity,
- * dust time cap x30, base dust 0.2/s.
  */
 
-// === GAME CONSTANTS (mirrors phase1.js) ===
+// === GENERATORS (cascading boost: each boosts ALL below) ===
 const GENERATORS = [
   { id: 'doodle', name: 'Doodle Pad', baseCost: 15, growthRate: 1.18, baseProduction: 0.1, softCapAt: 25, owned: 0, boostPercent: 0 },
   { id: 'fidget', name: 'Fidget Spinner', baseCost: 100, growthRate: 1.17, baseProduction: 0.35, softCapAt: 25, unlocksAt: 50, owned: 0, boostPercent: 0.003 },
@@ -21,6 +17,7 @@ const GENERATORS = [
   { id: 'callcenter', name: 'Shadow Call Center', baseCost: 350000, growthRate: 1.13, baseProduction: 300.0, softCapAt: 12, unlocksAt: 250000, owned: 0, boostPercent: 0.03 },
 ];
 
+// === UPGRADES (with queue gates and time gates) ===
 const UPGRADES = [
   { id: 'snack', name: 'Snack Drawer', cost: 50, revealAt: 25, effect: 'refill' },
   { id: 'tolerance', name: 'Hold Music Tolerance', cost: 150, revealAt: 75, effect: 'click+1' },
@@ -30,17 +27,19 @@ const UPGRADES = [
   { id: 'fidget2x', name: 'Titanium Bearings', cost: 1500, revealAt: 900, effect: 'fidget_x2' },
   { id: 'caffeine', name: 'Caffeine IV Drip', cost: 3000, revealAt: 1800, effect: 'caffeine' },
   { id: 'auto2x', name: 'Parallel Lines', cost: 6000, revealAt: 4000, effect: 'auto_x2' },
-  { id: 'allx2', name: 'Second Phone Line', cost: 18000, revealAt: 10000, effect: 'all_x2' },
-  { id: 'speed3x', name: 'Overclocked Modem', cost: 50000, revealAt: 28000, effect: 'speed_x3' },
-  { id: 'dust', name: 'Entropy Noticed', cost: 100000, revealAt: 55000, effect: 'dust_start' },
-  { id: 'time1', name: 'Time Blur I', cost: 200000, revealAt: 110000, effect: 'time_x10' },
-  { id: 'robo3x', name: 'Machine Learning', cost: 350000, revealAt: 200000, effect: 'robo_x3' },
-  { id: 'muscle', name: 'Muscle Memory', cost: 750000, revealAt: 500000, effect: 'combo_lock' },
-  { id: 'time2', name: 'Time Blur II', cost: 600000, revealAt: 380000, effect: 'time_x10' },
-  { id: 'qfamiliar', name: 'Queue Familiarity', cost: 500000, revealAt: 300000, effect: 'queue_familiar' },
-  { id: 'allx2b', name: 'Conference Call', cost: 1500000, revealAt: 800000, effect: 'all_x2' },
-  { id: 'time3', name: 'Time Blur III', cost: 2500000, revealAt: 1200000, effect: 'time_x12' },
-  { id: 'insider', name: 'Corporate Insider', cost: 4000000, revealAt: 2000000, effect: 'insider' },
+  // Queue-gated
+  { id: 'allx2', name: 'Second Phone Line', cost: 18000, revealAt: 10000, revealAtQueue: 120, effect: 'all_x2' },
+  { id: 'speed3x', name: 'Overclocked Modem', cost: 50000, revealAt: 28000, revealAtQueue: 100, effect: 'speed_x3' },
+  { id: 'dust', name: 'Entropy Noticed', cost: 100000, revealAt: 55000, revealAtQueue: 80, effect: 'dust_start' },
+  { id: 'robo3x', name: 'Machine Learning', cost: 350000, revealAt: 200000, revealAtQueue: 60, effect: 'robo_x3' },
+  { id: 'muscle', name: 'Muscle Memory', cost: 750000, revealAt: 500000, revealAtQueue: 60, effect: 'combo_lock' },
+  { id: 'qfamiliar', name: 'Queue Familiarity', cost: 500000, revealAt: 300000, revealAtQueue: 50, effect: 'queue_familiar' },
+  { id: 'allx2b', name: 'Conference Call', cost: 1500000, revealAt: 800000, revealAtQueue: 40, effect: 'all_x2' },
+  { id: 'insider', name: 'Corporate Insider', cost: 4000000, revealAt: 2000000, revealAtQueue: 20, effect: 'insider' },
+  // Time-gated
+  { id: 'time1', name: 'Time Blur I', cost: 200000, revealAt: 110000, revealAtActiveTime: 1800, effect: 'time_x10_cap5' },
+  { id: 'time2', name: 'Time Blur II', cost: 600000, revealAt: 380000, revealAtActiveTime: 2700, effect: 'time_x10_cap6' },
+  { id: 'time3', name: 'Time Blur III', cost: 2500000, revealAt: 1200000, revealAtActiveTime: 3600, effect: 'time_x12_cap8' },
 ];
 
 const DUST_COLLECTORS = [
@@ -60,61 +59,39 @@ const DUST_COLLECTORS = [
 const QUEUE_START = 150;
 const QUEUE_BASE_COST = 30;
 const QUEUE_GROWTH = 1.095;
-const DUST_TIME_CAP = 30; // x30 max time mult for dust
-const IDLE_THRESHOLD = 60; // seconds before idle
+const DUST_TIME_CAP = 30;
+const NINE_YEARS = 86400 * 365 * 9;
+const TEN_YEARS = 86400 * 365 * 10;
 
 // === STATE ===
 let state = {};
 
 function resetState() {
   state = {
-    patience: 0,
-    maxPatience: 0,
-    dust: 0,
-    maxDust: 0,
-    wtl: 15,
-    wtlMax: 15,
-    wtlPerClick: 1,
-    wtlRegen: 0,
-    patiencePerClick: 1,
-    patiencePerSec: 0,
-    dustPerSec: 0,
-    dustMultiplier: 1,
-    timeMultiplier: 1,
-    globalGenMult: 1,
+    patience: 0, maxPatience: 0, dust: 0, maxDust: 0,
+    wtl: 15, wtlMax: 15, wtlPerClick: 1, wtlRegen: 0,
+    patiencePerClick: 1, patiencePerSec: 0,
+    dustPerSec: 0, dustMultiplier: 1,
+    timeMultiplier: 1, globalGenMult: 1,
     genMults: { doodle: 1, fidget: 1, autodialer: 1, speeddialer: 1, robocaller: 1, callcenter: 1 },
     queueCostMult: 1,
-    queue: QUEUE_START,
-    queueAdvances: 0,
-    combo: 1,
-    comboUnlocked: false,
-    comboLocked: false,
-    refillCost: 5,
-    refillAmount: 12,
-    dustStarted: false,
-    noWtlCost: false,
-    // Timing: active session time (not wall clock)
-    realSeconds: 0,
-    activePlayTime: 0, // only increments when not idle
-    inGameSeconds: 0,
-    totalClicks: 0,
-    hangups: 0,
-    boughtUpgrades: new Set(),
-    boughtCollectors: new Set(),
-    // Queue Familiarity (purchased upgrade, not auto)
-    queueFamiliarityUnlocked: false,
-    queueFamiliarityDiscount: 0,
-    lastAdvanceTime: 0,
+    queue: QUEUE_START, queueAdvances: 0,
+    combo: 1, comboUnlocked: false, comboLocked: false, comboCapMax: 4,
+    refillCost: 5, refillAmount: 12,
+    dustStarted: false, noWtlCost: false,
+    timeFrozen: false, departmentTransferred: false,
+    queueFamiliarityUnlocked: false, queueFamiliarityDiscount: 0, lastAdvanceTime: 0,
+    realSeconds: 0, activePlayTime: 0, inGameSeconds: 0,
+    totalClicks: 0, hangups: 0,
+    boughtUpgrades: new Set(), boughtCollectors: new Set(),
   };
   GENERATORS.forEach(g => { g.owned = 0; });
 }
 
-// === CASCADING GENERATOR PPS (mirrors phase1.js calcGeneratorPPS) ===
+// === CASCADING PPS ===
 function calcPPS() {
-  // Calculate cascading boosts: each tier boosts ALL tiers below
   const nestedBoost = {};
   GENERATORS.forEach(g => { nestedBoost[g.id] = 1; });
-
   for (let i = GENERATORS.length - 1; i >= 1; i--) {
     const g = GENERATORS[i];
     if (g.owned > 0 && g.boostPercent > 0) {
@@ -123,39 +100,32 @@ function calcPPS() {
       }
     }
   }
-
   let total = state.patiencePerSec;
   GENERATORS.forEach(g => {
     if (g.owned > 0) {
       const mult = (state.genMults[g.id] || 1) * state.globalGenMult;
-      const nested = nestedBoost[g.id] || 1;
-      total += g.baseProduction * g.owned * mult * nested;
+      total += g.baseProduction * g.owned * mult * (nestedBoost[g.id] || 1);
     }
   });
   return total;
 }
 
-// === COST FUNCTIONS ===
+// === COSTS ===
 function getGenCost(gen) {
-  const owned = gen.owned;
-  if (owned >= gen.softCapAt) {
+  if (gen.owned >= gen.softCapAt) {
     const base = gen.baseCost * Math.pow(gen.growthRate, gen.softCapAt);
-    const excess = owned - gen.softCapAt;
-    const postCapGrowth = Math.pow(gen.growthRate, 8);
-    return Math.floor(base * Math.pow(postCapGrowth, excess));
+    return Math.floor(base * Math.pow(Math.pow(gen.growthRate, 8), gen.owned - gen.softCapAt));
   }
-  return Math.floor(gen.baseCost * Math.pow(gen.growthRate, owned));
+  return Math.floor(gen.baseCost * Math.pow(gen.growthRate, gen.owned));
 }
 
 function getAdvanceCost() {
   const discount = (state.queueFamiliarityUnlocked && state.queueFamiliarityDiscount > 0) ? state.queueFamiliarityDiscount : 0;
   const baseCost = QUEUE_BASE_COST * Math.pow(QUEUE_GROWTH, state.queueAdvances);
-  // Super-exponential for last 30 positions (advances 120+)
   let cost = baseCost;
   if (state.queueAdvances >= 120) {
     const depth = state.queueAdvances - 120;
-    const lateMultiplier = 1 + Math.pow(depth, 1.7) / 18;
-    cost = baseCost * lateMultiplier;
+    cost = baseCost * (1 + Math.pow(depth, 1.8) / 12);
   }
   return Math.floor(cost * state.queueCostMult * (1 - discount));
 }
@@ -165,7 +135,7 @@ function calcDustTimeFactor() {
   return Math.min(50000, 1 + Math.pow(Math.log10(state.maxDust + 1), 2) * 10);
 }
 
-// === UPGRADE EFFECTS ===
+// === EFFECTS ===
 function applyUpgrade(u) {
   switch (u.effect) {
     case 'refill': state.refillCost = 3; state.refillAmount = 12; break;
@@ -179,8 +149,9 @@ function applyUpgrade(u) {
     case 'all_x2': state.globalGenMult *= 2; break;
     case 'speed_x3': state.genMults.speeddialer *= 3; break;
     case 'dust_start': state.dustPerSec = 0.2; state.dustStarted = true; break;
-    case 'time_x10': state.timeMultiplier *= 10; break;
-    case 'time_x12': state.timeMultiplier *= 12; break;
+    case 'time_x10_cap5': state.timeMultiplier *= 10; state.comboCapMax = 5; break;
+    case 'time_x10_cap6': state.timeMultiplier *= 10; state.comboCapMax = 6; break;
+    case 'time_x12_cap8': state.timeMultiplier *= 12; state.comboCapMax = 8; break;
     case 'robo_x3': state.genMults.robocaller *= 3; break;
     case 'combo_lock': state.comboLocked = true; break;
     case 'queue_familiar': state.queueFamiliarityUnlocked = true; break;
@@ -207,185 +178,140 @@ function applyCollector(c) {
 // === SIMULATION ===
 function simulate(playerType = 'active') {
   resetState();
+  const TICK = 0.1, MAX_SEC = 7200;
+  let clicksPerSec = playerType === 'active' ? 1.85 : playerType === 'casual' ? 1.5 : 1.0;
+  let thinkTime = playerType === 'active' ? 4 : playerType === 'casual' ? 6 : 10;
+  let restChance = playerType === 'active' ? 0.02 : 0.04;
 
-  const TICK_RATE = 0.1; // 100ms ticks
-  const MAX_REAL_SECONDS = 7200; // 2 hour max
-
-  // Player behavior params
-  let clicksPerSec, thinkingTime, restChance;
-  if (playerType === 'active') {
-    // Organic play: ~1.85 clicks/sec average, with thinking pauses
-    clicksPerSec = 1.85;
-    thinkingTime = 4; // seconds of "thinking" between purchase decisions
-    restChance = 0.02; // 2% chance per second of a 5-10s rest
-  } else if (playerType === 'casual') {
-    clicksPerSec = 1.5;
-    thinkingTime = 6;
-    restChance = 0.04;
-  } else { // idle
-    clicksPerSec = 1.0;
-    thinkingTime = 10;
-    restChance = 0.08;
-  }
-
-  let clickAccum = 0;
-  let lastLogTime = 0;
-  let restingUntil = 0; // simulates player looking away briefly
-  let thinkingUntil = 0; // simulates player deciding what to buy
-  let lastPurchaseTime = 0;
-  const LOG_INTERVAL = 60;
+  let clickAccum = 0, lastLogTime = 0, restingUntil = 0, thinkingUntil = 0;
 
   console.log(`\n=== SIMULATION: ${playerType} player ===`);
-  console.log(`Click rate: ${clicksPerSec}/s | Think time: ${thinkingTime}s between purchases`);
-  console.log('');
+  console.log(`Queue-gated | Time-gated | Dept Transfer | Time Freeze at 9yr\n`);
 
-  while (state.realSeconds < MAX_REAL_SECONDS && state.queue > 0) {
-    const dt = TICK_RATE;
+  while (state.realSeconds < MAX_SEC && !(state.queue <= 0 && state.inGameSeconds >= TEN_YEARS)) {
+    const dt = TICK;
     state.realSeconds += dt;
-    state.activePlayTime += dt; // Sim is always "active" (no AFK periods simulated)
-
-    const activeMinutes = state.activePlayTime / 60;
+    state.activePlayTime += dt;
+    const activeMin = state.activePlayTime / 60;
 
     // --- Time ---
     if (state.dust > state.maxDust) state.maxDust = state.dust;
     const dustTimeFactor = calcDustTimeFactor();
     const effectiveTimeMult = state.timeMultiplier * dustTimeFactor;
-    state.inGameSeconds += dt * effectiveTimeMult;
 
-    // --- WtL Passive Drain (uses activePlayTime) ---
-    if (activeMinutes > 5) {
-      const baseDrain = 0.15 * Math.log2(activeMinutes - 4);
-      const lateDrain = activeMinutes > 30 ? (activeMinutes - 30) * 0.02 : 0;
-      const drainRate = Math.min(1.5, baseDrain + lateDrain);
-      state.wtl = Math.max(0, state.wtl - drainRate * dt);
+    // Time freeze check
+    if (state.inGameSeconds >= NINE_YEARS && !state.timeFrozen) {
+      state.timeFrozen = true;
+      state.inGameSeconds = NINE_YEARS;
+      console.log(`  [${activeMin.toFixed(0)}m] *** TIME FROZEN *** queue:#${state.queue} | pps:${calcPPS().toFixed(0)}`);
     }
 
-    // --- WtL Regen ---
-    if (state.wtlRegen > 0) {
-      state.wtl = Math.min(state.wtlMax, state.wtl + state.wtlRegen * dt);
+    // Passive time accumulation (only if not frozen)
+    if (!state.timeFrozen) {
+      state.inGameSeconds += dt * effectiveTimeMult;
     }
+
+    // --- WtL Drain ---
+    if (activeMin > 5) {
+      const baseDrain = 0.15 * Math.log2(activeMin - 4);
+      const lateDrain = activeMin > 30 ? (activeMin - 30) * 0.02 : 0;
+      state.wtl = Math.max(0, state.wtl - Math.min(1.5, baseDrain + lateDrain) * dt);
+    }
+    if (state.wtlRegen > 0) state.wtl = Math.min(state.wtlMax, state.wtl + state.wtlRegen * dt);
 
     // --- Hangup ---
     if (state.wtl < 0.1) {
       state.hangups++;
       const penalty = Math.min(8, Math.floor(state.queueAdvances * 0.04) + 2);
       state.queue = Math.min(QUEUE_START, state.queue + penalty);
-      state.patience = 0;
-      state.wtl = state.wtlMax;
-      console.log(`  [${activeMinutes.toFixed(1)}m] HANGUP #${state.hangups} | queue back to #${state.queue}`);
+      state.patience = 0; state.wtl = state.wtlMax;
+      console.log(`  [${activeMin.toFixed(0)}m] HANGUP #${state.hangups}`);
       continue;
     }
 
-    // --- Player rest periods (simulates looking at phone, reading text) ---
+    // --- Clicking ---
     if (state.realSeconds < restingUntil) {
-      // Player is resting — no clicks, combo decays (unless locked)
-      if (state.combo > 1 && !state.comboLocked) {
-        state.combo = Math.max(1, state.combo - 0.4 * dt);
-      }
+      if (state.combo > 1 && !state.comboLocked) state.combo = Math.max(1, state.combo - 0.4 * dt);
     } else {
-      // Random chance to start resting
-      if (Math.random() < restChance * dt) {
-        restingUntil = state.realSeconds + 5 + Math.random() * 5; // 5-10s rest
-      }
-
-      // --- Clicking ---
+      if (Math.random() < restChance * dt) restingUntil = state.realSeconds + 5 + Math.random() * 5;
       if (state.wtl >= state.wtlPerClick || state.noWtlCost) {
-        const clicksFloat = clicksPerSec * dt;
-        clickAccum += clicksFloat;
-        const clicks = Math.floor(clickAccum);
-        clickAccum -= clicks;
+        clickAccum += clicksPerSec * dt;
+        const clicks = Math.floor(clickAccum); clickAccum -= clicks;
         for (let i = 0; i < clicks; i++) {
           if (!state.noWtlCost && state.wtl < state.wtlPerClick) break;
           state.patience += state.patiencePerClick;
           if (!state.noWtlCost) state.wtl -= state.wtlPerClick;
           state.totalClicks++;
-          if (state.comboUnlocked) {
-            state.combo = Math.min(4, state.combo + 0.3);
-          }
+          if (state.comboUnlocked) state.combo = Math.min(state.comboCapMax, state.combo + 0.3);
         }
       }
-
-      // --- Combo Decay (when not actively clicking) ---
-      // Combo decays slightly between click bursts
     }
 
-    // --- Deep Breath (random threshold 1-5, like real player) ---
-    if (!state._deepBreathThreshold || state.wtl >= state.wtlMax) {
-      state._deepBreathThreshold = 1 + Math.random() * 4;
-    }
-    if (state.wtl <= state._deepBreathThreshold && state.patience >= state.refillCost) {
-      state.patience -= state.refillCost;
-      state.wtl = Math.min(state.wtlMax, state.wtl + state.refillAmount);
-      state._deepBreathThreshold = 1 + Math.random() * 4;
+    // --- Deep Breath ---
+    if (!state._dbt || state.wtl >= state.wtlMax) state._dbt = 1 + Math.random() * 4;
+    if (state.wtl <= state._dbt && state.patience >= state.refillCost) {
+      state.patience -= state.refillCost; state.wtl = Math.min(state.wtlMax, state.wtl + state.refillAmount);
+      state._dbt = 1 + Math.random() * 4;
     }
 
-    // --- PPS (with combo) ---
-    let pps = calcPPS();
-    pps *= state.combo;
+    // --- PPS ---
+    let pps = calcPPS() * state.combo;
     state.patience += pps * dt;
     if (state.patience > state.maxPatience) state.maxPatience = state.patience;
 
-    // --- Dust ---
-    if (state.dustStarted) {
+    // --- Dust (not during freeze) ---
+    if (state.dustStarted && !state.timeFrozen) {
       const dustTimeCap = Math.min(DUST_TIME_CAP, effectiveTimeMult);
       const ppsBonus = calcPPS() * 0.0001;
-      const totalDustRate = (state.dustPerSec + ppsBonus) * state.dustMultiplier;
-      state.dust += totalDustRate * dt * dustTimeCap;
+      state.dust += (state.dustPerSec + ppsBonus) * state.dustMultiplier * dt * dustTimeCap;
     }
 
-    // --- AI Purchase Logic (with thinking time) ---
+    // --- AI Purchases (with thinking time, respects gates) ---
     if (state.realSeconds >= thinkingUntil) {
       const bought = buyBestUpgrade() || buyBestGenerator() || buyBestCollector() || tryAdvanceQueue();
-      if (bought) {
-        // Add thinking delay after each purchase
-        thinkingUntil = state.realSeconds + thinkingTime * (0.5 + Math.random());
-        lastPurchaseTime = state.realSeconds;
-      }
+      if (bought) thinkingUntil = state.realSeconds + thinkTime * (0.5 + Math.random());
     }
 
-    // --- Queue Familiarity decay (15s timeout) ---
+    // --- Queue Familiarity decay ---
     if (state.queueFamiliarityUnlocked && state.queueFamiliarityDiscount > 0) {
       if (state.realSeconds - state.lastAdvanceTime > 15) {
         state.queueFamiliarityDiscount = Math.max(0, state.queueFamiliarityDiscount - 0.03 * dt);
       }
     }
 
-    // --- Periodic Log ---
-    if (state.realSeconds - lastLogTime >= LOG_INTERVAL) {
+    // --- Log ---
+    if (state.realSeconds - lastLogTime >= 60) {
       lastLogTime = state.realSeconds;
-      const ppsNow = calcPPS() * state.combo;
-      console.log(`  [${activeMinutes.toFixed(0)}m] queue:#${state.queue} | pps:${ppsNow.toFixed(0)} | patience:${Math.floor(state.patience)} | dust:${state.dust.toFixed(0)} | wtl:${state.wtl.toFixed(1)}/${state.wtlMax} | inGame:${formatTime(state.inGameSeconds)} | clicks:${state.totalClicks} | hangups:${state.hangups}`);
+      console.log(`  [${activeMin.toFixed(0)}m] q:#${state.queue} | pps:${calcPPS().toFixed(0)} | p:${Math.floor(state.patience)} | dust:${state.dust.toFixed(0)} | wtl:${state.wtl.toFixed(1)}/${state.wtlMax} | time:${fmtTime(state.inGameSeconds)} | clicks:${state.totalClicks}${state.timeFrozen ? ' [FROZEN]' : ''}`);
     }
   }
 
-  // Final summary
-  const finalMinutes = (state.realSeconds / 60).toFixed(1);
+  // Final
   console.log('');
   console.log(`=== RESULT ===`);
-  console.log(`  Phase 1 completed: ${state.queue <= 0 ? 'YES' : 'NO (timed out)'}`);
-  console.log(`  Real time: ${finalMinutes} minutes`);
-  console.log(`  Active play time: ${(state.activePlayTime / 60).toFixed(1)} minutes`);
-  console.log(`  In-game time: ${formatTime(state.inGameSeconds)}`);
-  console.log(`  Total clicks: ${state.totalClicks}`);
-  console.log(`  Hangups: ${state.hangups}`);
-  console.log(`  Final PPS: ${calcPPS().toFixed(0)}`);
-  console.log(`  Final dust: ${state.dust.toFixed(0)} particles`);
-  console.log(`  Upgrades bought: ${state.boughtUpgrades.size}/${UPGRADES.length}`);
-  console.log(`  Collectors bought: ${state.boughtCollectors.size}/${DUST_COLLECTORS.length}`);
+  console.log(`  Completed: ${state.queue <= 0 && state.inGameSeconds >= NINE_YEARS ? 'YES' : 'NO'}`);
+  console.log(`  Real time: ${(state.realSeconds / 60).toFixed(1)} min`);
+  console.log(`  In-game: ${fmtTime(state.inGameSeconds)}`);
+  console.log(`  Clicks: ${state.totalClicks} | Hangups: ${state.hangups}`);
+  console.log(`  Final PPS: ${calcPPS().toFixed(0)} | Dust: ${state.dust.toFixed(0)}`);
+  console.log(`  Upgrades: ${state.boughtUpgrades.size}/${UPGRADES.length} | Collectors: ${state.boughtCollectors.size}/${DUST_COLLECTORS.length}`);
+  console.log(`  Dept Transfer: ${state.departmentTransferred ? 'YES' : 'NO'}`);
+  console.log(`  Time Frozen: ${state.timeFrozen ? 'YES' : 'NO'}`);
   console.log('');
 }
 
-// === AI PURCHASE LOGIC ===
+// === PURCHASE LOGIC ===
 function buyBestUpgrade() {
   for (const u of UPGRADES) {
     if (state.boughtUpgrades.has(u.id)) continue;
     if (state.maxPatience < u.revealAt) continue;
+    if (u.revealAtQueue && state.queue > u.revealAtQueue) continue;
+    if (u.revealAtActiveTime && state.activePlayTime < u.revealAtActiveTime) continue;
     if (state.patience >= u.cost) {
       state.patience -= u.cost;
       state.boughtUpgrades.add(u.id);
       applyUpgrade(u);
-      const mins = (state.activePlayTime / 60).toFixed(1);
-      console.log(`  [${mins}m] UPGRADE: ${u.name} | cost:${u.cost} | pps:${calcPPS().toFixed(1)}`);
+      console.log(`  [${(state.activePlayTime/60).toFixed(1)}m] UPGRADE: ${u.name} | pps:${calcPPS().toFixed(0)}`);
       return true;
     }
   }
@@ -393,26 +319,16 @@ function buyBestUpgrade() {
 }
 
 function buyBestGenerator() {
-  // Find generator with best production/cost ratio
   let best = null, bestRatio = 0;
   for (const g of GENERATORS) {
     if (g.unlocksAt && state.maxPatience < g.unlocksAt) continue;
     const cost = getGenCost(g);
     if (state.patience < cost) continue;
     const mult = (state.genMults[g.id] || 1) * state.globalGenMult;
-    const production = g.baseProduction * mult;
-    const ratio = production / cost;
-    if (ratio > bestRatio) {
-      bestRatio = ratio;
-      best = g;
-    }
+    const ratio = (g.baseProduction * mult) / cost;
+    if (ratio > bestRatio) { bestRatio = ratio; best = g; }
   }
-  if (best) {
-    const cost = getGenCost(best);
-    state.patience -= cost;
-    best.owned++;
-    return true;
-  }
+  if (best) { state.patience -= getGenCost(best); best.owned++; return true; }
   return false;
 }
 
@@ -420,11 +336,8 @@ function buyBestCollector() {
   for (const c of DUST_COLLECTORS) {
     if (state.boughtCollectors.has(c.id)) continue;
     if (state.dust >= c.cost) {
-      state.dust -= c.cost;
-      state.boughtCollectors.add(c.id);
-      applyCollector(c);
-      const mins = (state.activePlayTime / 60).toFixed(1);
-      console.log(`  [${mins}m] DUST COLLECTOR: ${c.name} | cost:${c.cost} | dustPerSec:${state.dustPerSec.toFixed(1)}`);
+      state.dust -= c.cost; state.boughtCollectors.add(c.id); applyCollector(c);
+      console.log(`  [${(state.activePlayTime/60).toFixed(1)}m] COLLECTOR: ${c.name} | pps:${calcPPS().toFixed(0)}`);
       return true;
     }
   }
@@ -432,16 +345,35 @@ function buyBestCollector() {
 }
 
 function tryAdvanceQueue() {
+  // Don't advance before 5 min (mirrors game lock)
+  if (state.activePlayTime < 300) return false;
   const cost = getAdvanceCost();
-  // Only advance if we can afford it and have decent surplus (don't deplete)
-  if (state.patience >= cost * 1.5 && state.queue > 0) {
+  // During time freeze, be more aggressive (nothing else to spend on)
+  const threshold = state.timeFrozen ? 1.0 : 1.5;
+  if (state.patience >= cost * threshold && state.queue > 0) {
     state.patience -= cost;
     state.queue--;
     state.queueAdvances++;
-    // Queue Familiarity: build discount on rapid advances
+
+    // Time freeze: advance grants time + dust
+    if (state.timeFrozen) {
+      const remaining = state.queue + 1;
+      const timeChunk = (TEN_YEARS - state.inGameSeconds) / Math.max(1, remaining);
+      state.inGameSeconds += timeChunk;
+      if (state.dustStarted) state.dust += state.dustPerSec * timeChunk;
+    }
+
+    // Queue Familiarity
     if (state.queueFamiliarityUnlocked) {
       state.queueFamiliarityDiscount = Math.min(0.25, state.queueFamiliarityDiscount + 0.02);
       state.lastAdvanceTime = state.realSeconds;
+    }
+
+    // Department transfer: queue hits 0 before 9 years
+    if (state.queue <= 0 && state.inGameSeconds < NINE_YEARS && !state.departmentTransferred) {
+      state.departmentTransferred = true;
+      state.queue = 75;
+      console.log(`  [${(state.activePlayTime/60).toFixed(1)}m] *** DEPARTMENT TRANSFER *** queue reset to #75`);
     }
     return true;
   }
@@ -449,16 +381,14 @@ function tryAdvanceQueue() {
 }
 
 // === HELPERS ===
-function formatTime(seconds) {
-  if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
-  if (seconds < 86400) return (seconds / 3600).toFixed(1) + 'h';
-  if (seconds < 86400 * 30) return (seconds / 86400).toFixed(1) + 'd';
-  if (seconds < 86400 * 365) return (seconds / (86400 * 30)).toFixed(1) + 'mo';
-  return (seconds / (86400 * 365)).toFixed(1) + 'y';
+function fmtTime(s) {
+  if (s < 3600) return Math.floor(s / 60) + 'm';
+  if (s < 86400) return (s / 3600).toFixed(1) + 'h';
+  if (s < 86400 * 30) return (s / 86400).toFixed(1) + 'd';
+  if (s < 86400 * 365) return (s / (86400 * 30)).toFixed(1) + 'mo';
+  return (s / (86400 * 365)).toFixed(1) + 'y';
 }
 
 // === RUN ===
 const playerArg = process.argv.find(a => a.startsWith('--player='));
-const playerType = playerArg ? playerArg.split('=')[1] : 'active';
-
-simulate(playerType);
+simulate(playerArg ? playerArg.split('=')[1] : 'active');

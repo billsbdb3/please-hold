@@ -58,6 +58,10 @@ const Phase1 = (function() {
   ];
 
   // === UPGRADES ===
+  // revealAt: patience threshold (early game upgrades)
+  // revealAtQueue: queue position threshold (must advance to unlock)
+  // revealAtActiveTime: real active seconds required (time-gated)
+  // These can combine: upgrade appears when ALL conditions are met.
   const upgrades = [
     { id: 'u_snack', name: 'Snack Drawer', desc: 'Deep Breath: 3 patience → +12 WtL', cost: 50, currency: 'patience', revealAt: 25,
       effect(s) { s.refillCost = 3; s.refillAmount = 12; } },
@@ -76,35 +80,40 @@ const Phase1 = (function() {
       effect(s) { s.patiencePerClick += 2; s.wtlPerClick = Math.max(0.5, s.wtlPerClick * 0.5); } },
     { id: 'u_auto2x', name: 'Parallel Lines', desc: 'Autodialers produce x2', cost: 6000, currency: 'patience', revealAt: 4000,
       effect(s) { s.genMultipliers.gen_autodialer *= 2; } },
-    { id: 'u_allx2', name: 'Second Phone Line', desc: 'ALL coping mechanisms produce x2', cost: 18000, currency: 'patience', revealAt: 10000,
+
+    // === QUEUE-GATED UPGRADES (must advance queue to unlock) ===
+    { id: 'u_allx2', name: 'Second Phone Line', desc: 'ALL coping mechanisms produce x2', cost: 18000, currency: 'patience', revealAt: 10000, revealAtQueue: 120,
       effect(s) { s.globalGenMultiplier *= 2; } },
-    { id: 'u_speed2x', name: 'Overclocked Modem', desc: 'Speed Dialers produce x3', cost: 50000, currency: 'patience', revealAt: 28000,
+    { id: 'u_speed2x', name: 'Overclocked Modem', desc: 'Speed Dialers produce x3', cost: 50000, currency: 'patience', revealAt: 28000, revealAtQueue: 100,
       effect(s) { s.genMultipliers.gen_speeddialer *= 3; } },
-    { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 100000, currency: 'patience', revealAt: 55000,
+    { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 100000, currency: 'patience', revealAt: 55000, revealAtQueue: 80,
       effect(s) { s.dustPerSec = 0.2; s.flags.dustStarted = true; },
       narrative: "You glance down. There is a fine layer of dust on your arm. It wasn't there when you started this call. Was it? How long have you been sitting here?" },
-    { id: 'u_timewarp1', name: 'Time Blur I', desc: 'Hold perception shifts. (x10)', cost: 200000, currency: 'patience', revealAt: 110000,
-      effect(s) { s.timeMultiplier *= 10; },
-      narrative: "Was that a minute? An hour? You can't tell anymore. The clock on the wall has stopped making sense." },
-    { id: 'u_robo3x', name: 'Machine Learning', desc: 'Robo-Callers produce x3', cost: 350000, currency: 'patience', revealAt: 200000,
+    { id: 'u_robo3x', name: 'Machine Learning', desc: 'Robo-Callers produce x3', cost: 350000, currency: 'patience', revealAt: 200000, revealAtQueue: 60,
       effect(s) { s.genMultipliers.gen_robocaller *= 3; } },
-    { id: 'u_muscle', name: 'Muscle Memory', desc: 'Click streak no longer decays', cost: 750000, currency: 'patience', revealAt: 500000,
+    { id: 'u_muscle', name: 'Muscle Memory', desc: 'Click streak no longer decays', cost: 750000, currency: 'patience', revealAt: 500000, revealAtQueue: 60,
       effect(s) { s.flags.comboLocked = true; },
       narrative: "Your fingers remember. The rhythm is in your bones now. You don't even think about it. The streak... stays." },
-    { id: 'u_timewarp2', name: 'Time Blur II', desc: 'Days merge. (x10)', cost: 600000, currency: 'patience', revealAt: 380000,
-      effect(s) { s.timeMultiplier *= 10; },
-      narrative: "Days? Weeks? The concept of 'today' has become philosophical. You're not sure it applies to you anymore." },
-    { id: 'u_allx3', name: 'Conference Call', desc: 'ALL coping mechanisms produce x2', cost: 1500000, currency: 'patience', revealAt: 800000,
-      effect(s) { s.globalGenMultiplier *= 2; } },
-    { id: 'u_timewarp3', name: 'Time Blur III', desc: 'Calendar irrelevant. (x12)', cost: 2500000, currency: 'patience', revealAt: 1200000,
-      effect(s) { s.timeMultiplier *= 12; },
-      narrative: "You blink. Was that a day? A week? The calendar on the wall is meaningless. You've been here longer than you can comprehend." },
-    { id: 'u_qfamiliar', name: 'Queue Familiarity', desc: 'Rapid advances reduce next cost by 2% (max 25%)', cost: 500000, currency: 'patience', revealAt: 300000,
+    { id: 'u_qfamiliar', name: 'Queue Familiarity', desc: 'Rapid advances reduce next cost by 2% (max 25%)', cost: 500000, currency: 'patience', revealAt: 300000, revealAtQueue: 50,
       effect(s) { s.flags.queueFamiliarity = true; },
       narrative: "You've been in this queue so long you know the patterns. Each advance builds on the last — if you're quick enough." },
-    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL. The hold music still wears on you.', cost: 4000000, currency: 'patience', revealAt: 2000000,
+    { id: 'u_allx3', name: 'Conference Call', desc: 'ALL coping mechanisms produce x2', cost: 1500000, currency: 'patience', revealAt: 800000, revealAtQueue: 40,
+      effect(s) { s.globalGenMultiplier *= 2; } },
+    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL. The hold music still wears on you.', cost: 4000000, currency: 'patience', revealAt: 2000000, revealAtQueue: 20,
       effect(s) { s.wtlPerClick = 0; s.flags.noWtlCost = true; },
       narrative: "You no longer feel the drain from clicking. But the hold music... it still gets to you. Slowly. Inevitably." },
+
+    // === TIME-GATED UPGRADES (real active time required) ===
+    // Hidden effect: each raises combo cap (undocumented)
+    { id: 'u_timewarp1', name: 'Time Blur I', desc: 'Hold perception shifts. (x10)', cost: 200000, currency: 'patience', revealAt: 110000, revealAtActiveTime: 1800,
+      effect(s) { s.timeMultiplier *= 10; s.comboCapMax = 5; },
+      narrative: "Was that a minute? An hour? You can't tell anymore. The clock on the wall has stopped making sense." },
+    { id: 'u_timewarp2', name: 'Time Blur II', desc: 'Days merge. (x10)', cost: 600000, currency: 'patience', revealAt: 380000, revealAtActiveTime: 2700,
+      effect(s) { s.timeMultiplier *= 10; s.comboCapMax = 6; },
+      narrative: "Days? Weeks? The concept of 'today' has become philosophical. You're not sure it applies to you anymore." },
+    { id: 'u_timewarp3', name: 'Time Blur III', desc: 'Calendar irrelevant. (x12)', cost: 2500000, currency: 'patience', revealAt: 1200000, revealAtActiveTime: 3600,
+      effect(s) { s.timeMultiplier *= 12; s.comboCapMax = 8; },
+      narrative: "You blink. Was that a day? A week? The calendar on the wall is meaningless. You've been here longer than you can comprehend." },
   ];
 
   // === QUEUE ===
@@ -115,10 +124,9 @@ const Phase1 = (function() {
   function getAdvanceCost(advances) {
     const baseCost = Math.floor(QUEUE_BASE_COST * Math.pow(QUEUE_GROWTH, advances));
     // Super-exponential scaling for last 30 positions (advances 120+)
-    // Makes endgame queue require full dust collector + coping mechanism power
     if (advances >= 120) {
       const depth = advances - 120; // 0-30
-      const lateMultiplier = 1 + Math.pow(depth, 1.7) / 18;
+      const lateMultiplier = 1 + Math.pow(depth, 1.8) / 12;
       return Math.floor(baseCost * lateMultiplier);
     }
     return baseCost;
