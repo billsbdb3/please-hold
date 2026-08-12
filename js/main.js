@@ -310,9 +310,8 @@ const Game = (function() {
 
       // Time Freeze: each advance moves time + grants dust
       if (state.flags.timeFrozen) {
-        const TEN_YEARS = 86400 * 365 * 10;
         const remaining = state.queue + 1; // positions left before this advance
-        const timeChunk = (TEN_YEARS - state.inGameSeconds) / Math.max(1, remaining);
+        const timeChunk = (Balance.TIME.tenYears - state.inGameSeconds) / Math.max(1, remaining);
         state.inGameSeconds += timeChunk;
         // Dust burst: dustPerSec × timeChunk (raw, no cap)
         if (state.flags.dustStarted) {
@@ -343,11 +342,12 @@ const Game = (function() {
     }
   }
 
-  /** Department Transfer: queue resets to 75, costs stay, narrative plays */
+  /** Department Transfer: queue resets to 75, costs partially reset, narrative plays */
   function departmentTransfer() {
     state.flags.departmentTransferred = true;
-    state.queue = 75;
-    // queueAdvances stays the same — costs continue scaling
+    state.queue = Balance.QUEUE.transferQueuePosition;
+    // Partially reset queue advances so costs are manageable
+    state.queueAdvances = Math.floor(state.queueAdvances * Balance.QUEUE.transferResetRatio);
     UI.showMilestone(
       '"Thank you for holding. I\'m transferring you to our Specialist Department."<br><br>' +
       '<em>*click*</em><br><br>' +
@@ -355,7 +355,7 @@ const Game = (function() {
       'The hold music changes. It\'s worse.'
     );
     UI.addLog('TRANSFERRED. Queue: #75. The hold music changes. It\'s worse.');
-    console.log('[METRICS] DEPARTMENT TRANSFER at ' + mins() + ' | inGame:' + NumberFormat.formatHoldTime(state.inGameSeconds) + ' | pps:' + totalPPS().toFixed(1));
+    console.log('[METRICS] DEPARTMENT TRANSFER at ' + mins() + ' | inGame:' + NumberFormat.formatHoldTime(state.inGameSeconds) + ' | pps:' + totalPPS().toFixed(1) + ' | advancesReset:' + state.queueAdvances);
   }
 
   function buyGenerator(g) {
@@ -515,11 +515,17 @@ const Game = (function() {
 
     // Time multiplier for DISPLAY: uses Dust module
     if (state.dust > state.maxDust) state.maxDust = state.dust;
+    // Time multiplier: dustTimeFactor ONLY applies after Time Blur I is purchased
+    if (state.dust > state.maxDust) state.maxDust = state.dust;
     let dustTimeFactor = Dust.calcDustTimeFactor(state.maxDust);
-    let effectiveTimeMult = state.timeMultiplier * dustTimeFactor;
+    // Dust time factor only kicks in once player has bought at least Time Blur I
+    let effectiveTimeMult = state.timeMultiplier;
+    if (state.timeMultiplier > 1) {
+      effectiveTimeMult *= dustTimeFactor;
+    }
 
     // TIME FREEZE: at 9 years, time stops passively. Only queue advances move it.
-    const NINE_YEARS = 86400 * 365 * 9;
+    const NINE_YEARS = Balance.TIME.nineYears;
     if (state.inGameSeconds >= NINE_YEARS && !state.flags.timeFrozen) {
       state.flags.timeFrozen = true;
       state.inGameSeconds = NINE_YEARS; // clamp exactly

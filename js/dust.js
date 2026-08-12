@@ -4,10 +4,7 @@
  */
 const Dust = (function() {
 
-  // Dust Collectors: 11 items spread across Phase 1
-  // With dustPerSec=0.2 base, x30 time cap, and dust/sec boosts from collectors:
-  // At peak (after broom+hepa+industrial): ~4.7 dust/sec × 30 = 141 dust/real-sec
-  // All 11 should be purchasable within Phase 1
+  // Dust Collectors: 14 items spread across Phase 1
   const collectors = [
     { id: 'ds_cloth', name: 'Microfiber Cloth', desc: '+10% patience/sec', cost: 300, bought: false,
       effect(s) { s.globalGenMultiplier *= 1.1; } },
@@ -31,6 +28,12 @@ const Dust = (function() {
       effect(s) { s.dustPerSec += 3; s.wtlRegen += 1; } },
     { id: 'ds_singularity', name: 'Dust Singularity', desc: 'ALL production x3', cost: 120000, bought: false,
       effect(s) { s.globalGenMultiplier *= 3; } },
+    { id: 'ds_entropy', name: 'Entropy Harvester', desc: '+5 dust/sec, ALL production x2', cost: 250000, bought: false,
+      effect(s) { s.dustPerSec += 5; s.globalGenMultiplier *= 2; } },
+    { id: 'ds_temporal', name: 'Temporal Accumulator', desc: '+10 dust/sec, +2 WtL regen', cost: 500000, bought: false,
+      effect(s) { s.dustPerSec += 10; s.wtlRegen += 2; } },
+    { id: 'ds_void', name: 'Void Condenser', desc: 'ALL production x5', cost: 1000000, bought: false,
+      effect(s) { s.globalGenMultiplier *= 5; } },
   ];
 
   let revealed = false;
@@ -55,11 +58,14 @@ const Dust = (function() {
 
   /**
    * Calculate the dust-based time factor for display.
-   * Uses maxDust so spending dust never drops the time display backward.
+   * Only activates above threshold. Gentler curve.
+   * NOTE: This only applies to effectiveTimeMult AFTER Time Blur I is purchased (handled in main.js).
    */
   function calcDustTimeFactor(maxDust) {
-    if (maxDust <= 10) return 1;
-    return Math.min(50000, 1 + Math.pow(Math.log10(maxDust + 1), 2) * 10);
+    const threshold = Balance.DUST.timeFactorThreshold;
+    if (maxDust < threshold) return 1;
+    const adjusted = maxDust / threshold;
+    return Math.min(Balance.DUST.timeFactorMax, 1 + Math.pow(Math.log10(adjusted + 1), 2) * Balance.DUST.timeFactorScale);
   }
 
   // === UI ===
@@ -112,6 +118,7 @@ const Dust = (function() {
       if (item.bought && !btn.classList.contains('owned')) {
         btn.classList.add('owned');
         btn.innerHTML = '<strong>' + item.name + '</strong> ✓';
+        btn.title = item.desc; // Tooltip showing effect
         btn.disabled = true;
       } else if (!item.bought) {
         btn.disabled = state.dust < item.cost;
