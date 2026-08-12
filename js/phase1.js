@@ -105,13 +105,13 @@ const Phase1 = (function() {
 
     // === TIME-GATED UPGRADES (real active time required) ===
     // Hidden effect: each raises combo cap (undocumented)
-    { id: 'u_timewarp1', name: 'Time Blur I', desc: 'Hold perception shifts. (x10)', cost: 200000, currency: 'patience', revealAt: 110000, revealAtActiveTime: 1800,
+    { id: 'u_timewarp1', name: 'Time Blur I', desc: 'Hold perception shifts. (x10)', cost: 200000, currency: 'patience', revealAtActiveTime: 1800,
       effect(s) { s.timeMultiplier *= 10; s.comboCapMax = 5; },
       narrative: "Was that a minute? An hour? You can't tell anymore. The clock on the wall has stopped making sense." },
-    { id: 'u_timewarp2', name: 'Time Blur II', desc: 'Days merge. (x10)', cost: 600000, currency: 'patience', revealAt: 380000, revealAtActiveTime: 2700,
+    { id: 'u_timewarp2', name: 'Time Blur II', desc: 'Days merge. (x10)', cost: 600000, currency: 'patience', revealAtActiveTime: 2700,
       effect(s) { s.timeMultiplier *= 10; s.comboCapMax = 6; },
       narrative: "Days? Weeks? The concept of 'today' has become philosophical. You're not sure it applies to you anymore." },
-    { id: 'u_timewarp3', name: 'Time Blur III', desc: 'Calendar irrelevant. (x12)', cost: 2500000, currency: 'patience', revealAt: 1200000, revealAtActiveTime: 3600,
+    { id: 'u_timewarp3', name: 'Time Blur III', desc: 'Calendar irrelevant. (x12)', cost: 2500000, currency: 'patience', revealAtActiveTime: 3600,
       effect(s) { s.timeMultiplier *= 12; s.comboCapMax = 8; },
       narrative: "You blink. Was that a day? A week? The calendar on the wall is meaningless. You've been here longer than you can comprehend." },
   ];

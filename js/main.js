@@ -108,7 +108,56 @@ const Game = (function() {
 
   // ===== INIT =====
   function init() {
-    document.getElementById('call-btn').onclick = startGame;
+    // Check for existing save
+    const saveData = Save.load();
+    if (saveData && saveData.state && saveData.state.flags && saveData.state.flags.started) {
+      // Restore from save
+      restoreState(saveData.state);
+      document.getElementById('pre-call').style.display = 'none';
+      document.getElementById('game-area').style.display = 'block';
+      buildPhase1UI();
+      UI.addLog('Game restored. Welcome back.');
+      console.log('[METRICS] SAVE LOADED | active:' + (state.activePlayTime/60).toFixed(1) + 'm | inGame:' + NumberFormat.formatHoldTime(state.inGameSeconds) + ' | queue:#' + state.queue);
+      // Register interactions
+      document.addEventListener('mousemove', registerInteraction);
+      document.addEventListener('keypress', registerInteraction);
+      document.addEventListener('touchstart', registerInteraction);
+      state.lastInteractionTime = Date.now();
+      lastTick = Date.now();
+      Save.startAutoSave(getState);
+      requestAnimationFrame(tick);
+    } else {
+      document.getElementById('call-btn').onclick = startGame;
+    }
+  }
+
+  /** Restore state from saved data */
+  function restoreState(saved) {
+    Object.keys(saved).forEach(k => {
+      if (k === 'boughtUpgrades') { state.boughtUpgrades = new Set(saved.boughtUpgrades); }
+      else if (k === 'triggeredMilestones') { state.triggeredMilestones = new Set(saved.triggeredMilestones); }
+      else if (k === 'generators') {
+        saved.generators.forEach(sg => {
+          const g = Phase1.generators.find(x => x.id === sg.id);
+          if (g) { g.owned = sg.owned; g.unlocked = sg.unlocked; }
+        });
+      }
+      else if (k === 'flags') { Object.assign(state.flags, saved.flags); }
+      else if (k === 'genMultipliers') { Object.assign(state.genMultipliers, saved.genMultipliers); }
+      else if (state.hasOwnProperty(k)) { state[k] = saved[k]; }
+    });
+    // Re-apply bought upgrades effects (they modify state directly)
+    state.boughtUpgrades.forEach(uid => {
+      const u = Phase1.upgrades.find(x => x.id === uid);
+      if (u) u.effect(state);
+    });
+    // Re-apply dust collectors
+    Dust.collectors.forEach(c => {
+      if (saved.boughtCollectors && saved.boughtCollectors.includes(c.id)) {
+        c.bought = true;
+        c.effect(state);
+      }
+    });
   }
 
   function startGame() {
@@ -227,7 +276,7 @@ const Game = (function() {
     lastClickTime = now;
     registerInteraction();
     state.patience += state.patiencePerClick;
-    if (state.patience > state.maxPatience) state.maxPatience = state.patience;
+    state.maxPatience += state.patiencePerClick; // total lifetime earned
     if (!state.flags.noWtlCost) {
       state.wtl = Math.max(0, state.wtl - state.wtlPerClick);
     }
@@ -419,8 +468,11 @@ const Game = (function() {
   function tick() {
     if (!state.flags.started) return;
     const now = Date.now();
-    const dt = (now - lastTick) / 1000;
+    let dt = (now - lastTick) / 1000;
     lastTick = now;
+
+    // Cap dt to prevent time jumps when returning from background tab
+    dt = Math.min(dt, 1.0);
 
     state.realElapsed = (now - state.realStartTime) / 1000;
 
@@ -447,9 +499,9 @@ const Game = (function() {
         const earnedPatience = Math.floor(ppsNow * idleDuration * 0.25);
         const earnedDust = state.flags.dustStarted ? Math.floor(state.dustPerSec * state.dustMultiplier * idleDuration * 0.25) : 0;
         state.patience += earnedPatience;
+        state.maxPatience += earnedPatience; // total lifetime earned
         if (earnedDust > 0) state.dust += earnedDust;
         state.wtl = state.wtlMax; // restore WtL on return
-        if (state.patience > state.maxPatience) state.maxPatience = state.patience;
         // Show welcome back modal
         let msg = 'You were away for ' + formatIdleTime(idleDuration) + '.<br><br>';
         msg += 'While you waited, you earned:<br>';
@@ -519,8 +571,9 @@ const Game = (function() {
     // If idle, generators produce NOTHING (Welcome Back modal handles offline rewards)
     if (state.isIdle) pps = 0;
     pps *= state.combo;
-    state.patience += pps * dt;
-    if (state.patience > state.maxPatience) state.maxPatience = state.patience;
+    const patienceEarned = pps * dt;
+    state.patience += patienceEarned;
+    state.maxPatience += patienceEarned; // total lifetime earned
 
     // Dust: uses Dust module for capped accumulation
     // No dust generation while idle OR time frozen (handled by Welcome Back / queue advance)
@@ -660,6 +713,11 @@ const Game = (function() {
         if (u.revealAt && state.maxPatience < u.revealAt) visible = false;
         if (u.revealAtQueue && state.queue > u.revealAtQueue) visible = false;
         if (u.revealAtActiveTime && state.activePlayTime < u.revealAtActiveTime) visible = false;
+        if (visible && btn.style.display === 'none') {
+          // Newly revealed
+          console.log('[METRICS] UPGRADE AVAILABLE: "' + u.name + '" at ' + mins() + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm | queue:#' + state.queue);
+          UI.addLog('New upgrade available: ' + u.name);
+        }
         btn.style.display = visible ? 'block' : 'none';
         btn.disabled = state.patience < u.cost;
       } else {
@@ -690,6 +748,7 @@ const Game = (function() {
       boughtUpgrades: Array.from(state.boughtUpgrades),
       triggeredMilestones: Array.from(state.triggeredMilestones),
       generators: Phase1.generators.map(g => ({ id: g.id, owned: g.owned, unlocked: g.unlocked })),
+      boughtCollectors: Dust.collectors.filter(c => c.bought).map(c => c.id),
     };
   }
 
