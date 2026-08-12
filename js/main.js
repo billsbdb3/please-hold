@@ -400,10 +400,11 @@ const Game = (function() {
       UI.showMilestone('The clock stops. Someone is picking up. Almost.');
     }
 
-    // Flavor text
+    // Flavor text (in its own box, not log)
     if (now - lastFlavorTime > Balance.UI_CONFIG.flavorInterval) {
       lastFlavorTime = now;
-      UI.addLog(Flavor.getForPhase(state.phase));
+      const flavorEl = document.getElementById('flavor-text');
+      if (flavorEl) flavorEl.textContent = Flavor.getForPhase(state.phase);
     }
 
     // Periodic log
@@ -441,11 +442,20 @@ const Game = (function() {
     if (state.flags.queueFamiliarity && state.queueFamiliarityDiscount > 0.001) ratesHTML += ' <span class="momentum">-' + (state.queueFamiliarityDiscount * 100).toFixed(0) + '%q</span>';
     document.getElementById('rates-bar').innerHTML = ratesHTML;
 
-    // Phone bar time (from queue position)
+    // Phone bar time display
+    // Before first advance: tick 1 real second per second (cosmetic)
+    // After first advance: shows queue-based time
     const phoneBar = document.getElementById('phone-bar');
     if (phoneBar) {
       const elapsed = phoneBar.querySelector('.elapsed');
-      if (elapsed) elapsed.textContent = NumberFormat.formatHoldTime(getInGameTime());
+      if (elapsed) {
+        if (state.queueAdvances === 0) {
+          // Cosmetic tick before first advance
+          elapsed.textContent = NumberFormat.formatHoldTime(state.activePlayTime);
+        } else {
+          elapsed.textContent = NumberFormat.formatHoldTime(getInGameTime());
+        }
+      }
     }
 
     // Action buttons
@@ -500,8 +510,7 @@ const Game = (function() {
         if (u.revealAtActiveTime && state.activePlayTime < u.revealAtActiveTime) visible = false;
         div.style.display = visible ? '' : 'none';
         div.className = 'upgrade-item' + (state.patience < u.cost ? ' disabled' : '');
-        div.innerHTML = '<span class="ui-name">' + u.name + '</span><span class="ui-cost">' + NumberFormat.compact(u.cost) + '</span>';
-        div.title = u.desc;
+        div.innerHTML = '<div class="ui-info"><span class="ui-name">' + u.name + '</span><span class="ui-desc">' + u.desc + '</span></div><span class="ui-cost">' + NumberFormat.compact(u.cost) + '</span>';
       } else if (!div.classList.contains('owned')) {
         div.className = 'upgrade-item owned';
         div.innerHTML = '<span class="ui-name">' + u.name + ' ✓</span>';
