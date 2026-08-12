@@ -28,7 +28,7 @@ h1 { text-align: center; color: #d4b45a; font-size: 1.6em; margin-bottom: 2px; l
 
 /* Action buttons - horizontal */
 #actions { display: flex; gap: 8px; margin-bottom: 10px; }
-#actions .btn { flex: 1; padding: 10px 8px; font-size: 0.85em; text-align: center; }
+#actions .btn { flex: 1; padding: 12px 8px; font-size: 1em; text-align: center; }
 .btn-primary { background: #1a2030; border: 1px solid #7ec8e3; color: #7ec8e3; }
 .btn-primary:hover:not(:disabled) { background: #2a3040; }
 .btn-primary:active:not(:disabled) { background: #7ec8e3; color: #0e0e1a; }
@@ -36,7 +36,7 @@ h1 { text-align: center; color: #d4b45a; font-size: 1.6em; margin-bottom: 2px; l
 .btn-secondary:hover:not(:disabled) { background: #2a2a30; }
 .btn-danger { background: #1a2030; border: 1px solid #e07070; color: #e07070; }
 .btn-danger:hover:not(:disabled) { background: #2a2030; }
-.btn-sub { display: block; font-size: 0.7em; color: #999; margin-top: 2px; }
+.btn-sub { display: block; font-size: 0.8em; color: #999; margin-top: 2px; }
 
 /* Phone bar */
 #phone-bar { text-align: center; padding: 6px 12px; background: #080812; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 0.8em; color: #d4b45a; margin-bottom: 8px; }
@@ -84,9 +84,9 @@ h1 { text-align: center; color: #d4b45a; font-size: 1.6em; margin-bottom: 2px; l
 .dust-col h2 { color: #c9a96e; }
 
 /* Log */
-#log { background: #080812; border: 1px solid #2a2a3a; padding: 8px 10px; max-height: 80px; overflow-y: auto; border-radius: 3px; font-size: 0.72em; }
-#log p { margin-bottom: 2px; color: #666; }
-#log p:last-child { color: #aaa; }
+#log { background: #080812; border: 1px solid #2a2a3a; padding: 8px 10px; max-height: 90px; overflow-y: auto; border-radius: 3px; font-size: 0.88em; }
+#log p { margin-bottom: 3px; color: #777; }
+#log p:last-child { color: #bbb; }
 
 /* Transition / Hangup / Win screens */
 #transition-screen { text-align: center; padding: 30px 16px; }
