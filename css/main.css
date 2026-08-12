@@ -23,7 +23,8 @@ h1 { text-align: center; color: #d4b45a; font-size: 2em; margin-bottom: 4px; let
 .btn-call:hover { background: #1a1a30; }
 
 /* Phone bar - minimal */
-#phone-bar { display: flex; justify-content: space-between; padding: 8px 0; margin-bottom: 12px; border-bottom: 1px solid #333; color: #d4b45a; font-size: 0.9em; }
+#phone-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; margin-bottom: 12px; border-bottom: 1px solid #333; color: #d4b45a; font-size: 0.9em; }
+#phone-bar .phone-icon { font-size: 1.8em; }
 #phone-bar .elapsed { color: #aaa; }
 
 /* Status bar - big numbers */
