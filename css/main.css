@@ -32,6 +32,7 @@ h1 { text-align: center; color: #d4b45a; font-size: 2em; margin-bottom: 4px; let
 .resource { text-align: center; flex: 1; }
 .resource-label { font-size: 0.6em; color: #888; text-transform: uppercase; letter-spacing: 2px; display: block; margin-bottom: 2px; }
 .resource-value { font-size: 1.6em; font-weight: bold; }
+.resource-rate { display: block; font-size: 0.65em; color: #7ec8e3; margin-top: 2px; }
 .resource-value.patience { color: #7ec8e3; }
 .resource-value.wtl { color: #e8c46a; }
 .resource-value.dust { color: #c9a96e; }
@@ -71,8 +72,10 @@ h1 { text-align: center; color: #d4b45a; font-size: 2em; margin-bottom: 4px; let
 .gen-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 5px; background: #12122a; border-left: 3px solid #333; cursor: pointer; transition: all 0.1s; font-size: 1em; }
 .gen-item:hover { background: #1a1a3a; border-left-color: #7ec8e3; }
 .gen-item.disabled { opacity: 0.25; cursor: not-allowed; }
+.gi-info { display: flex; flex-direction: column; }
 .gi-name { color: #ddd; }
-.gi-cost { color: #7ec8e3; font-size: 0.85em; }
+.gi-desc { color: #888; font-size: 0.75em; }
+.gi-cost { color: #7ec8e3; font-size: 0.85em; white-space: nowrap; margin-left: 10px; }
 
 /* Upgrade items */
 .upgrade-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 5px; background: #12122a; border-left: 3px solid #333; cursor: pointer; transition: all 0.1s; font-size: 1em; }

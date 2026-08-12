@@ -160,8 +160,8 @@ const Game = (function() {
       '<span class="phone-icon">🥫</span> <span class="phone-name">Tin Can & String</span><span class="elapsed">' + NumberFormat.formatHoldTime(0) + '</span>';
 
     document.getElementById('status-bar').innerHTML = `
-      <div class="resource"><span class="resource-label">PATIENCE</span><span class="resource-value patience" id="val-patience">0</span></div>
-      <div class="resource"><span class="resource-label">WILL TO LIVE</span><span class="resource-value wtl" id="val-wtl">${state.wtlMax}/${state.wtlMax}</span><div class="bar-container"><div class="bar bar-wtl" id="bar-wtl"></div></div></div>
+      <div class="resource"><span class="resource-label">PATIENCE</span><span class="resource-value patience" id="val-patience">0</span><span class="resource-rate" id="val-pps-inline"></span></div>
+      <div class="resource"><span class="resource-label">WILL TO LIVE</span><span class="resource-value wtl" id="val-wtl">${state.wtlMax}/${state.wtlMax}</span><div class="bar-container"><div class="bar bar-wtl" id="bar-wtl"></div></div><span class="resource-rate" id="val-wtl-drain"></span></div>
       <div class="resource"><span class="resource-label">QUEUE</span><span class="resource-value queue" id="val-queue">#${state.queue}</span></div>
       <div class="resource" id="res-dust" style="display:none"><span class="resource-label">DUST</span><span class="resource-value dust" id="val-dust">0</span></div>
     `;
@@ -233,6 +233,9 @@ const Game = (function() {
       state.wtl = Math.min(state.wtlMax, state.wtl + state.refillAmount);
       const bar = document.getElementById('bar-wtl');
       if (bar) { bar.style.background = '#fff'; setTimeout(() => { bar.style.background = ''; }, 200); }
+      // Update button text
+      const refillBtn = document.getElementById('btn-refill');
+      if (refillBtn) UI.setText('sub-refill', state.refillCost + 'p → +' + state.refillAmount + ' WtL');
     }
   }
 
@@ -434,13 +437,50 @@ const Game = (function() {
       UI.setText('val-dust', NumberFormat.formatDust(state.dust));
     }
 
-    // Rates
+    // Rates under resources
     const pps = totalPPS() * state.combo;
-    document.getElementById('rates-bar').style.display = pps > 0 ? 'block' : 'none';
-    let ratesHTML = '<span id="val-pps">' + NumberFormat.compact(pps) + '</span>/sec';
-    if (state.flags.comboUnlocked && state.combo > 1.01) ratesHTML += ' <span class="streak">x' + state.combo.toFixed(1) + '</span>';
-    if (state.flags.queueFamiliarity && state.queueFamiliarityDiscount > 0.001) ratesHTML += ' <span class="momentum">-' + (state.queueFamiliarityDiscount * 100).toFixed(0) + '%q</span>';
-    document.getElementById('rates-bar').innerHTML = ratesHTML;
+    const ppsEl = document.getElementById('val-pps-inline');
+    if (ppsEl) {
+      if (pps > 0) {
+        ppsEl.textContent = '+' + (pps % 1 === 0 ? pps.toFixed(0) : pps.toFixed(1)) + '/sec';
+      } else {
+        ppsEl.textContent = '';
+      }
+    }
+    // WtL drain rate display
+    const drainEl = document.getElementById('val-wtl-drain');
+    if (drainEl) {
+      const activeMin = state.activePlayTime / 60;
+      if (activeMin > Balance.WTL.baseDrainStart / 60) {
+        const drainMin = activeMin - (Balance.WTL.baseDrainStart / 60);
+        const rate = Math.min(Balance.WTL.maxDrainRate, Balance.WTL.baseDrainRate * Math.log2(drainMin + 1));
+        const netRate = state.wtlRegen - rate;
+        if (netRate < 0) {
+          drainEl.textContent = (netRate % 1 === 0 ? netRate.toFixed(0) : netRate.toFixed(1)) + '/sec';
+          drainEl.style.color = '#e07070';
+        } else if (netRate > 0) {
+          drainEl.textContent = '+' + (netRate % 1 === 0 ? netRate.toFixed(0) : netRate.toFixed(1)) + '/sec';
+          drainEl.style.color = '#5b5';
+        } else {
+          drainEl.textContent = '';
+        }
+      } else if (state.wtlRegen > 0) {
+        drainEl.textContent = '+' + state.wtlRegen.toFixed(1) + '/sec';
+        drainEl.style.color = '#5b5';
+      } else {
+        drainEl.textContent = '';
+      }
+    }
+
+    // Streak/momentum display in rates bar
+    const ratesBar = document.getElementById('rates-bar');
+    if (ratesBar) {
+      let ratesHTML = '';
+      if (state.flags.comboUnlocked && state.combo > 1.01) ratesHTML += '<span class="streak">Streak x' + state.combo.toFixed(1) + '</span>';
+      if (state.flags.queueFamiliarity && state.queueFamiliarityDiscount > 0.001) ratesHTML += ' <span class="momentum">Queue -' + (state.queueFamiliarityDiscount * 100).toFixed(0) + '%</span>';
+      ratesBar.innerHTML = ratesHTML;
+      ratesBar.style.display = ratesHTML ? 'block' : 'none';
+    }
 
     // Phone bar time display
     // Before first advance: tick 1 real second per second (cosmetic)
@@ -474,6 +514,7 @@ const Game = (function() {
     if (refillBtn) {
       if (state.wtl < state.wtlMax * 0.7) refillBtn.style.display = '';
       refillBtn.disabled = state.patience < state.refillCost;
+      UI.setText('sub-refill', state.refillCost + 'p → +' + state.refillAmount + ' WtL');
     }
     const endureBtn = document.getElementById('btn-endure');
     if (endureBtn) {
@@ -493,9 +534,9 @@ const Game = (function() {
       }
       if (g.unlocked) {
         const cost = Phase1.getGeneratorCost(g);
+        const ppsEach = (g.baseProduction * (state.genMultipliers[g.id] || 1) * state.globalGenMultiplier * Phase1.getNestedBoost(g.id)).toFixed(1);
         div.className = 'gen-item' + (state.patience < cost ? ' disabled' : '');
-        div.innerHTML = '<span class="gi-name">' + g.name + ' (' + g.owned + ')</span><span class="gi-cost">' + NumberFormat.compact(cost) + '</span>';
-        div.title = g.desc + ' | +' + (g.baseProduction * (state.genMultipliers[g.id] || 1) * state.globalGenMultiplier * Phase1.getNestedBoost(g.id)).toFixed(1) + '/s each';
+        div.innerHTML = '<div class="gi-info"><span class="gi-name">' + g.name + ' (' + g.owned + ')</span><span class="gi-desc">+' + ppsEach + '/sec each</span></div><span class="gi-cost">' + NumberFormat.compact(cost) + '</span>';
       }
     });
 
