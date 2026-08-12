@@ -52,7 +52,7 @@ const UI = (function() {
 
   function setDustOverlay(dust) {
     const el = document.getElementById('dust-overlay');
-    if (el) el.style.background = 'rgba(140,110,60,' + Math.min(dust / Balance.UI_CONFIG.dustOverlayDivisor, Balance.UI_CONFIG.dustOverlayMax) + ')';
+    if (el) el.style.background = 'rgba(120,100,50,' + Math.min(dust / 8000, 0.25) + ')';
   }
 
   function setWtlOverlay(wtlPct) {

@@ -33,6 +33,7 @@ const Balance = (function() {
     familiarityTimeout: 15000, // ms before decay starts
     transferResetRatio: 0.4,   // queueAdvances *= this on department transfer
     transferQueuePosition: 75, // queue resets to this on transfer
+    scalingDivisor: 500,       // dynamic cost: 1 + pps / this
   };
 
   // === TIME ===
@@ -92,6 +93,7 @@ const Balance = (function() {
     comboUp: 0.3,           // combo gain per click
     comboDecay: 0.4,        // combo decay per second
     comboDecayDelay: 600,   // ms after last click before decay starts
+    scaleFactor: 0.05,      // click value = base + pps * this (5% of 1 second)
   };
 
   // === WILL TO LIVE ===
