@@ -94,8 +94,8 @@ h1 { text-align: center; color: #d4b45a; font-size: 1.6em; letter-spacing: 4px; 
 .dust-item:hover { background: #1a2a1a; border-left-color: #c9a96e; }
 .dust-item.disabled { opacity: 0.25; cursor: not-allowed; }
 .dust-item.owned { opacity: 0.5; border-left-color: #4a4; min-height: 28px; padding: 4px 10px; cursor: help; }
-.di-name { color: #ddd; font-size: 0.95em; }
-.di-desc { color: #888; font-size: 0.7em; }
+.di-name { color: #ddd; font-size: 0.95em; display: block; }
+.di-desc { color: #888; font-size: 0.7em; display: block; }
 .di-cost { color: #c9a96e; font-size: 0.85em; white-space: nowrap; margin-left: 8px; }
 
 /* Footer: flavor + log */

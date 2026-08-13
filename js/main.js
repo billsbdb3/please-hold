@@ -398,6 +398,25 @@ const Game = (function() {
       UI.showMilestone('The clock stops. Someone is picking up. Almost.');
     }
 
+    // Phone tier check (based on in-game time from queue position)
+    const inGameTime = getInGameTime();
+    if (inGameTime >= 86400 * 365 * 5 && !state._phoneTier4) {
+      state._phoneTier4 = true;
+      document.querySelector('#phone-bar .phone-icon').textContent = '📱';
+      document.querySelector('#phone-bar .phone-name').textContent = 'Cordless Phone';
+      UI.addLog('Phone evolved: Cordless Phone');
+    } else if (inGameTime >= 86400 * 90 && !state._phoneTier3) {
+      state._phoneTier3 = true;
+      document.querySelector('#phone-bar .phone-icon').textContent = '📞';
+      document.querySelector('#phone-bar .phone-name').textContent = 'Landline';
+      UI.addLog('Phone evolved: Landline');
+    } else if (inGameTime >= 86400 * 7 && !state._phoneTier2) {
+      state._phoneTier2 = true;
+      document.querySelector('#phone-bar .phone-icon').textContent = '☎️';
+      document.querySelector('#phone-bar .phone-name').textContent = 'Rotary Phone';
+      UI.addLog('Phone evolved: Rotary Phone');
+    }
+
     // Flavor text (in its own box, not log)
     if (now - lastFlavorTime > Balance.UI_CONFIG.flavorInterval) {
       lastFlavorTime = now;

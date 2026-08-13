@@ -69,24 +69,21 @@ const Dust = (function() {
   }
 
   // === UI ===
-  function buildUI(container) {
+  function buildUI() {
     if (built) return;
     built = true;
-    const col = document.createElement('div');
-    col.className = 'upgrade-column dust-col';
-    col.id = 'dust-collectors-col';
-    col.innerHTML = '<h2>Dust Collectors</h2><div id="dust-collectors-list"></div>';
-    container.appendChild(col);
-    container.style.gridTemplateColumns = '1fr 1fr 1fr';
+    const section = document.getElementById('dust-section');
+    const list = document.getElementById('dust-list');
+    if (!section || !list) return;
+    section.style.display = '';
 
-    const list = document.getElementById('dust-collectors-list');
     collectors.forEach(item => {
-      const btn = document.createElement('button');
-      btn.className = 'upgrade-btn';
-      btn.id = 'dcbtn-' + item.id;
-      btn.innerHTML = `<strong>${item.name}</strong> — ${item.desc}<br><span class="upgrade-cost">${NumberFormat.formatDust(item.cost)}</span>`;
-      btn.onclick = () => buy(item);
-      list.appendChild(btn);
+      const div = document.createElement('div');
+      div.className = 'dust-item';
+      div.id = 'dcbtn-' + item.id;
+      div.innerHTML = `<div><span class="di-name">${item.name}</span><span class="di-desc">${item.desc}</span></div><span class="di-cost">${NumberFormat.compact(item.cost)}</span>`;
+      div.onclick = () => buy(item);
+      list.appendChild(div);
     });
   }
 
@@ -104,24 +101,22 @@ const Dust = (function() {
   function updateUI(state) {
     if (!revealed && state.dust >= REVEAL_AT) {
       revealed = true;
-      const container = document.getElementById('upgrades-container');
-      if (container) {
-        buildUI(container);
-        UI.showMilestone('The dust is accumulating. You notice it has... properties. You can shape it. Use it. This is probably fine.');
-      }
+      buildUI();
+      UI.showMilestone('The dust is accumulating. You notice it has... properties.');
+      UI.addLog('Dust collectors available.');
     }
     if (!built) return;
 
     collectors.forEach(item => {
-      const btn = document.getElementById('dcbtn-' + item.id);
-      if (!btn) return;
-      if (item.bought && !btn.classList.contains('owned')) {
-        btn.classList.add('owned');
-        btn.innerHTML = '<strong>' + item.name + '</strong> ✓';
-        btn.title = item.desc; // Tooltip showing effect
-        btn.disabled = true;
+      const div = document.getElementById('dcbtn-' + item.id);
+      if (!div) return;
+      if (item.bought && !div.classList.contains('owned')) {
+        div.classList.add('owned');
+        div.innerHTML = '<span class="di-name">' + item.name + ' ✓</span>';
+        div.title = item.desc;
+        div.onclick = null;
       } else if (!item.bought) {
-        btn.disabled = state.dust < item.cost;
+        div.className = 'dust-item' + (state.dust < item.cost ? ' disabled' : '');
       }
     });
   }
