@@ -96,7 +96,7 @@ const Game = (function() {
     if (saveData && saveData.state && saveData.state.flags && saveData.state.flags.started) {
       restoreState(saveData.state);
       document.getElementById('pre-call').style.display = 'none';
-      document.getElementById('game-area').style.display = 'block';
+      document.getElementById('game-area').style.display = 'flex';
       buildPhase1UI();
       UI.addLog('Game restored. Welcome back.');
       document.addEventListener('mousemove', registerInteraction);
@@ -145,7 +145,7 @@ const Game = (function() {
     document.addEventListener('keypress', registerInteraction);
     document.addEventListener('touchstart', registerInteraction);
     document.getElementById('pre-call').style.display = 'none';
-    document.getElementById('game-area').style.display = 'block';
+    document.getElementById('game-area').style.display = 'flex';
     buildPhase1UI();
     UI.addLog('You dial Meridian Solutions Inc.');
     UI.addLog('"All representatives are currently busy."');
@@ -154,35 +154,29 @@ const Game = (function() {
     requestAnimationFrame(tick);
   }
 
-  // ===== PHASE 1 UI (Compact Dashboard) =====
+  // ===== PHASE 1 UI (Three-Panel Layout) =====
   function buildPhase1UI() {
+    document.getElementById('game-area').classList.add('active');
+
     document.getElementById('phone-bar').innerHTML =
       '<span class="phone-icon">🥫</span> <span class="phone-name">Tin Can & String</span><span class="elapsed">' + NumberFormat.formatHoldTime(0) + '</span>';
 
-    document.getElementById('status-bar').innerHTML = `
-      <div class="resource"><span class="resource-label">PATIENCE</span><span class="resource-value patience" id="val-patience">0</span><span class="resource-rate" id="val-pps-inline"></span></div>
-      <div class="resource"><span class="resource-label">WILL TO LIVE</span><span class="resource-value wtl" id="val-wtl">${state.wtlMax}/${state.wtlMax}</span><div class="bar-container"><div class="bar bar-wtl" id="bar-wtl"></div></div><span class="resource-rate" id="val-wtl-drain"></span></div>
-      <div class="resource"><span class="resource-label">QUEUE</span><span class="resource-value queue" id="val-queue">#${state.queue}</span></div>
-      <div class="resource" id="res-dust" style="display:none"><span class="resource-label">DUST</span><span class="resource-value dust" id="val-dust">0</span></div>
+    // Left panel: resources + actions
+    document.getElementById('panel-left').innerHTML = `
+      <div class="res-block"><span class="res-label">PATIENCE</span><div class="res-value patience" id="val-patience">0</div><span class="res-rate" id="val-pps-rate"></span></div>
+      <div class="res-block"><span class="res-label">WILL TO LIVE</span><div class="res-value wtl" id="val-wtl">${state.wtlMax}/${state.wtlMax}</div><div class="bar-container"><div class="bar bar-wtl" id="bar-wtl"></div></div><span class="res-rate" id="val-wtl-rate"></span></div>
+      <div class="res-block" id="res-dust" style="display:none"><span class="res-label">DUST</span><div class="res-value dust" id="val-dust">0</div><span class="res-rate" id="val-dust-rate"></span></div>
+      <div class="res-block"><span class="res-label">QUEUE</span><div class="res-value queue" id="val-queue">#${state.queue}</div></div>
+      <div id="actions">
+        <button id="btn-endure" class="btn btn-primary">ENDURE<span class="btn-sub" id="sub-endure">+1 | -1 WtL</span></button>
+        <button id="btn-refill" class="btn btn-secondary" style="display:none">Deep Breath<span class="btn-sub" id="sub-refill">${state.refillCost}p → +${state.refillAmount} WtL</span></button>
+        <button id="btn-advance" class="btn btn-danger" disabled>Advance Queue<span class="btn-sub" id="sub-advance">locked</span></button>
+      </div>
     `;
 
-    document.getElementById('rates-bar').innerHTML = '<span id="val-pps">0</span>/sec';
-
-    // Horizontal actions
-    document.getElementById('actions').innerHTML = `
-      <button id="btn-endure" class="btn btn-primary">ENDURE<span class="btn-sub" id="sub-endure">+1 | -1 WtL</span></button>
-      <button id="btn-refill" class="btn btn-secondary" style="display:none">Deep Breath<span class="btn-sub" id="sub-refill">5p → +12 WtL</span></button>
-      <button id="btn-advance" class="btn btn-danger" disabled>Advance<span class="btn-sub" id="sub-advance">queue locked</span></button>
-    `;
-
-    // Compact columns
-    document.getElementById('upgrades-container').innerHTML = `
-      <div class="upgrade-column gen-col"><h2>Coping Mechanisms</h2><div id="gen-list"></div></div>
-      <div class="upgrade-column hold-col"><h2>Upgrades</h2><div id="upgrade-list"></div></div>
-    `;
-
-    // One-line generator items
+    // Center panel: generators
     const genList = document.getElementById('gen-list');
+    genList.innerHTML = '';
     Phase1.generators.forEach(g => {
       const div = document.createElement('div');
       div.className = 'gen-item';
@@ -192,8 +186,9 @@ const Game = (function() {
       genList.appendChild(div);
     });
 
-    // One-line upgrade items
+    // Right panel: upgrades (built dynamically)
     const upList = document.getElementById('upgrade-list');
+    upList.innerHTML = '';
     Phase1.upgrades.forEach(u => {
       const div = document.createElement('div');
       div.className = 'upgrade-item';
@@ -317,7 +312,7 @@ const Game = (function() {
 
   function redial() {
     document.getElementById('hangup-scr').style.display = 'none';
-    document.getElementById('game-area').style.display = 'block';
+    document.getElementById('game-area').style.display = 'flex';
     UI.addLog('Redial. Queue: #' + state.queue + '. Dignity gone.');
     lastTick = Date.now();
     requestAnimationFrame(tick);
@@ -432,54 +427,43 @@ const Game = (function() {
     UI.setBarColor('bar-wtl', wtlPct);
     UI.setWtlOverlay(wtlPct);
 
+    // Dust display (just numbers, no units)
     if (state.flags.dustStarted) {
       UI.show('res-dust');
-      UI.setText('val-dust', NumberFormat.formatDust(state.dust));
+      UI.setText('val-dust', NumberFormat.compact(state.dust));
+      const dustRate = state.dustPerSec + totalPPS() * Balance.DUST.ppsLinkFactor;
+      const drEl = document.getElementById('val-dust-rate');
+      if (drEl) { drEl.textContent = '+' + dustRate.toFixed(1) + '/sec'; drEl.className = 'res-rate positive'; }
     }
 
-    // Rates under resources
+    // PPS rate under patience
     const pps = totalPPS() * state.combo;
-    const ppsEl = document.getElementById('val-pps-inline');
+    const ppsEl = document.getElementById('val-pps-rate');
     if (ppsEl) {
       if (pps > 0) {
-        ppsEl.textContent = '+' + (pps % 1 === 0 ? pps.toFixed(0) : pps.toFixed(1)) + '/sec';
-      } else {
-        ppsEl.textContent = '';
-      }
+        const display = pps < 10 ? pps.toFixed(1) : NumberFormat.compact(pps);
+        ppsEl.textContent = '+' + display + '/sec';
+        ppsEl.className = 'res-rate positive';
+        if (state.flags.comboUnlocked && state.combo > 1.01) {
+          ppsEl.textContent += ' (x' + state.combo.toFixed(1) + ')';
+        }
+      } else { ppsEl.textContent = ''; }
     }
-    // WtL drain rate display
-    const drainEl = document.getElementById('val-wtl-drain');
-    if (drainEl) {
+
+    // WtL rate
+    const wtlEl = document.getElementById('val-wtl-rate');
+    if (wtlEl) {
       const activeMin = state.activePlayTime / 60;
       if (activeMin > Balance.WTL.baseDrainStart / 60) {
         const drainMin = activeMin - (Balance.WTL.baseDrainStart / 60);
         const rate = Math.min(Balance.WTL.maxDrainRate, Balance.WTL.baseDrainRate * Math.log2(drainMin + 1));
-        const netRate = state.wtlRegen - rate;
-        if (netRate < 0) {
-          drainEl.textContent = (netRate % 1 === 0 ? netRate.toFixed(0) : netRate.toFixed(1)) + '/sec';
-          drainEl.style.color = '#e07070';
-        } else if (netRate > 0) {
-          drainEl.textContent = '+' + (netRate % 1 === 0 ? netRate.toFixed(0) : netRate.toFixed(1)) + '/sec';
-          drainEl.style.color = '#5b5';
-        } else {
-          drainEl.textContent = '';
-        }
+        const net = state.wtlRegen - rate;
+        if (net < 0) { wtlEl.textContent = net.toFixed(1) + '/sec'; wtlEl.className = 'res-rate negative'; }
+        else if (net > 0) { wtlEl.textContent = '+' + net.toFixed(1) + '/sec'; wtlEl.className = 'res-rate positive'; }
+        else { wtlEl.textContent = ''; }
       } else if (state.wtlRegen > 0) {
-        drainEl.textContent = '+' + state.wtlRegen.toFixed(1) + '/sec';
-        drainEl.style.color = '#5b5';
-      } else {
-        drainEl.textContent = '';
-      }
-    }
-
-    // Streak/momentum display in rates bar
-    const ratesBar = document.getElementById('rates-bar');
-    if (ratesBar) {
-      let ratesHTML = '';
-      if (state.flags.comboUnlocked && state.combo > 1.01) ratesHTML += '<span class="streak">Streak x' + state.combo.toFixed(1) + '</span>';
-      if (state.flags.queueFamiliarity && state.queueFamiliarityDiscount > 0.001) ratesHTML += ' <span class="momentum">Queue -' + (state.queueFamiliarityDiscount * 100).toFixed(0) + '%</span>';
-      ratesBar.innerHTML = ratesHTML;
-      ratesBar.style.display = ratesHTML ? 'block' : 'none';
+        wtlEl.textContent = '+' + state.wtlRegen.toFixed(1) + '/sec'; wtlEl.className = 'res-rate positive';
+      } else { wtlEl.textContent = ''; }
     }
 
     // Phone bar time display
@@ -560,12 +544,6 @@ const Game = (function() {
       }
     });
 
-    // Show upgrades container
-    const box = document.getElementById('upgrades-container');
-    if (box && !box.classList.contains('revealed') && state.maxPatience >= 8) {
-      box.style.display = 'grid';
-      box.classList.add('revealed');
-    }
   }
 
   // ===== SAVE =====

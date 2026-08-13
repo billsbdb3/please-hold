@@ -51,8 +51,8 @@ const Phase1 = (function() {
       narrative: "You find a rhythm. Click. Click. Click. The faster you go, the more the world gives back." },
     { id: 'u_fidget2x', name: 'Titanium Bearings', desc: 'Fidget Spinners produce x2', cost: 1500, revealAt: 900,
       effect(s) { s.genMultipliers.gen_fidget *= 2; } },
-    { id: 'u_caffeine', name: 'Caffeine IV Drip', desc: '+2 base click, halve WtL cost', cost: 3000, revealAt: 2000,
-      effect(s) { s.patiencePerClick += 2; s.wtlPerClick = Math.max(0.25, s.wtlPerClick * 0.5); } },
+    { id: 'u_caffeine', name: 'Caffeine IV Drip', desc: '+50% click power, halve WtL cost', cost: 3000, revealAt: 2000,
+      effect(s) { s.patiencePerClick += 1; s.wtlPerClick = Math.max(0.25, s.wtlPerClick * 0.5); } },
     { id: 'u_auto2x', name: 'Parallel Lines', desc: 'Autodialers produce x2', cost: 6000, revealAt: 4000,
       effect(s) { s.genMultipliers.gen_autodialer *= 2; } },
 
@@ -72,7 +72,11 @@ const Phase1 = (function() {
       narrative: "You know the patterns now. Each advance builds on the last." },
     { id: 'u_shadow2x', name: 'Dark Network', desc: 'Shadow Call Centers produce x2', cost: 800000, revealAt: 500000, revealAtQueue: 35,
       effect(s) { s.genMultipliers.gen_callcenter *= 2; } },
-    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 2000000, revealAt: 1200000, revealAtQueue: 15,
+    { id: 'u_robo3x', name: 'Neural Network', desc: 'Robo-Callers produce x3', cost: 3000000, revealAt: 1500000, revealAtQueue: 25,
+      effect(s) { s.genMultipliers.gen_robocaller *= 3; } },
+    { id: 'u_speed3x', name: 'Quantum Dialing', desc: 'Speed Dialers produce x3', cost: 8000000, revealAt: 4000000, revealAtQueue: 20,
+      effect(s) { s.genMultipliers.gen_speeddialer *= 3; } },
+    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 15000000, revealAt: 8000000, revealAtQueue: 10,
       effect(s) { s.wtlPerClick = 0; s.flags.noWtlCost = true; },
       narrative: "You no longer feel the drain from clicking. But the hold music... it still wears on you." },
 

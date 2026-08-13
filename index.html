@@ -5,9 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PLEASE HOLD</title>
 <link rel="stylesheet" href="css/main.css">
-<link rel="stylesheet" href="css/phase1.css">
-<link rel="stylesheet" href="css/phase2.css">
-<link rel="stylesheet" href="css/phase3.css">
 </head>
 <body>
 <div id="dust-overlay"></div>
@@ -22,15 +19,18 @@
     <button id="call-btn" class="btn btn-call">[ Call Meridian Solutions Inc. ]</button>
   </div>
 
-  <!-- MAIN GAME AREA (populated by JS per phase) -->
-  <div id="game-area" style="display:none">
+  <!-- MAIN GAME AREA -->
+  <div id="game-area">
     <div id="phone-bar"></div>
-    <div id="status-bar"></div>
-    <div id="rates-bar"></div>
-    <div id="actions"></div>
-    <div id="flavor-box"><p id="flavor-text"></p></div>
-    <div id="upgrades-container"></div>
-    <div id="log"></div>
+    <div id="panels">
+      <div id="panel-left"></div>
+      <div id="panel-center"><h2>Coping Mechanisms</h2><div id="gen-list"></div></div>
+      <div id="panel-right"><h2>Upgrades</h2><div id="upgrade-list"></div><div id="dust-section" style="display:none"><h3>Dust Collectors</h3><div id="dust-list"></div></div></div>
+    </div>
+    <div id="footer">
+      <div id="flavor-box"><p id="flavor-text"></p></div>
+      <div id="log"></div>
+    </div>
   </div>
 
   <!-- PHASE TRANSITIONS -->

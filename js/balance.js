@@ -33,7 +33,7 @@ const Balance = (function() {
     familiarityTimeout: 15000, // ms before decay starts
     transferResetRatio: 0.4,   // queueAdvances *= this on department transfer
     transferQueuePosition: 75, // queue resets to this on transfer
-    scalingDivisor: 500,       // dynamic cost: 1 + pps / this
+    scalingDivisor: 10000,      // dynamic cost: 1 + pps / this
   };
 
   // === TIME ===
