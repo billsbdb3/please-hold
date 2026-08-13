@@ -19,7 +19,7 @@ const Game = (function() {
     wtlRegen: 0,
     refillCost: Balance.WTL.baseRefillCost,
     refillAmount: Balance.WTL.baseRefillAmount,
-    queue: Balance.QUEUE.startPosition,
+    queue: Phase1.QUEUE_START,
     queueAdvances: 0,
     totalClicks: 0,
     hangups: 0,
@@ -51,7 +51,7 @@ const Game = (function() {
   // ===== TIME = QUEUE POSITION =====
   // Non-linear mapping: queue position → in-game seconds
   function queueToTime(queuePos) {
-    const total = Balance.QUEUE.startPosition;
+    const total = Phase1.QUEUE_START; // 100
     const progress = 1 - (queuePos / total); // 0 at start, 1 at queue 0
     // Exponential curve: slow early, fast late
     const curved = Math.pow(progress, 2.5);
@@ -72,12 +72,14 @@ const Game = (function() {
     return state.patiencePerClick + (totalPPS() * Balance.CLICK.scaleFactor);
   }
 
-  // Dynamic queue cost: scales with current pps
+  // Dynamic queue cost: pps × seconds for this position
   function getEffectiveAdvanceCost() {
-    const baseCost = Phase1.getAdvanceCost(state.queueAdvances);
-    const ppsMult = 1 + totalPPS() / Balance.QUEUE.scalingDivisor;
+    const seconds = Phase1.getAdvanceCost(state.queueAdvances);
+    const pps = Math.max(1, totalPPS()); // min 1 to avoid 0 cost
+    const baseCost = 30; // minimum cost for very early game
+    const dynamicCost = pps * seconds;
     const discount = (state.flags.queueFamiliarity && state.queueFamiliarityDiscount > 0) ? state.queueFamiliarityDiscount : 0;
-    return Math.floor(baseCost * ppsMult * state.queueCostMult * (1 - discount));
+    return Math.floor(Math.max(baseCost, dynamicCost) * state.queueCostMult * (1 - discount));
   }
 
   // ===== TIMING =====

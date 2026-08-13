@@ -57,26 +57,26 @@ const Phase1 = (function() {
       effect(s) { s.genMultipliers.gen_autodialer *= 2; } },
 
     // --- Mid game: queue-gated (min 15-45) ---
-    { id: 'u_speed2x', name: 'Overclocked Modem', desc: 'Speed Dialers produce x2', cost: 25000, revealAt: 15000, revealAtQueue: 100,
+    { id: 'u_speed2x', name: 'Overclocked Modem', desc: 'Speed Dialers produce x2', cost: 25000, revealAt: 15000, revealAtQueue: 70,
       effect(s) { s.genMultipliers.gen_speeddialer *= 2; } },
-    { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 50000, revealAt: 30000, revealAtQueue: 80,
+    { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 50000, revealAt: 30000, revealAtQueue: 55,
       effect(s) { s.dustPerSec = Balance.DUST.baseRate; s.flags.dustStarted = true; },
       narrative: "You glance down. There is a fine layer of dust on your arm. It wasn't there when you started this call." },
-    { id: 'u_robo2x', name: 'Machine Learning', desc: 'Robo-Callers produce x2', cost: 150000, revealAt: 80000, revealAtQueue: 60,
+    { id: 'u_robo2x', name: 'Machine Learning', desc: 'Robo-Callers produce x2', cost: 150000, revealAt: 80000, revealAtQueue: 40,
       effect(s) { s.genMultipliers.gen_robocaller *= 2; } },
-    { id: 'u_muscle', name: 'Muscle Memory', desc: 'Click streak never decays', cost: 300000, revealAt: 150000, revealAtQueue: 50,
+    { id: 'u_muscle', name: 'Muscle Memory', desc: 'Click streak never decays', cost: 300000, revealAt: 150000, revealAtQueue: 35,
       effect(s) { s.flags.comboLocked = true; },
       narrative: "Your fingers remember. The rhythm is in your bones now. The streak... stays." },
-    { id: 'u_qfamiliar', name: 'Queue Familiarity', desc: 'Rapid advances reduce next cost (max -25%)', cost: 200000, revealAt: 100000, revealAtQueue: 55,
+    { id: 'u_qfamiliar', name: 'Queue Familiarity', desc: 'Rapid advances reduce next cost (max -25%)', cost: 200000, revealAt: 100000, revealAtQueue: 38,
       effect(s) { s.flags.queueFamiliarity = true; },
       narrative: "You know the patterns now. Each advance builds on the last." },
-    { id: 'u_shadow2x', name: 'Dark Network', desc: 'Shadow Call Centers produce x2', cost: 800000, revealAt: 500000, revealAtQueue: 35,
+    { id: 'u_shadow2x', name: 'Dark Network', desc: 'Shadow Call Centers produce x2', cost: 800000, revealAt: 500000, revealAtQueue: 25,
       effect(s) { s.genMultipliers.gen_callcenter *= 2; } },
-    { id: 'u_robo3x', name: 'Neural Network', desc: 'Robo-Callers produce x3', cost: 3000000, revealAt: 1500000, revealAtQueue: 25,
+    { id: 'u_robo3x', name: 'Neural Network', desc: 'Robo-Callers produce x3', cost: 3000000, revealAt: 1500000, revealAtQueue: 18,
       effect(s) { s.genMultipliers.gen_robocaller *= 3; } },
-    { id: 'u_speed3x', name: 'Quantum Dialing', desc: 'Speed Dialers produce x3', cost: 8000000, revealAt: 4000000, revealAtQueue: 20,
+    { id: 'u_speed3x', name: 'Quantum Dialing', desc: 'Speed Dialers produce x3', cost: 8000000, revealAt: 4000000, revealAtQueue: 12,
       effect(s) { s.genMultipliers.gen_speeddialer *= 3; } },
-    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 15000000, revealAt: 8000000, revealAtQueue: 10,
+    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 15000000, revealAt: 8000000, revealAtQueue: 6,
       effect(s) { s.wtlPerClick = 0; s.flags.noWtlCost = true; },
       narrative: "You no longer feel the drain from clicking. But the hold music... it still wears on you." },
 
@@ -93,15 +93,27 @@ const Phase1 = (function() {
   ];
 
   // === QUEUE ===
-  const QUEUE_START = Balance.QUEUE.startPosition;
+  // Cost = max(baseCost, currentPPS × secondsForPosition)
+  // Position 100→0. Time per advance escalates from 15s to 120s.
+  // Total queue time: ~65 min of advances across full game.
+  const QUEUE_START = 100;
+
+  // Seconds curve: how long each advance should take at current pps
+  function getSecondsForPosition(queuePosition) {
+    // queuePosition: 100 (start) → 0 (end)
+    // progress: 0 (start) → 1 (end)
+    const progress = 1 - (queuePosition / 100);
+    // Starts at 15 sec, ramps to 120 sec at the end
+    return 15 + progress * progress * 105;
+  }
 
   function getAdvanceCost(advances) {
-    const baseCost = Math.floor(Balance.QUEUE.baseCost * Math.pow(Balance.QUEUE.growthRate, advances));
-    if (advances >= Balance.QUEUE.lateThreshold) {
-      const depth = advances - Balance.QUEUE.lateThreshold;
-      return Math.floor(baseCost * (1 + Math.pow(depth, Balance.QUEUE.lateExponent) / Balance.QUEUE.lateDivisor));
-    }
-    return baseCost;
+    // This is called with queueAdvances (how many you've done)
+    // Current position = QUEUE_START - advances (but we use advances for the curve)
+    const position = Math.max(0, QUEUE_START - advances);
+    const seconds = getSecondsForPosition(position);
+    // Return seconds (main.js multiplies by pps)
+    return seconds;
   }
 
   function getGeneratorCost(gen) {
@@ -159,14 +171,14 @@ const Phase1 = (function() {
 
   // === MILESTONES ===
   const milestones = [
-    { at: 130, msg: '"Your call is important to us." You doubt this.' },
-    { at: 100, msg: '"A representative will be with you shortly." Shortly is relative.' },
-    { at: 80, msg: 'A recorded voice apologizes. It is not sorry.' },
-    { at: 60, msg: 'The hold music has changed. You liked the old one better.' },
-    { at: 40, msg: '"Your call is very important to us." The emphasis on "very" is suspicious.' },
-    { at: 20, msg: 'You can feel it. The end is near. Probably.' },
-    { at: 10, msg: 'Single digits. This is real. This is happening.' },
-    { at: 5, msg: 'Almost there. Almost.' },
+    { at: 90, msg: '"Your call is important to us." You doubt this.' },
+    { at: 75, msg: '"A representative will be with you shortly." Shortly is relative.' },
+    { at: 60, msg: 'A recorded voice apologizes. It is not sorry.' },
+    { at: 45, msg: 'The hold music has changed. You liked the old one better.' },
+    { at: 30, msg: '"Your call is very important to us." The emphasis on "very" is suspicious.' },
+    { at: 15, msg: 'You can feel it. The end is near. Probably.' },
+    { at: 8, msg: 'Single digits. This is real. This is happening.' },
+    { at: 3, msg: 'Almost there. Almost.' },
     { at: 1, msg: 'Next in line.' },
   ];
 
