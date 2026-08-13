@@ -47,8 +47,10 @@ h1 { text-align: center; color: #d4b45a; font-size: 1.6em; letter-spacing: 4px; 
 .res-rate.positive { color: #5b5; }
 .res-rate.negative { color: #e07070; }
 .bar-container { width: 100%; height: 5px; background: #222; border-radius: 3px; margin-top: 3px; }
+.bar-container-queue { height: 8px; margin-top: 5px; }
 .bar { height: 100%; border-radius: 3px; transition: width 0.2s, background 0.3s; }
 .bar-wtl { background: #e8c46a; width: 100%; }
+.bar-queue { background: #e07070; width: 100%; transition: width 0.3s; }
 
 /* Action buttons - stacked in left panel */
 #actions { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
