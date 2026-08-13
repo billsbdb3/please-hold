@@ -252,7 +252,7 @@ const Game = (function() {
           state.dust += dustBurst;
         }
       }
-      console.log('[METRICS] Queue #' + state.queue + ' at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | holdTime:' + NumberFormat.formatHoldTime(getInGameTime()) + ' | clicks:' + state.totalClicks);
+      console.log('[METRICS] Queue #' + state.queue + ' at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | holdTime:' + NumberFormat.formatHoldTime(getInGameTime()) + ' | clicks:' + state.totalClicks + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm | dust:' + Math.floor(state.dust) + (state.flags.queueFamiliarity ? ' | fam:-' + (state.queueFamiliarityDiscount*100).toFixed(0) + '%' : ''));
       Phase1.checkMilestones(state.queue, state.triggeredMilestones);
       UI.addLog('Queue #' + state.queue + ' | ' + NumberFormat.formatHoldTime(getInGameTime()));
 
@@ -269,7 +269,7 @@ const Game = (function() {
     registerInteraction();
     state.patience -= cost;
     g.owned++;
-    console.log('[METRICS] Bought "' + g.name + '" (#' + g.owned + ') at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1));
+    console.log('[METRICS] Bought "' + g.name + '" (#' + g.owned + ') at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | patience:' + Math.floor(state.patience) + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm');
     UI.addLog(g.name + ' (' + g.owned + ')');
   }
 
@@ -280,7 +280,7 @@ const Game = (function() {
     state.patience -= u.cost;
     state.boughtUpgrades.add(u.id);
     u.effect(state);
-    console.log('[METRICS] UPGRADE "' + u.name + '" at ' + mins() + ' | pps:' + totalPPS().toFixed(1) + ' | clicks:' + state.totalClicks);
+    console.log('[METRICS] UPGRADE "' + u.name + '" at ' + mins() + ' | pps:' + totalPPS().toFixed(1) + ' | clicks:' + state.totalClicks + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm | queue:#' + state.queue + ' | maxP:' + Math.floor(state.maxPatience) + ' | dust:' + Math.floor(state.dust));
     UI.addLog('★ ' + u.name);
     if (u.narrative) UI.showMilestone(u.narrative);
   }
@@ -427,7 +427,7 @@ const Game = (function() {
     // Periodic log
     if (Math.floor(state.realElapsed) % 60 === 0 && Math.floor(state.realElapsed) > 0 && Math.floor(state.realElapsed) !== state._lastLog) {
       state._lastLog = Math.floor(state.realElapsed);
-      console.log('[METRICS] TIME ' + mins() + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm | pps:' + totalPPS().toFixed(0) + ' | q:#' + state.queue + ' | hold:' + NumberFormat.formatHoldTime(getInGameTime()) + ' | dust:' + state.dust.toFixed(0) + ' | wtl:' + state.wtl.toFixed(1));
+      console.log('[METRICS] TIME ' + mins() + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm | pps:' + totalPPS().toFixed(0) + ' | q:#' + state.queue + ' | hold:' + NumberFormat.formatHoldTime(getInGameTime()) + ' | dust:' + Math.floor(state.dust) + ' | wtl:' + state.wtl.toFixed(1) + ' | combo:' + state.combo.toFixed(1) + ' | clicks:' + state.totalClicks + ' | maxP:' + Math.floor(state.maxPatience));
     }
 
     UI.setDustOverlay(state.dust);
@@ -534,6 +534,7 @@ const Game = (function() {
         g.unlocked = true;
         div.style.display = '';
         UI.addLog('New: ' + g.name);
+        console.log('[METRICS] GENERATOR UNLOCKED: "' + g.name + '" at ' + mins() + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm | maxP:' + Math.floor(state.maxPatience) + ' | pps:' + totalPPS().toFixed(1));
       }
       if (g.unlocked) {
         const cost = Phase1.getGeneratorCost(g);
@@ -552,6 +553,9 @@ const Game = (function() {
         if (u.revealAt && state.maxPatience < u.revealAt) visible = false;
         if (u.revealAtQueue && state.queue > u.revealAtQueue) visible = false;
         if (u.revealAtActiveTime && state.activePlayTime < u.revealAtActiveTime) visible = false;
+        if (visible && div.style.display === 'none') {
+          console.log('[METRICS] UPGRADE AVAILABLE: "' + u.name + '" at ' + mins() + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm | queue:#' + state.queue + ' | pps:' + totalPPS().toFixed(1) + ' | maxP:' + Math.floor(state.maxPatience));
+        }
         div.style.display = visible ? '' : 'none';
         div.className = 'upgrade-item' + (state.patience < u.cost ? ' disabled' : '');
         div.innerHTML = '<div class="ui-info"><span class="ui-name">' + u.name + '</span><span class="ui-desc">' + u.desc + '</span></div><span class="ui-cost">' + NumberFormat.compact(u.cost) + '</span>';

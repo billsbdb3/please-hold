@@ -88,14 +88,14 @@ const Dust = (function() {
   }
 
   function buy(item) {
-    // Access game state through Game.state
     const state = Game.state;
     if (item.bought || state.dust < item.cost) return;
     state.dust -= item.cost;
     item.bought = true;
     item.effect(state);
-    UI.addLog('Collected: ' + item.name);
-    console.log('[METRICS] Dust collector "' + item.name + '" at ' + ((Date.now() - state.realStartTime) / 60000).toFixed(1) + 'm | dust:' + state.dust.toFixed(1) + ' | pps:' + Game.totalPPS().toFixed(1));
+    UI.addLog('Dust: ' + item.name);
+    console.log('[METRICS] DUST COLLECTOR "' + item.name + '" at ' + ((Date.now() - state.realStartTime) / 60000).toFixed(1) + 'm | cost:' + item.cost + ' | dust:' + state.dust.toFixed(1) + ' | pps:' + Game.totalPPS().toFixed(1) + ' | dustPerSec:' + state.dustPerSec.toFixed(1));
+  }
   }
 
   function updateUI(state) {
