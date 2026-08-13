@@ -96,7 +96,6 @@ const Dust = (function() {
     UI.addLog('Dust: ' + item.name);
     console.log('[METRICS] DUST COLLECTOR "' + item.name + '" at ' + ((Date.now() - state.realStartTime) / 60000).toFixed(1) + 'm | cost:' + item.cost + ' | dust:' + state.dust.toFixed(1) + ' | pps:' + Game.totalPPS().toFixed(1) + ' | dustPerSec:' + state.dustPerSec.toFixed(1));
   }
-  }
 
   function updateUI(state) {
     if (!revealed && state.dust >= REVEAL_AT) {
