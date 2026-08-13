@@ -151,7 +151,7 @@ const Game = (function() {
     buildPhase1UI();
     UI.addLog('You dial Meridian Solutions Inc.');
     UI.addLog('"All representatives are currently busy."');
-    UI.addLog('"Your queue position is: one hundred and fifty."');
+    UI.addLog('"Please hold."');
     Save.startAutoSave(getState);
     requestAnimationFrame(tick);
   }
