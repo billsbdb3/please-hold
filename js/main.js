@@ -23,7 +23,7 @@ const Game = (function() {
     clickValueMult: 1.0,
     dustPerSec: 0,
     dustMultiplier: 1,
-    drainDelayBonus: 0,
+    drainReduction: 0,
     queue: Phase1.QUEUE_START,
     queueAdvances: 0,
     totalClicks: 0,
@@ -141,15 +141,17 @@ const Game = (function() {
 
   function getWtlDrain() {
     const activeMin = state.activePlayTime / 60;
-    const drainStart = (Balance.WTL.drainStart + state.drainDelayBonus) / 60;
-    if (activeMin <= drainStart) return 0;
+    const drainStartMin = Balance.WTL.drainStart / 60;
+    if (activeMin <= drainStartMin) return 0;
 
     let drain = Balance.WTL.baseDrain;
     // Position-based drain: closer to front = more anxious
     const progressRatio = 1 - (state.queue / Phase1.QUEUE_START);
     drain += Balance.WTL.positionDrainMax * progressRatio;
 
-    // Emotional Callus reduces drain
+    // Comfortable Chair: 25% reduction
+    if (state.drainReduction) drain *= (1 - state.drainReduction);
+    // Emotional Callus: additional 50% reduction
     if (state.flags.emotionalCallus) drain *= (1 - Balance.WTL.drainReductionCallus);
 
     return drain;

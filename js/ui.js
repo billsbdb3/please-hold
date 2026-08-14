@@ -92,7 +92,7 @@ const UI = (function() {
     win.classList.add('active');
   }
 
-  function showMilestone(msg) {
+  function showMilestone(msg, callback) {
     let modal = document.getElementById('milestone-modal');
     if (!modal) {
       modal = document.createElement('div');
@@ -106,8 +106,10 @@ const UI = (function() {
     modal.innerHTML = '';
     modal.appendChild(inner);
     modal.style.display = 'flex';
-    document.getElementById('milestone-ok-btn').onclick = () => { modal.style.display = 'none'; };
-    addLog('★ ' + msg);
+    document.getElementById('milestone-ok-btn').onclick = () => {
+      modal.style.display = 'none';
+      if (callback) callback();
+    };
   }
 
   return { addLog, clearLog, show, hide, setText, setHTML, setWidth, setBarColor, setDustOverlay, setWtlOverlay, showTransition, showWin, showMilestone };
