@@ -120,12 +120,8 @@ const Flavor = (function() {
   }
 
   function getPhase1() {
-    // Check game state for context
-    const state = Game.state;
-    if (state.flags.timeFrozen) {
-      return frozen[Math.floor(Math.random() * frozen.length)];
-    }
-    if (state.flags.departmentTransferred && Math.random() < 0.3) {
+    const state = State.get();
+    if (state.queuePass === 2 && Math.random() < 0.3) {
       return transfer[Math.floor(Math.random() * transfer.length)];
     }
     const activeMin = state.activePlayTime / 60;
