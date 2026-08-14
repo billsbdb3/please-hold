@@ -26,7 +26,7 @@
     <div id="panels">
       <div id="panel-left"></div>
       <div id="panel-center"><h2>Coping Mechanisms</h2><div id="gen-list"></div></div>
-      <div id="panel-right"><h2>Upgrades</h2><div id="upgrade-list"></div><div id="dust-section" style="display:none"><h3>Dust Collectors</h3><div id="dust-list"></div></div></div>
+      <div id="panel-right"><h2>Upgrades</h2><div id="upgrade-list"></div><div id="dust-section"><h3>Dust Collectors</h3><div id="dust-list"></div></div></div>
     </div>
     <div id="footer">
       <div id="log"></div>
@@ -34,27 +34,31 @@
   </div>
 
   <!-- PHASE TRANSITIONS -->
-  <div id="transition-screen" style="display:none"></div>
+  <div id="transition-screen"></div>
 
   <!-- HANGUP SCREEN -->
-  <div id="hangup-scr" style="display:none">
+  <div id="hangup-scr">
     <p id="hangup-txt"></p>
     <button id="redial-btn" class="btn btn-call">[ Redial ]</button>
   </div>
-
-  <!-- WIN SCREEN -->
-  <div id="win-screen"></div>
 </div>
 
+<!-- Scripts: load order matters (dependency chain) -->
 <script src="js/balance.js"></script>
 <script src="js/numbers.js"></script>
-<script src="js/flavor.js"></script>
-<script src="js/save.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/phase1.js"></script>
-<script src="js/phase2.js"></script>
-<script src="js/phase3.js"></script>
+<script src="js/state.js"></script>
+<script src="js/generators.js"></script>
 <script src="js/dust.js"></script>
+<script src="js/wtl.js"></script>
+<script src="js/phone.js"></script>
+<script src="js/queue.js"></script>
+<script src="js/click.js"></script>
+<script src="js/upgrades.js"></script>
+<script src="js/events.js"></script>
+<script src="js/flavor.js"></script>
+<script src="js/log.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/save.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
