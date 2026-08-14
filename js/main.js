@@ -1,8 +1,15 @@
 /**
- * PLEASE HOLD - Main game controller (v3 redesign)
- * TIME = QUEUE POSITION. No independent clock.
- * Dynamic queue costs scale with production.
- * Click value scales with production.
+ * PLEASE HOLD - Main game controller (FINAL v5)
+ * 
+ * Core systems:
+ * - WtL graduated states (Calm → Frustrated → Furious → Breaking Point → Hanging Up)
+ * - Combo always decays (Muscle Memory slows decay, never locks)
+ * - Click pushes queue at pps × 0.1 (always relevant)
+ * - Connection Opportunity events every 3-5 min
+ * - Game pauses on modals
+ * - Queue bar shows overall position (full at #200, empty at #0)
+ * - Reversed pressure second pass (boss fight)
+ * - Asymptotic dust collector bonus
  */
 const Game = (function() {
   // ===== CORE STATE =====
@@ -10,13 +17,13 @@ const Game = (function() {
     phase: 1,
     patience: 0,
     dust: 0,
-    wtl: Balance.WTL.baseMax,
-    wtlMax: Balance.WTL.baseMax,
+    wtl: Balance.WTL.max,
     wtlPerClick: Balance.CLICK.baseWtlPerClick,
-    patiencePerClick: Balance.CLICK.basePatiencePerClick,
+    baseClickValue: Balance.CLICK.baseClickValue,
+    clickValueMult: 1.0,
     dustPerSec: 0,
     dustMultiplier: 1,
-    refillAmount: Balance.WTL.refillAmount,
+    drainDelayBonus: 0,
     queue: Phase1.QUEUE_START,
     queueAdvances: 0,
     totalClicks: 0,
@@ -30,40 +37,60 @@ const Game = (function() {
     isIdle: false,
     queueProgress: 0,
     queueSpeedMult: Balance.QUEUE.queueSpeedBase,
+    queueCostMult: 1.0,
     queueRevealed: false,
-    queuePass: 1, // 1 = first pass, 2 = second pass
+    queuePass: 1,
     genMultipliers: {},
     globalGenMultiplier: 1,
-    queueCostMult: 1,
     maxPatience: 0,
     maxDust: 0,
     phoneTier: 0,
     phoneProdBonus: 0,
     phoneQueueBonus: 0,
+    // Dust collector bonus (asymptotic)
+    dustCollectorCount: 0,
+    // Connection Opportunity
+    nextConnectionTime: 0,
+    connectionActive: false,
+    connectionExpires: 0,
+    // Pass 2 (reversed pressure)
+    pass2Timer: 0,
+    pass2HoldTimer: 0,
+    pass2Elapsed: 0,
+    // WtL hangup countdown
+    hangupCountdown: 0,
+    hangingUp: false,
+    // Pausing
+    paused: false,
+    // Flags
     flags: {
       started: false, dustStarted: false, noWtlCost: false,
-      comboUnlocked: false, comboLocked: false,
-      drainAnnounced: false, timeFrozen: false,
-      holdPressure: false, emotionalCallus: false,
-      deepBreathHalf: false
+      comboUnlocked: false, muscleMemory: false,
+      drainAnnounced: false, holdPressure: false,
+      emotionalCallus: false, deepBreathHalf: false
     },
     boughtUpgrades: new Set(),
     triggeredMilestones: new Set(),
+    triggeredGenMilestones: new Set(),
   };
 
   Phase1.generators.forEach(g => { state.genMultipliers[g.id] = 1; });
 
   // ===== TIME = QUEUE POSITION =====
-  // Non-linear mapping: queue position → in-game seconds
   function queueToTime(queuePos) {
-    const total = Phase1.QUEUE_START; // 100
-    const progress = 1 - (queuePos / total); // 0 at start, 1 at queue 0
-    // Exponential curve: slow early, fast late
+    const total = Phase1.QUEUE_START;
+    const progress = 1 - (queuePos / total);
     const curved = Math.pow(progress, 2.5);
     return curved * Balance.TIME.nineYears;
   }
 
   function getInGameTime() {
+    if (state.queuePass === 2) {
+      // Pass 2: time goes from 9 years → 10 years
+      const transferTotal = Balance.QUEUE.transferPosition;
+      const progress = state.queue <= 0 ? 1 : (1 - (state.queue / transferTotal));
+      return Balance.TIME.nineYears + (Math.max(0, progress) * (Balance.TIME.tenYears - Balance.TIME.nineYears));
+    }
     return queueToTime(state.queue);
   }
 
@@ -72,28 +99,60 @@ const Game = (function() {
     let pps = Phase1.calcGeneratorPPS(state);
     // Phone tier passive bonus
     if (state.phoneProdBonus > 0) pps *= (1 + state.phoneProdBonus);
+    // Asymptotic dust collector bonus
+    if (state.dustCollectorCount > 0) {
+      const bonus = 1 - Math.exp(-state.dustCollectorCount * Balance.DUST.collectorCoefficient);
+      pps *= (1 + bonus);
+    }
+    // WtL state generator multiplier
+    const wtlState = getWtlState();
+    pps *= wtlState.genMult;
     return pps;
   }
 
-  // Click value scales with production: base + 5% of 1 second of pps
   function getClickValue() {
-    return state.patiencePerClick + (totalPPS() * Balance.CLICK.scaleFactor);
+    const base = state.baseClickValue + (totalPPS() * Balance.CLICK.clickPpsScale);
+    return base * state.clickValueMult;
   }
 
-  // Queue position cost: fixed curve, filled by pps over time
   function getQueuePositionCost(pos) {
     let cost = Math.floor(Balance.QUEUE.baseCost * Math.pow(Balance.QUEUE.growthRate, (Phase1.QUEUE_START - pos)));
-    if (state.queuePass === 2) cost = Math.floor(cost * Balance.QUEUE.pass2Mult);
     cost = Math.floor(cost * state.queueCostMult);
     return cost;
   }
 
-  // Deep Breath cost scales with income
   function getRefillCost() {
     const pps = totalPPS();
     let cost = Math.max(Balance.WTL.refillMinCost, Math.floor(pps * Balance.WTL.refillPpsMult));
     if (state.flags.deepBreathHalf) cost = Math.floor(cost * 0.5);
     return cost;
+  }
+
+  // ===== WTL STATE =====
+  function getWtlState() {
+    const pct = (state.wtl / Balance.WTL.max) * 100;
+    const t = Balance.WTL.thresholds;
+    if (pct >= t.calm.min) return { name: 'Calm', ...t.calm };
+    if (pct >= t.frustrated.min) return { name: 'Frustrated', ...t.frustrated };
+    if (pct >= t.furious.min) return { name: 'Furious', ...t.furious };
+    if (pct >= t.breakingPoint.min) return { name: 'Breaking Point', ...t.breakingPoint };
+    return { name: 'Hanging Up', ...t.hangingUp };
+  }
+
+  function getWtlDrain() {
+    const activeMin = state.activePlayTime / 60;
+    const drainStart = (Balance.WTL.drainStart + state.drainDelayBonus) / 60;
+    if (activeMin <= drainStart) return 0;
+
+    let drain = Balance.WTL.baseDrain;
+    // Position-based drain: closer to front = more anxious
+    const progressRatio = 1 - (state.queue / Phase1.QUEUE_START);
+    drain += Balance.WTL.positionDrainMax * progressRatio;
+
+    // Emotional Callus reduces drain
+    if (state.flags.emotionalCallus) drain *= (1 - Balance.WTL.drainReductionCallus);
+
+    return drain;
   }
 
   // ===== TIMING =====
@@ -105,6 +164,10 @@ const Game = (function() {
     state.lastInteractionTime = Date.now();
     if (state.isIdle) state.isIdle = false;
   }
+
+  // ===== PAUSE ON MODALS =====
+  function pauseGame() { state.paused = true; }
+  function resumeGame() { state.paused = false; lastTick = Date.now(); }
 
   // ===== INIT =====
   function init() {
@@ -131,6 +194,7 @@ const Game = (function() {
     Object.keys(saved).forEach(k => {
       if (k === 'boughtUpgrades') state.boughtUpgrades = new Set(saved.boughtUpgrades);
       else if (k === 'triggeredMilestones') state.triggeredMilestones = new Set(saved.triggeredMilestones);
+      else if (k === 'triggeredGenMilestones') state.triggeredGenMilestones = new Set(saved.triggeredGenMilestones);
       else if (k === 'generators') {
         saved.generators.forEach(sg => {
           const g = Phase1.generators.find(x => x.id === sg.id);
@@ -147,7 +211,8 @@ const Game = (function() {
     });
     Dust.collectors.forEach(c => {
       if (saved.boughtCollectors && saved.boughtCollectors.includes(c.id)) {
-        c.bought = true; c.effect(state);
+        c.bought = true; c.applySecondary(state);
+        state.dustCollectorCount++;
       }
     });
   }
@@ -156,6 +221,7 @@ const Game = (function() {
     state.flags.started = true;
     state.realStartTime = Date.now();
     state.lastInteractionTime = Date.now();
+    state.nextConnectionTime = Date.now() + Balance.CONNECTION.minInterval + Math.random() * (Balance.CONNECTION.maxInterval - Balance.CONNECTION.minInterval);
     lastTick = Date.now();
     document.addEventListener('mousemove', registerInteraction);
     document.addEventListener('keypress', registerInteraction);
@@ -170,26 +236,24 @@ const Game = (function() {
     requestAnimationFrame(tick);
   }
 
-  // ===== PHASE 1 UI (Three-Panel Layout) =====
+  // ===== PHASE 1 UI =====
   function buildPhase1UI() {
     document.getElementById('game-area').classList.add('active');
-
     document.getElementById('phone-bar').innerHTML =
       '<span class="phone-icon">🥫</span> <span class="phone-name">Tin Can & String</span><span class="elapsed">' + NumberFormat.formatHoldTime(0) + '</span>';
 
-    // Left panel: resources + actions
     document.getElementById('panel-left').innerHTML = `
       <div class="res-block"><span class="res-label">PATIENCE</span><div class="res-value patience" id="val-patience">0</div><span class="res-rate" id="val-pps-rate"></span></div>
-      <div class="res-block"><span class="res-label">WILL TO LIVE</span><div class="res-value wtl" id="val-wtl">${state.wtlMax}/${state.wtlMax}</div><div class="bar-container"><div class="bar bar-wtl" id="bar-wtl"></div></div><span class="res-rate" id="val-wtl-rate"></span></div>
+      <div class="res-block"><span class="res-label">WILL TO LIVE</span><div class="res-value wtl" id="val-wtl">${Balance.WTL.max}/${Balance.WTL.max}</div><div class="bar-container"><div class="bar bar-wtl" id="bar-wtl"></div></div><span class="res-rate" id="val-wtl-rate"></span><span class="wtl-state" id="val-wtl-state"></span></div>
       <div class="res-block" id="res-dust" style="display:none"><span class="res-label">DUST</span><div class="res-value dust" id="val-dust">0</div><span class="res-rate" id="val-dust-rate"></span></div>
       <div class="res-block" id="queue-block"><span class="res-label" id="queue-label">ON HOLD</span><div class="res-value queue" id="val-queue">...</div><div class="bar-container bar-container-queue"><div class="bar bar-queue" id="bar-queue"></div></div></div>
       <div id="actions">
-        <button id="btn-endure" class="btn btn-primary">ENDURE<span class="btn-sub" id="sub-endure">+1 | -1 WtL</span></button>
-        <button id="btn-refill" class="btn btn-secondary" style="display:none">Deep Breath<span class="btn-sub" id="sub-refill">5p → +${state.refillAmount} WtL</span></button>
+        <button id="btn-endure" class="btn btn-primary">ENDURE<span class="btn-sub" id="sub-endure">+1</span></button>
+        <button id="btn-refill" class="btn btn-secondary" style="display:none">Deep Breath<span class="btn-sub" id="sub-refill">10p → +40 WtL</span></button>
       </div>
+      <div id="connection-event" style="display:none"><button id="btn-connection" class="btn btn-connection">📞 CONNECTION OPPORTUNITY</button></div>
     `;
 
-    // Center panel: generators
     const genList = document.getElementById('gen-list');
     genList.innerHTML = '';
     Phase1.generators.forEach(g => {
@@ -201,7 +265,6 @@ const Game = (function() {
       genList.appendChild(div);
     });
 
-    // Right panel: upgrades (built dynamically)
     const upList = document.getElementById('upgrade-list');
     upList.innerHTML = '';
     Phase1.upgrades.forEach(u => {
@@ -215,22 +278,31 @@ const Game = (function() {
 
     document.getElementById('btn-endure').onclick = doEndure;
     document.getElementById('btn-refill').onclick = doRefill;
+    document.getElementById('btn-connection').onclick = claimConnection;
   }
 
   // ===== ACTIONS =====
   function doEndure() {
-    if (state.wtl <= 0) return;
+    if (state.wtl <= 0 || state.paused) return;
     const now = Date.now();
     if (now - lastClickTime < Balance.CLICK.cooldown) return;
     lastClickTime = now;
     registerInteraction();
+
     const clickVal = getClickValue();
     state.patience += clickVal;
     state.maxPatience += clickVal;
     if (!state.flags.noWtlCost) state.wtl = Math.max(0, state.wtl - state.wtlPerClick);
     state.totalClicks++;
-    // Click also pushes queue progress (only if Hold Pressure upgrade owned)
-    if (state.flags.holdPressure) state.queueProgress += Balance.CLICK.burstAmount;
+
+    // Hold Pressure: click pushes queue (pps × 0.1)
+    if (state.flags.holdPressure) {
+      const wtlState = getWtlState();
+      const push = totalPPS() * Balance.CLICK.queuePushScale * wtlState.clickMult;
+      state.queueProgress += push;
+    }
+
+    // Combo
     if (state.flags.comboUnlocked) {
       lastComboClick = now;
       state.combo = Math.min(state.comboCapMax, state.combo + Balance.CLICK.comboUp);
@@ -239,40 +311,66 @@ const Game = (function() {
 
   function doRefill() {
     const cost = getRefillCost();
-    if (state.patience >= cost) {
+    if (state.patience >= cost && !state.paused) {
       registerInteraction();
       state.patience -= cost;
-      state.wtl = Math.min(state.wtlMax, state.wtl + state.refillAmount);
+      state.wtl = Math.min(Balance.WTL.max, state.wtl + Balance.WTL.refillAmount);
       state._wtlFlash = Date.now();
-      const bar = document.getElementById('bar-wtl');
-      if (bar) { bar.style.background = '#fff'; setTimeout(() => { bar.style.background = ''; }, 200); }
     }
+  }
+
+  function claimConnection() {
+    if (!state.connectionActive || state.paused) return;
+    registerInteraction();
+    const burst = totalPPS() * Balance.CONNECTION.burstSeconds;
+    state.patience += burst;
+    state.maxPatience += burst;
+    state.connectionActive = false;
+    document.getElementById('connection-event').style.display = 'none';
+    UI.addLog('📞 Connection burst! +' + NumberFormat.compact(burst));
+    scheduleNextConnection();
+  }
+
+  function scheduleNextConnection() {
+    const delay = Balance.CONNECTION.minInterval + Math.random() * (Balance.CONNECTION.maxInterval - Balance.CONNECTION.minInterval);
+    state.nextConnectionTime = Date.now() + delay;
   }
 
   function buyGenerator(g) {
     const cost = Phase1.getGeneratorCost(g);
-    if (state.patience < cost) return;
+    if (state.patience < cost || state.paused) return;
     registerInteraction();
     state.patience -= cost;
     g.owned++;
-    console.log('[METRICS] Bought "' + g.name + '" (#' + g.owned + ') at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | patience:' + Math.floor(state.patience) + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm');
-    UI.addLog(g.name + ' (' + g.owned + ')');
+    console.log('[METRICS] Bought "' + g.name + '" (#' + g.owned + ') at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | patience:' + Math.floor(state.patience) + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm');
+
+    // Check milestone
+    const milestones = Phase1.checkGeneratorMilestones(state);
+    milestones.forEach(m => {
+      UI.addLog('★ ' + m.gen.name + ' milestone! (x' + m.mult + ')');
+      UI.showMilestone(m.gen.name + ' reached ' + (m.milestone * Balance.MILESTONE_INTERVAL) + '! Production x' + m.mult);
+      console.log('[METRICS] MILESTONE: ' + m.gen.name + ' x' + m.mult + ' at ' + mins());
+    });
   }
 
   function buyUpgrade(u) {
-    if (state.boughtUpgrades.has(u.id)) return;
+    if (state.boughtUpgrades.has(u.id) || state.paused) return;
     if (state.patience < u.cost) return;
     registerInteraction();
     state.patience -= u.cost;
     state.boughtUpgrades.add(u.id);
     u.effect(state);
-    console.log('[METRICS] UPGRADE "' + u.name + '" at ' + mins() + ' | pps:' + totalPPS().toFixed(1) + ' | clicks:' + state.totalClicks + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm | queue:#' + state.queue + ' | maxP:' + Math.floor(state.maxPatience) + ' | dust:' + Math.floor(state.dust));
+    console.log('[METRICS] UPGRADE "' + u.name + '" at ' + mins() + ' | pps:' + totalPPS().toFixed(1) + ' | clicks:' + state.totalClicks + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm | queue:#' + state.queue + ' | maxP:' + Math.floor(state.maxPatience) + ' | dust:' + Math.floor(state.dust));
     UI.addLog('★ ' + u.name);
-    if (u.narrative) UI.showMilestone(u.narrative);
+    if (u.narrative) {
+      pauseGame();
+      UI.showMilestone(u.narrative, resumeGame);
+    }
   }
 
   // ===== PHASE TRANSITION =====
   function endPhase1() {
+    state.paused = true; // Stop everything
     console.log('[METRICS] === PHASE 1 COMPLETE === at ' + mins() + ' | clicks:' + state.totalClicks + ' | pps:' + totalPPS().toFixed(1) + ' | dust:' + state.dust.toFixed(0));
     UI.showTransition(
       'SOMEONE PICKS UP.',
@@ -284,18 +382,20 @@ const Game = (function() {
 
   // ===== HANGUP =====
   function hangUp() {
+    pauseGame();
     console.log('[METRICS] HANGUP at ' + mins() + ' | queue:#' + state.queue);
     document.getElementById('game-area').style.display = 'none';
     document.getElementById('hangup-scr').style.display = 'block';
     document.getElementById('hangup-txt').textContent = Flavor.getHangup();
     document.getElementById('redial-btn').onclick = redial;
     state.hangups++;
-    // Harsh penalty: lose 20% of positions cleared
     const cleared = Phase1.QUEUE_START - state.queue;
     const penalty = Math.max(Balance.HANGUP.minPenalty, Math.floor(cleared * Balance.HANGUP.penaltyPercent));
     state.queue = Math.min(Phase1.QUEUE_START, state.queue + penalty);
     state.patience = 0;
-    state.wtl = state.wtlMax;
+    state.wtl = Balance.WTL.max;
+    state.hangingUp = false;
+    state.hangupCountdown = 0;
     console.log('[METRICS] HANGUP PENALTY: ' + penalty + ' positions back → queue #' + state.queue);
   }
 
@@ -303,14 +403,21 @@ const Game = (function() {
     document.getElementById('hangup-scr').style.display = 'none';
     document.getElementById('game-area').style.display = 'flex';
     UI.addLog('Redial. Queue: #' + state.queue + '. Dignity gone.');
-    lastTick = Date.now();
-    requestAnimationFrame(tick);
+    resumeGame();
   }
 
   // ===== GAME LOOP =====
   function tick() {
     if (!state.flags.started) return;
     const now = Date.now();
+
+    // If paused, just keep looping without advancing anything
+    if (state.paused) {
+      lastTick = now;
+      requestAnimationFrame(tick);
+      return;
+    }
+
     let dt = Math.min((now - lastTick) / 1000, 1.0);
     lastTick = now;
     state.realElapsed = (now - state.realStartTime) / 1000;
@@ -323,117 +430,183 @@ const Game = (function() {
 
     // Welcome back
     if (state.isIdle && now - state.lastInteractionTime < Balance.IDLE.threshold) {
-      // Just came back
       state.isIdle = false;
       const idleDur = Math.min(86400, (now - (state.idleStartTime || now)) / 1000);
       if (idleDur > Balance.IDLE.welcomeBackMinDuration) {
         const earned = Math.floor(totalPPS() * idleDur * Balance.IDLE.welcomeBackRate);
         state.patience += earned;
         state.maxPatience += earned;
-        state.wtl = state.wtlMax;
+        state.wtl = Balance.WTL.max;
         UI.addLog('Welcome back. +' + NumberFormat.format(earned) + ' patience.');
       }
     }
 
-    // Combo decay
-    if (state.flags.comboUnlocked && !state.flags.comboLocked && now - lastComboClick > Balance.CLICK.comboDecayDelay && state.combo > 1) {
-      state.combo = Math.max(1, state.combo - Balance.CLICK.comboDecay * dt);
+    // Combo decay (ALWAYS decays, never locks)
+    if (state.flags.comboUnlocked && now - lastComboClick > Balance.CLICK.comboDecayDelay && state.combo > 1) {
+      let decay = Balance.CLICK.comboDecay;
+      if (state.flags.muscleMemory) decay *= Balance.CLICK.comboDecaySlowMult;
+      state.combo = Math.max(1, state.combo - decay * dt);
     }
 
-    // WtL drain (active time based + pps based)
+    // WtL drain (graduated)
     if (!state.isIdle) {
-      const activeMin = state.activePlayTime / 60;
-      if (activeMin > Balance.WTL.baseDrainStart / 60) {
+      const drain = getWtlDrain();
+      if (drain > 0) {
         if (!state.flags.drainAnnounced) {
           state.flags.drainAnnounced = true;
-          UI.showMilestone('The hold music is getting to you. Your will to live... slips.');
+          pauseGame();
+          UI.showMilestone('The hold music is getting to you. Your will to live... slips.', resumeGame);
         }
-        const drainMin = activeMin - (Balance.WTL.baseDrainStart / 60);
-        let rate = Balance.WTL.baseDrainRate * Math.log2(drainMin + 1);
-        // PPS-based drain: the more productive you are, the more the system grinds you
-        let ppsDrain = Math.sqrt(totalPPS()) * Balance.WTL.ppsDrainFactor;
-        if (state.flags.emotionalCallus) ppsDrain *= (1 - Balance.WTL.ppsDrainReduction);
-        rate += ppsDrain;
-        rate = Math.min(Balance.WTL.maxDrainRate, rate);
-        state.wtl = Math.max(0, state.wtl - rate * dt);
+        state.wtl = Math.max(0, state.wtl - drain * dt);
       }
+      // Passive regen (tiny)
+      state.wtl = Math.min(Balance.WTL.max, state.wtl + Balance.WTL.passiveRegen * dt);
     }
 
-    // Hangup
-    if (!state.isIdle && state.wtl < 0.1) { hangUp(); return; }
+    // Hangup countdown at <10%
+    const wtlPct = (state.wtl / Balance.WTL.max) * 100;
+    if (!state.isIdle && wtlPct < 10) {
+      if (!state.hangingUp) { state.hangingUp = true; state.hangupCountdown = Balance.WTL.hangupCountdown; }
+      state.hangupCountdown -= dt;
+      if (state.hangupCountdown <= 0) { hangUp(); return; }
+    } else {
+      state.hangingUp = false;
+      state.hangupCountdown = 0;
+    }
 
-    // Production (0 when idle)
+    // Production
     let pps = state.isIdle ? 0 : totalPPS();
     pps *= state.combo;
     const earned = pps * dt;
     state.patience += earned;
     state.maxPatience += earned;
 
-    // Dust (real-time, pps-linked, no time factor)
+    // Dust accumulation
     if (state.flags.dustStarted && !state.isIdle) {
       const ppsBonus = totalPPS() * Balance.DUST.ppsLinkFactor;
       state.dust += (state.dustPerSec + ppsBonus) * state.dustMultiplier * dt;
       if (state.dust > state.maxDust) state.maxDust = state.dust;
     }
 
-    // === AUTO-QUEUE: progress fills, queue advances automatically ===
-    if (!state.isIdle && state.queue > 0) {
-      const pps = totalPPS();
-      const effectiveQueueSpeed = state.queueSpeedMult + state.phoneQueueBonus;
-      state.queueProgress += pps * effectiveQueueSpeed * dt;
+    // === AUTO-QUEUE (Pass 1) ===
+    if (!state.isIdle && state.queue > 0 && state.queuePass === 1) {
+      const basePps = totalPPS();
+      const wtlState = getWtlState();
+      const effectiveSpeed = (state.queueSpeedMult + state.phoneQueueBonus) * wtlState.queueMult;
+      state.queueProgress += basePps * effectiveSpeed * dt;
       const cost = getQueuePositionCost(state.queue);
-      
+
       if (state.queueProgress >= cost) {
         state.queueProgress -= cost;
         state.queue--;
         state.queueAdvances++;
-        state._queueFlash = Date.now(); // flash full bar for 200ms
-        
-        // Reveal queue position
+
+        // Queue reveal
         if (!state.queueRevealed && state.queue <= Balance.QUEUE.revealPosition) {
           state.queueRevealed = true;
           UI.addLog('"Your queue position is: ' + state.queue + '."');
-          UI.showMilestone('"Your estimated queue position is: ' + state.queue + '."');
+          pauseGame();
+          UI.showMilestone('"Your estimated queue position is: ' + state.queue + '."', resumeGame);
         }
-        
-        Phase1.checkMilestones(state.queue, state.triggeredMilestones);
-        console.log('[METRICS] Queue #' + state.queue + ' at ' + mins() + ' | cost:' + cost + ' | pps:' + pps.toFixed(1) + ' | holdTime:' + NumberFormat.formatHoldTime(getInGameTime()) + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm');
-        
-        // Queue hits 0
-        if (state.queue <= 0) {
-          if (state.queuePass === 1) {
-            // Department transfer
-            state.queuePass = 2;
-            state.queue = Balance.QUEUE.transferPosition;
-            state.queueProgress = 0;
-            UI.showMilestone('"Thank you for holding. I\'m transferring you to our Specialist Department."<br><br><em>*click*</em><br><br>"Please continue to hold."');
-            UI.addLog('TRANSFERRED. The hold music changes.');
-            console.log('[METRICS] DEPARTMENT TRANSFER at ' + mins() + ' | pps:' + pps.toFixed(1));
-          } else {
-            // Phase 1 complete
-            endPhase1();
+
+        // Phone tier upgrades
+        const phoneTiers = Balance.PHONE;
+        for (let i = phoneTiers.length - 1; i >= 0; i--) {
+          if (state.queue <= phoneTiers[i].queueGate && state.phoneTier < i) {
+            state.phoneTier = i;
+            state.phoneProdBonus = phoneTiers[i].prodBonus;
+            state.phoneQueueBonus = phoneTiers[i].queueBonus;
+            const phoneIcon = document.querySelector('#phone-bar .phone-icon');
+            const phoneName = document.querySelector('#phone-bar .phone-name');
+            if (phoneIcon) phoneIcon.textContent = phoneTiers[i].emoji;
+            if (phoneName) phoneName.textContent = phoneTiers[i].name;
+            UI.addLog('Connection upgrade: ' + phoneTiers[i].name);
+            break;
           }
         }
+
+        Phase1.checkMilestones(state.queue, state.triggeredMilestones);
+        console.log('[METRICS] Queue #' + state.queue + ' at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | holdTime:' + NumberFormat.formatHoldTime(getInGameTime()) + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm');
+
+        // Queue hits 0 → Department Transfer → Start Pass 2
+        if (state.queue <= 0) {
+          state.queuePass = 2;
+          state.queue = Balance.PASS2.startPosition;
+          state.queueProgress = 0;
+          state.pass2Elapsed = 0;
+          state.pass2HoldTimer = 0;
+          pauseGame();
+          UI.showMilestone('"Thank you for holding. I\'m transferring you to our Specialist Department."<br><br><em>*click*</em><br><br>"Please continue to hold."<br><br><em>You can hear other callers behind you...</em>', resumeGame);
+          UI.addLog('TRANSFERRED. You hear other callers pushing in behind you...');
+          console.log('[METRICS] DEPARTMENT TRANSFER at ' + mins() + ' | pps:' + totalPPS().toFixed(1));
+        }
       }
     }
 
-    // Phone tier upgrades (queue-position gated, passive bonuses)
-    const phoneTiers = Balance.PHONE;
-    for (let i = phoneTiers.length - 1; i >= 0; i--) {
-      if (state.queue <= phoneTiers[i].queueGate && state.phoneTier < i) {
-        state.phoneTier = i;
-        state.phoneProdBonus = phoneTiers[i].prodBonus;
-        state.phoneQueueBonus = phoneTiers[i].queueBonus;
-        const phoneIcon = document.querySelector('#phone-bar .phone-icon');
-        const phoneName = document.querySelector('#phone-bar .phone-name');
-        if (phoneIcon) phoneIcon.textContent = phoneTiers[i].emoji;
-        if (phoneName) phoneName.textContent = phoneTiers[i].name;
-        UI.addLog('Connection upgrade: ' + phoneTiers[i].name);
-        break;
+    // === PASS 2: REVERSED PRESSURE (boss fight) ===
+    if (!state.isIdle && state.queuePass === 2) {
+      state.pass2Elapsed += dt;
+      const pps = totalPPS();
+      const wtlState = getWtlState();
+
+      // Incoming pressure pushes you backward
+      const pressure = Balance.PASS2.basePressure * (1 + Balance.PASS2.pressureGrowth * state.pass2Elapsed);
+      const yourPush = pps * (state.queueSpeedMult + state.phoneQueueBonus) * wtlState.queueMult;
+
+      // Net movement: positive = being pushed back, negative = advancing
+      const netPressure = pressure - yourPush;
+      state.queueProgress += netPressure * dt;
+
+      // Convert accumulated pressure to position changes
+      // Each "position" costs a fixed amount to traverse
+      const positionCost = 10000; // arbitrary unit for position movement
+      while (state.queueProgress >= positionCost && state.queue < Balance.PASS2.maxPosition) {
+        state.queueProgress -= positionCost;
+        state.queue++;
+        console.log('[METRICS] PASS2 pushed back to #' + state.queue + ' at ' + mins());
+      }
+      while (state.queueProgress <= -positionCost && state.queue > 1) {
+        state.queueProgress += positionCost;
+        state.queue--;
+      }
+      // Clamp
+      if (state.queue < 1) state.queue = 1;
+      if (state.queueProgress < -positionCost) state.queueProgress = 0;
+      if (state.queueProgress > positionCost * 2) state.queueProgress = positionCost * 2;
+
+      // Win condition: hold at position ≤ target for duration with WtL > threshold
+      if (state.queue <= Balance.PASS2.holdTarget && wtlPct >= Balance.PASS2.holdMinWtl) {
+        state.pass2HoldTimer += dt;
+        if (state.pass2HoldTimer >= Balance.PASS2.holdDuration) {
+          endPhase1();
+          return;
+        }
+      } else {
+        state.pass2HoldTimer = 0; // reset if conditions not met
+      }
+
+      // Penalty if pushed to max position
+      if (state.queue >= Balance.PASS2.maxPosition) {
+        state.queue = Balance.PASS2.maxPosition - 10;
+        state.queueProgress = 0;
+        state.wtl = Math.max(0, state.wtl - 20); // harsh WtL penalty
+        UI.addLog('Pushed too far back! Others are cutting ahead...');
       }
     }
 
-    // Flavor text (in its own box, not log)
+    // Connection Opportunity events
+    if (!state.connectionActive && now >= state.nextConnectionTime && state.queueAdvances > 5) {
+      state.connectionActive = true;
+      state.connectionExpires = now + Balance.CONNECTION.windowDuration;
+      document.getElementById('connection-event').style.display = '';
+    }
+    if (state.connectionActive && now >= state.connectionExpires) {
+      state.connectionActive = false;
+      document.getElementById('connection-event').style.display = 'none';
+      scheduleNextConnection();
+    }
+
+    // Flavor text
     if (now - lastFlavorTime > Balance.UI_CONFIG.flavorInterval) {
       lastFlavorTime = now;
       const flavorEl = document.getElementById('flavor-text');
@@ -443,7 +616,7 @@ const Game = (function() {
     // Periodic log
     if (Math.floor(state.realElapsed) % 60 === 0 && Math.floor(state.realElapsed) > 0 && Math.floor(state.realElapsed) !== state._lastLog) {
       state._lastLog = Math.floor(state.realElapsed);
-      console.log('[METRICS] TIME ' + mins() + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm | pps:' + totalPPS().toFixed(0) + ' | q:#' + state.queue + ' | hold:' + NumberFormat.formatHoldTime(getInGameTime()) + ' | dust:' + Math.floor(state.dust) + ' | wtl:' + state.wtl.toFixed(1) + ' | combo:' + state.combo.toFixed(1) + ' | clicks:' + state.totalClicks + ' | maxP:' + Math.floor(state.maxPatience));
+      console.log('[METRICS] TIME ' + mins() + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm | pps:' + totalPPS().toFixed(0) + ' | q:#' + state.queue + ' | hold:' + NumberFormat.formatHoldTime(getInGameTime()) + ' | dust:' + Math.floor(state.dust) + ' | wtl:' + state.wtl.toFixed(1) + ' | combo:' + state.combo.toFixed(1) + ' | clicks:' + state.totalClicks + ' | maxP:' + Math.floor(state.maxPatience) + ' | pass:' + state.queuePass);
     }
 
     UI.setDustOverlay(state.dust);
@@ -455,40 +628,54 @@ const Game = (function() {
   // ===== DISPLAY =====
   function updateDisplay() {
     UI.setText('val-patience', NumberFormat.format(state.patience));
-    UI.setText('val-wtl', Math.round(state.wtl) + '/' + state.wtlMax);
-    
-    // Queue display: hidden until revealed, draining bar
+    UI.setText('val-wtl', Math.round(state.wtl) + '/' + Balance.WTL.max);
+
+    // WtL state indicator
+    const wtlState = getWtlState();
+    const wtlStateEl = document.getElementById('val-wtl-state');
+    if (wtlStateEl) {
+      wtlStateEl.textContent = wtlState.name !== 'Calm' ? wtlState.name : '';
+      wtlStateEl.className = 'wtl-state ' + (wtlState.name === 'Hanging Up' ? 'critical' : wtlState.name === 'Breaking Point' ? 'danger' : wtlState.name === 'Furious' ? 'warning' : '');
+    }
+
+    // Queue display: bar shows OVERALL position (full at #200, empty at #0)
     if (state.queueRevealed) {
-      document.getElementById('queue-label').textContent = 'QUEUE';
+      document.getElementById('queue-label').textContent = state.queuePass === 2 ? 'HOLDING POSITION' : 'QUEUE';
       UI.setText('val-queue', '#' + state.queue);
     } else {
       document.getElementById('queue-label').textContent = 'ON HOLD';
       UI.setText('val-queue', '...');
     }
-    const qCost = getQueuePositionCost(state.queue);
-    let qPct;
-    if (state._queueFlash && Date.now() - state._queueFlash < 200) {
-      qPct = 100; // show full briefly on advance
-    } else {
-      qPct = qCost > 0 ? (state.queueProgress / qCost) * 100 : 0;
-    }
-    UI.setWidth('bar-queue', Math.max(0, Math.min(100, qPct)));
-    
-    const wtlPct = (state._wtlFlash && Date.now() - state._wtlFlash < 200) ? 100 : (state.wtl / state.wtlMax) * 100;
+    const qBarPct = (state.queue / Phase1.QUEUE_START) * 100;
+    UI.setWidth('bar-queue', Math.max(0, Math.min(100, qBarPct)));
+
+    // WtL bar
+    const wtlPct = (state.wtl / Balance.WTL.max) * 100;
     UI.setWidth('bar-wtl', wtlPct);
     UI.setBarColor('bar-wtl', wtlPct);
-    UI.setWtlOverlay(wtlPct);
+    if (typeof UI.setWtlOverlay === 'function') UI.setWtlOverlay(wtlPct);
 
-    // Dust display (just numbers, no units)
+    // Hangup countdown
+    if (state.hangingUp) {
+      UI.setText('val-wtl', '⚠️ ' + state.hangupCountdown.toFixed(1) + 's');
+    }
+
+    // Pass 2 hold timer
+    if (state.queuePass === 2 && state.pass2HoldTimer > 0) {
+      const holdEl = document.getElementById('val-queue');
+      if (holdEl) holdEl.textContent = '#' + state.queue + ' [HOLD: ' + state.pass2HoldTimer.toFixed(0) + '/' + Balance.PASS2.holdDuration + 's]';
+    }
+
+    // Dust display
     if (state.flags.dustStarted) {
       UI.show('res-dust');
       UI.setText('val-dust', NumberFormat.compact(state.dust));
-      const dustRate = state.dustPerSec + totalPPS() * Balance.DUST.ppsLinkFactor;
+      const dustRate = (state.dustPerSec + totalPPS() * Balance.DUST.ppsLinkFactor) * state.dustMultiplier;
       const drEl = document.getElementById('val-dust-rate');
       if (drEl) { drEl.textContent = '+' + dustRate.toFixed(1) + '/sec'; drEl.className = 'res-rate positive'; }
     }
 
-    // PPS rate under patience
+    // PPS rate
     const pps = totalPPS() * state.combo;
     const ppsEl = document.getElementById('val-pps-rate');
     if (ppsEl) {
@@ -502,53 +689,45 @@ const Game = (function() {
       } else { ppsEl.textContent = ''; }
     }
 
-    // WtL rate display
+    // WtL rate
     const wtlEl = document.getElementById('val-wtl-rate');
     if (wtlEl) {
-      const activeMin = state.activePlayTime / 60;
-      if (activeMin > Balance.WTL.baseDrainStart / 60) {
-        const drainMin = activeMin - (Balance.WTL.baseDrainStart / 60);
-        let rate = Balance.WTL.baseDrainRate * Math.log2(drainMin + 1);
-        let ppsDrain = Math.sqrt(totalPPS()) * Balance.WTL.ppsDrainFactor;
-        if (state.flags.emotionalCallus) ppsDrain *= (1 - Balance.WTL.ppsDrainReduction);
-        rate = Math.min(Balance.WTL.maxDrainRate, rate + ppsDrain);
-        wtlEl.textContent = '-' + rate.toFixed(1) + '/sec';
+      const drain = getWtlDrain();
+      if (drain > 0) {
+        const net = Balance.WTL.passiveRegen - drain;
+        wtlEl.textContent = net.toFixed(2) + '/sec';
         wtlEl.className = 'res-rate negative';
       } else { wtlEl.textContent = ''; }
     }
 
-    // Phone bar time display
-    // Before first advance: tick 1 real second per second (cosmetic)
-    // After first advance: shows queue-based time
+    // Phone bar time
     const phoneBar = document.getElementById('phone-bar');
     if (phoneBar) {
       const elapsed = phoneBar.querySelector('.elapsed');
       if (elapsed) {
-        if (state.queueAdvances === 0) {
-          // Cosmetic tick before first advance
-          elapsed.textContent = NumberFormat.formatHoldTime(state.activePlayTime);
-        } else {
-          elapsed.textContent = NumberFormat.formatHoldTime(getInGameTime());
-        }
+        elapsed.textContent = state.queueAdvances === 0 ? NumberFormat.formatHoldTime(state.activePlayTime) : NumberFormat.formatHoldTime(getInGameTime());
       }
     }
 
-    // Action buttons
+    // Refill button
     const refillCost = getRefillCost();
     const refillBtn = document.getElementById('btn-refill');
     if (refillBtn) {
-      if (state.wtl < state.wtlMax * 0.7) refillBtn.style.display = '';
+      if (state.wtl < Balance.WTL.max * 0.7) refillBtn.style.display = '';
       refillBtn.disabled = state.patience < refillCost;
-      UI.setText('sub-refill', NumberFormat.compact(refillCost) + 'p → +' + state.refillAmount + ' WtL');
+      UI.setText('sub-refill', NumberFormat.compact(refillCost) + 'p → +' + Balance.WTL.refillAmount + ' WtL');
     }
+
+    // Endure button
     const endureBtn = document.getElementById('btn-endure');
     if (endureBtn) {
       endureBtn.disabled = state.wtl < state.wtlPerClick;
       const cv = getClickValue();
-      UI.setText('sub-endure', '+' + NumberFormat.compact(cv) + (state.wtlPerClick > 0 ? ' | -' + state.wtlPerClick + ' WtL' : ''));
+      const wtlCostStr = state.wtlPerClick > 0 ? ' | -' + state.wtlPerClick.toFixed(1) + ' WtL' : '';
+      UI.setText('sub-endure', '+' + NumberFormat.compact(cv) + wtlCostStr);
     }
 
-    // Generators (one-line compact)
+    // Generators
     Phase1.generators.forEach(g => {
       const div = document.getElementById('gbtn-' + g.id);
       if (!div) return;
@@ -556,17 +735,19 @@ const Game = (function() {
         g.unlocked = true;
         div.style.display = '';
         UI.addLog('New: ' + g.name);
-        console.log('[METRICS] GENERATOR UNLOCKED: "' + g.name + '" at ' + mins() + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm | maxP:' + Math.floor(state.maxPatience) + ' | pps:' + totalPPS().toFixed(1));
+        console.log('[METRICS] GENERATOR UNLOCKED: "' + g.name + '" at ' + mins() + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm | maxP:' + Math.floor(state.maxPatience) + ' | pps:' + totalPPS().toFixed(1));
       }
       if (g.unlocked) {
         const cost = Phase1.getGeneratorCost(g);
-        const ppsEach = (g.baseProduction * (state.genMultipliers[g.id] || 1) * state.globalGenMultiplier * Phase1.getNestedBoost(g.id)).toFixed(1);
+        const milestoneMult = Phase1.getMilestoneMultiplier(g.owned);
+        const ppsEach = (g.baseProduction * (state.genMultipliers[g.id] || 1) * state.globalGenMultiplier * milestoneMult * Phase1.getNestedBoost(g.id)).toFixed(1);
+        const milestoneTag = milestoneMult > 1 ? ' [x' + milestoneMult + ']' : '';
         div.className = 'gen-item' + (state.patience < cost ? ' disabled' : '');
-        div.innerHTML = '<div class="gi-info"><span class="gi-name">' + g.name + ' (' + g.owned + ')</span><span class="gi-desc">+' + ppsEach + '/sec each</span></div><span class="gi-cost">' + NumberFormat.compact(cost) + '</span>';
+        div.innerHTML = '<div class="gi-info"><span class="gi-name">' + g.name + ' (' + g.owned + ')' + milestoneTag + '</span><span class="gi-desc">+' + ppsEach + '/sec each</span></div><span class="gi-cost">' + NumberFormat.compact(cost) + '</span>';
       }
     });
 
-    // Upgrades (one-line compact)
+    // Upgrades
     Phase1.upgrades.forEach(u => {
       const div = document.getElementById('ubtn-' + u.id);
       if (!div) return;
@@ -580,7 +761,7 @@ const Game = (function() {
           if (!gen || gen.owned < u.revealAtGen.count) visible = false;
         }
         if (visible && div.style.display === 'none') {
-          console.log('[METRICS] UPGRADE AVAILABLE: "' + u.name + '" at ' + mins() + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm | queue:#' + state.queue + ' | pps:' + totalPPS().toFixed(1) + ' | maxP:' + Math.floor(state.maxPatience));
+          console.log('[METRICS] UPGRADE AVAILABLE: "' + u.name + '" at ' + mins() + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm | queue:#' + state.queue + ' | pps:' + totalPPS().toFixed(1) + ' | maxP:' + Math.floor(state.maxPatience));
         }
         div.style.display = visible ? '' : 'none';
         div.className = 'upgrade-item' + (state.patience < u.cost ? ' disabled' : '');
@@ -592,7 +773,6 @@ const Game = (function() {
         div.onclick = null;
       }
     });
-
   }
 
   // ===== SAVE =====
@@ -601,12 +781,13 @@ const Game = (function() {
       ...state,
       boughtUpgrades: Array.from(state.boughtUpgrades),
       triggeredMilestones: Array.from(state.triggeredMilestones),
+      triggeredGenMilestones: Array.from(state.triggeredGenMilestones),
       generators: Phase1.generators.map(g => ({ id: g.id, owned: g.owned, unlocked: g.unlocked })),
       boughtCollectors: Dust.collectors.filter(c => c.bought).map(c => c.id),
     };
   }
 
-  return { init, state, getState, totalPPS, getInGameTime, getRefillCost };
+  return { init, state, getState, totalPPS, getInGameTime, getRefillCost, getWtlState, pauseGame, resumeGame };
 })();
 
 document.addEventListener('DOMContentLoaded', Game.init);
