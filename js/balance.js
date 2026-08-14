@@ -103,9 +103,9 @@ const Balance = (function() {
     baseWtlPerClick: 0.5,     // WtL cost per click (out of 100 max now)
     comboMax: 4,              // base combo cap (before Time Blurs)
     comboUp: 0.3,             // combo gain per click
-    comboDecay: 0.4,          // combo decay per second (always active)
+    comboDecay: 0.2,          // combo decay per second (always active)
     comboDecayDelay: 600,     // ms after last click before decay starts
-    comboDecaySlowMult: 0.5,  // Muscle Memory: decay *= this (50% slower)
+    comboDecaySlowMult: 0.5,  // Muscle Memory: decay *= this (50% slower → 0.1/sec)
   };
 
   // === CONNECTION OPPORTUNITY EVENTS ===
@@ -113,7 +113,8 @@ const Balance = (function() {
     minInterval: 180000,      // min ms between events (3 min)
     maxInterval: 300000,      // max ms between events (5 min)
     windowDuration: 5000,     // ms player has to click it
-    burstSeconds: 30,         // reward = this many seconds of current production
+    buffMultiplier: 3,        // production multiplied by this during buff
+    buffDuration: 10,         // seconds the buff lasts
   };
 
   // === WILL TO LIVE (graduated states) ===
@@ -136,7 +137,7 @@ const Balance = (function() {
       breakingPoint: { min: 10, queueMult: 0.5,  clickMult: 1.5, genMult: 1.25 },
       hangingUp:     { min: 0,  queueMult: 0.0,  clickMult: 2.0, genMult: 1.5 },
     },
-    hangupCountdown: 5,         // seconds at <10% before forced hangup
+    hangupCountdown: 10,        // seconds at <10% before forced hangup
   };
 
   // === HANGUP ===

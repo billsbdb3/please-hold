@@ -53,8 +53,6 @@ const Phase1 = (function() {
       effect(s) { s.clickValueMult *= 1.5; s.wtlPerClick *= 0.5; } },
 
     // --- Mid game (min 15-35) ---
-    { id: 'u_modem', name: 'Overclocked Modem', desc: 'Speed Dialers x2', cost: 25000, revealAt: 15000, revealAtQueue: 130, revealAtGen: { id: 'gen_speeddialer', count: 3 },
-      effect(s) { s.genMultipliers.gen_speeddialer *= 2; } },
     { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 50000, revealAt: 50000, revealAtQueue: 120,
       effect(s) { s.dustPerSec = Balance.DUST.baseRate; s.flags.dustStarted = true; },
       narrative: "You glance down. There is a fine layer of dust on your arm. It wasn't there when you started this call." },
@@ -66,8 +64,6 @@ const Phase1 = (function() {
       narrative: "Your fingers remember. The rhythm is in your bones. The decay... slows." },
 
     // --- Mid-late game (min 35-50) ---
-    { id: 'u_shadow', name: 'Dark Network', desc: 'Shadow Call Centers x2', cost: 800000, revealAt: 500000, revealAtQueue: 65, revealAtGen: { id: 'gen_callcenter', count: 2 },
-      effect(s) { s.genMultipliers.gen_callcenter *= 2; } },
     { id: 'u_callus', name: 'Emotional Callus', desc: 'WtL drain reduced 50%', cost: 500000, revealAt: 400000, revealAtQueue: 60, revealAtActiveTime: 2400,
       effect(s) { s.flags.emotionalCallus = true; },
       narrative: "You've gone numb. The music still plays but it passes through you now." },

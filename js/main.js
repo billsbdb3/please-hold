@@ -53,6 +53,7 @@ const Game = (function() {
     nextConnectionTime: 0,
     connectionActive: false,
     connectionExpires: 0,
+    connectionBuffExpires: 0,
     // Pass 2 (reversed pressure)
     pass2Timer: 0,
     pass2HoldTimer: 0,
@@ -107,6 +108,10 @@ const Game = (function() {
     // WtL state generator multiplier
     const wtlState = getWtlState();
     pps *= wtlState.genMult;
+    // Connection buff
+    if (state.connectionBuffExpires && Date.now() < state.connectionBuffExpires) {
+      pps *= Balance.CONNECTION.buffMultiplier;
+    }
     return pps;
   }
 
@@ -315,21 +320,22 @@ const Game = (function() {
     const cost = getRefillCost();
     if (state.patience >= cost && !state.paused) {
       registerInteraction();
+      const before = state.wtl;
       state.patience -= cost;
       state.wtl = Math.min(Balance.WTL.max, state.wtl + Balance.WTL.refillAmount);
       state._wtlFlash = Date.now();
+      console.log('[METRICS] DEEP BREATH at ' + mins() + ' | cost:' + cost + ' | wtl:' + before.toFixed(1) + '→' + state.wtl.toFixed(1) + ' | pps:' + totalPPS().toFixed(0));
     }
   }
 
   function claimConnection() {
     if (!state.connectionActive || state.paused) return;
     registerInteraction();
-    const burst = totalPPS() * Balance.CONNECTION.burstSeconds;
-    state.patience += burst;
-    state.maxPatience += burst;
     state.connectionActive = false;
+    state.connectionBuffExpires = Date.now() + (Balance.CONNECTION.buffDuration * 1000);
     document.getElementById('connection-event').style.display = 'none';
-    UI.addLog('📞 Connection burst! +' + NumberFormat.compact(burst));
+    UI.addLog('📞 Signal boost! Production x' + Balance.CONNECTION.buffMultiplier + ' for ' + Balance.CONNECTION.buffDuration + 's');
+    console.log('[METRICS] CONNECTION CLAIMED at ' + mins() + ' | pps:' + totalPPS().toFixed(0) + ' | buff:x' + Balance.CONNECTION.buffMultiplier + ' for ' + Balance.CONNECTION.buffDuration + 's');
     scheduleNextConnection();
   }
 
@@ -344,14 +350,19 @@ const Game = (function() {
     registerInteraction();
     state.patience -= cost;
     g.owned++;
+    // Flash animation
+    const genDiv = document.getElementById('gbtn-' + g.id);
+    if (genDiv) { genDiv.classList.add('just-bought'); setTimeout(() => genDiv.classList.remove('just-bought'), 400); }
     console.log('[METRICS] Bought "' + g.name + '" (#' + g.owned + ') at ' + mins() + ' | cost:' + cost + ' | pps:' + totalPPS().toFixed(1) + ' | patience:' + Math.floor(state.patience) + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm');
 
     // Check milestone
     const milestones = Phase1.checkGeneratorMilestones(state);
     milestones.forEach(m => {
+      state._lastEventTime = Date.now();
+      const ppsBefore = totalPPS();
       UI.addLog('★ ' + m.gen.name + ' milestone! (x' + m.mult + ')');
       UI.showMilestone(m.gen.name + ' reached ' + (m.milestone * Balance.MILESTONE_INTERVAL) + '! Production x' + m.mult);
-      console.log('[METRICS] MILESTONE: ' + m.gen.name + ' x' + m.mult + ' at ' + mins());
+      console.log('[METRICS] MILESTONE: ' + m.gen.name + ' x' + m.mult + ' at ' + mins() + ' | ppsBefore:' + ppsBefore.toFixed(0) + ' → ppsAfter:' + totalPPS().toFixed(0));
     });
   }
 
@@ -362,6 +373,7 @@ const Game = (function() {
     state.patience -= u.cost;
     state.boughtUpgrades.add(u.id);
     u.effect(state);
+    state._lastEventTime = Date.now();
     console.log('[METRICS] UPGRADE "' + u.name + '" at ' + mins() + ' | pps:' + totalPPS().toFixed(1) + ' | clicks:' + state.totalClicks + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm | queue:#' + state.queue + ' | maxP:' + Math.floor(state.maxPatience) + ' | dust:' + Math.floor(state.dust));
     UI.addLog('★ ' + u.name);
     if (u.narrative) {
@@ -456,13 +468,20 @@ const Game = (function() {
       if (drain > 0) {
         if (!state.flags.drainAnnounced) {
           state.flags.drainAnnounced = true;
-          pauseGame();
-          UI.showMilestone('The hold music is getting to you. Your will to live... slips.', resumeGame);
+          UI.addLog('The hold music is getting to you. Your will to live... slips.');
         }
         state.wtl = Math.max(0, state.wtl - drain * dt);
       }
       // Passive regen (tiny)
       state.wtl = Math.min(Balance.WTL.max, state.wtl + Balance.WTL.passiveRegen * dt);
+
+      // Track WtL state transitions
+      const newWtlState = getWtlState();
+      if (state._lastWtlState && state._lastWtlState !== newWtlState.name) {
+        console.log('[METRICS] WTL STATE: ' + state._lastWtlState + ' → ' + newWtlState.name + ' | wtl:' + state.wtl.toFixed(1) + ' | drain:' + drain.toFixed(2) + '/s | at ' + mins());
+        state._lastEventTime = Date.now();
+      }
+      state._lastWtlState = newWtlState.name;
     }
 
     // Hangup countdown at <10%
@@ -503,12 +522,10 @@ const Game = (function() {
         state.queue--;
         state.queueAdvances++;
 
-        // Queue reveal
+        // Queue reveal (no pause — just log it)
         if (!state.queueRevealed && state.queue <= Balance.QUEUE.revealPosition) {
           state.queueRevealed = true;
           UI.addLog('"Your queue position is: ' + state.queue + '."');
-          pauseGame();
-          UI.showMilestone('"Your estimated queue position is: ' + state.queue + '."', resumeGame);
         }
 
         // Phone tier upgrades
@@ -615,10 +632,37 @@ const Game = (function() {
       if (flavorEl) flavorEl.textContent = Flavor.getForPhase(state.phase);
     }
 
-    // Periodic log
+    // Periodic log (comprehensive)
     if (Math.floor(state.realElapsed) % 60 === 0 && Math.floor(state.realElapsed) > 0 && Math.floor(state.realElapsed) !== state._lastLog) {
       state._lastLog = Math.floor(state.realElapsed);
-      console.log('[METRICS] TIME ' + mins() + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm | pps:' + totalPPS().toFixed(0) + ' | q:#' + state.queue + ' | hold:' + NumberFormat.formatHoldTime(getInGameTime()) + ' | dust:' + Math.floor(state.dust) + ' | wtl:' + state.wtl.toFixed(1) + ' | combo:' + state.combo.toFixed(1) + ' | clicks:' + state.totalClicks + ' | maxP:' + Math.floor(state.maxPatience) + ' | pass:' + state.queuePass);
+      const ppsNow = totalPPS();
+      const wtlState = getWtlState();
+      const drain = getWtlDrain();
+      const refillCost = getRefillCost();
+      const effectiveQueueSpeed = (state.queueSpeedMult + state.phoneQueueBonus) * wtlState.queueMult;
+      const qCost = state.queue > 0 ? getQueuePositionCost(state.queue) : 0;
+      const timeToNext = qCost > 0 ? (qCost / (ppsNow * effectiveQueueSpeed)).toFixed(1) : '—';
+      const clickQueuePush = state.flags.holdPressure ? (ppsNow * Balance.CLICK.queuePushScale * wtlState.clickMult).toFixed(0) : '0';
+
+      // Generator dominance breakdown
+      const genPps = Phase1.generators.map(g => {
+        if (g.owned <= 0) return null;
+        const mult = (state.genMultipliers[g.id] || 1) * state.globalGenMultiplier * Phase1.getMilestoneMultiplier(g.owned);
+        const boost = Phase1.getNestedBoost(g.id);
+        return { id: g.id.replace('gen_', '')[0], pps: g.baseProduction * g.owned * mult * boost };
+      }).filter(Boolean);
+      const totalGen = genPps.reduce((s, g) => s + g.pps, 0);
+      const dominance = genPps.map(g => g.id + ':' + (totalGen > 0 ? ((g.pps / totalGen) * 100).toFixed(0) : 0) + '%').join(' ');
+
+      // Time since last unlock/milestone/upgrade
+      const lastEvent = state._lastEventTime || state.realStartTime;
+      const timeSinceEvent = ((Date.now() - lastEvent) / 1000).toFixed(0);
+
+      console.log('[METRICS] TIME ' + mins() + ' | active:' + (state.activePlayTime / 60).toFixed(1) + 'm | pps:' + ppsNow.toFixed(0) + ' | q:#' + state.queue + ' | hold:' + NumberFormat.formatHoldTime(getInGameTime()) + ' | pass:' + state.queuePass);
+      console.log('[METRICS]   WtL:' + state.wtl.toFixed(1) + '/' + Balance.WTL.max + ' [' + wtlState.name + '] drain:' + drain.toFixed(2) + '/s | refillCost:' + refillCost + ' | combo:' + state.combo.toFixed(1) + '/' + state.comboCapMax);
+      console.log('[METRICS]   Queue: speed=' + effectiveQueueSpeed.toFixed(2) + ' | cost=' + qCost + ' | ETA=' + timeToNext + 's | clickPush=' + clickQueuePush + '/click');
+      console.log('[METRICS]   Gens: ' + Phase1.generators.map(g => g.id.replace('gen_', '')[0] + ':' + g.owned).join(' ') + ' | dominance: ' + dominance);
+      console.log('[METRICS]   Dust:' + Math.floor(state.dust) + ' | collectors:' + state.dustCollectorCount + '/14 | dustMult:' + state.dustMultiplier.toFixed(1) + ' | phone:' + state.phoneTier + ' | clicks:' + state.totalClicks + ' | sinceEvent:' + timeSinceEvent + 's');
     }
 
     UI.setDustOverlay(state.dust);
@@ -632,12 +676,31 @@ const Game = (function() {
     UI.setText('val-patience', NumberFormat.format(state.patience));
     UI.setText('val-wtl', Math.round(state.wtl) + '/' + Balance.WTL.max);
 
-    // WtL state indicator
+    // WtL state indicator + panel class
     const wtlState = getWtlState();
     const wtlStateEl = document.getElementById('val-wtl-state');
     if (wtlStateEl) {
       wtlStateEl.textContent = wtlState.name !== 'Calm' ? wtlState.name : '';
       wtlStateEl.className = 'wtl-state ' + (wtlState.name === 'Hanging Up' ? 'critical' : wtlState.name === 'Breaking Point' ? 'danger' : wtlState.name === 'Furious' ? 'warning' : '');
+    }
+    // Panel visual state
+    const panelLeft = document.getElementById('panel-left');
+    if (panelLeft) {
+      panelLeft.className = '';
+      if (wtlState.name === 'Frustrated') panelLeft.className = 'wtl-frustrated';
+      else if (wtlState.name === 'Furious') panelLeft.className = 'wtl-furious';
+      else if (wtlState.name === 'Breaking Point') panelLeft.className = 'wtl-breaking';
+      else if (wtlState.name === 'Hanging Up') panelLeft.className = 'wtl-hangingup';
+    }
+
+    // Connection buff glow on game container
+    const container = document.getElementById('game-container');
+    if (container) {
+      if (state.connectionBuffExpires && Date.now() < state.connectionBuffExpires) {
+        if (!container.classList.contains('buff-active')) container.classList.add('buff-active');
+      } else {
+        container.classList.remove('buff-active');
+      }
     }
 
     // Queue display: bar shows OVERALL position (full at #200, empty at #0)
@@ -683,11 +746,16 @@ const Game = (function() {
     if (ppsEl) {
       if (pps > 0) {
         const display = pps < 10 ? pps.toFixed(1) : NumberFormat.compact(pps);
-        ppsEl.textContent = '+' + display + '/sec';
-        ppsEl.className = 'res-rate positive';
+        let rateText = '+' + display + '/sec';
         if (state.flags.comboUnlocked && state.combo > 1.01) {
-          ppsEl.textContent += ' (x' + state.combo.toFixed(1) + ')';
+          rateText += ' (x' + state.combo.toFixed(1) + ')';
         }
+        if (state.connectionBuffExpires && Date.now() < state.connectionBuffExpires) {
+          const remaining = ((state.connectionBuffExpires - Date.now()) / 1000).toFixed(0);
+          rateText += ' ⚡x' + Balance.CONNECTION.buffMultiplier + ' [' + remaining + 's]';
+        }
+        ppsEl.textContent = rateText;
+        ppsEl.className = 'res-rate positive';
       } else { ppsEl.textContent = ''; }
     }
 
