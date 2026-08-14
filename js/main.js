@@ -16,9 +16,7 @@ const Game = (function() {
     patiencePerClick: Balance.CLICK.basePatiencePerClick,
     dustPerSec: 0,
     dustMultiplier: 1,
-    wtlRegen: 0,
-    refillCost: Balance.WTL.baseRefillCost,
-    refillAmount: Balance.WTL.baseRefillAmount,
+    refillAmount: Balance.WTL.refillAmount,
     queue: Phase1.QUEUE_START,
     queueAdvances: 0,
     totalClicks: 0,
@@ -30,10 +28,8 @@ const Game = (function() {
     activePlayTime: 0,
     lastInteractionTime: 0,
     isIdle: false,
-    queueFamiliarityDiscount: 0,
-    lastAdvanceTime: 0,
     queueProgress: 0,
-    queueSpeedMult: 1.0,
+    queueSpeedMult: Balance.QUEUE.queueSpeedBase,
     queueRevealed: false,
     queuePass: 1, // 1 = first pass, 2 = second pass
     genMultipliers: {},
@@ -41,11 +37,15 @@ const Game = (function() {
     queueCostMult: 1,
     maxPatience: 0,
     maxDust: 0,
+    phoneTier: 0,
+    phoneProdBonus: 0,
+    phoneQueueBonus: 0,
     flags: {
       started: false, dustStarted: false, noWtlCost: false,
       comboUnlocked: false, comboLocked: false,
-      drainAnnounced: false, queueFamiliarity: false, timeFrozen: false,
-      holdPressure: false
+      drainAnnounced: false, timeFrozen: false,
+      holdPressure: false, emotionalCallus: false,
+      deepBreathHalf: false
     },
     boughtUpgrades: new Set(),
     triggeredMilestones: new Set(),
@@ -69,7 +69,10 @@ const Game = (function() {
 
   // ===== PRODUCTION =====
   function totalPPS() {
-    return Phase1.calcGeneratorPPS(state);
+    let pps = Phase1.calcGeneratorPPS(state);
+    // Phone tier passive bonus
+    if (state.phoneProdBonus > 0) pps *= (1 + state.phoneProdBonus);
+    return pps;
   }
 
   // Click value scales with production: base + 5% of 1 second of pps
@@ -79,10 +82,17 @@ const Game = (function() {
 
   // Queue position cost: fixed curve, filled by pps over time
   function getQueuePositionCost(pos) {
-    // Growth 1.06, base 200, 200 positions. Pass2 x5.
-    // Sim verified: 103 min active, transfer at 66 min.
-    let cost = Math.floor(200 * Math.pow(1.06, (Phase1.QUEUE_START - pos)));
-    if (state.queuePass === 2) cost = Math.floor(cost * 5);
+    let cost = Math.floor(Balance.QUEUE.baseCost * Math.pow(Balance.QUEUE.growthRate, (Phase1.QUEUE_START - pos)));
+    if (state.queuePass === 2) cost = Math.floor(cost * Balance.QUEUE.pass2Mult);
+    cost = Math.floor(cost * state.queueCostMult);
+    return cost;
+  }
+
+  // Deep Breath cost scales with income
+  function getRefillCost() {
+    const pps = totalPPS();
+    let cost = Math.max(Balance.WTL.refillMinCost, Math.floor(pps * Balance.WTL.refillPpsMult));
+    if (state.flags.deepBreathHalf) cost = Math.floor(cost * 0.5);
     return cost;
   }
 
@@ -175,7 +185,7 @@ const Game = (function() {
       <div class="res-block" id="queue-block"><span class="res-label" id="queue-label">ON HOLD</span><div class="res-value queue" id="val-queue">...</div><div class="bar-container bar-container-queue"><div class="bar bar-queue" id="bar-queue"></div></div></div>
       <div id="actions">
         <button id="btn-endure" class="btn btn-primary">ENDURE<span class="btn-sub" id="sub-endure">+1 | -1 WtL</span></button>
-        <button id="btn-refill" class="btn btn-secondary" style="display:none">Deep Breath<span class="btn-sub" id="sub-refill">${state.refillCost}p → +${state.refillAmount} WtL</span></button>
+        <button id="btn-refill" class="btn btn-secondary" style="display:none">Deep Breath<span class="btn-sub" id="sub-refill">5p → +${state.refillAmount} WtL</span></button>
       </div>
     `;
 
@@ -220,7 +230,7 @@ const Game = (function() {
     if (!state.flags.noWtlCost) state.wtl = Math.max(0, state.wtl - state.wtlPerClick);
     state.totalClicks++;
     // Click also pushes queue progress (only if Hold Pressure upgrade owned)
-    if (state.flags.holdPressure) state.queueProgress += 50;
+    if (state.flags.holdPressure) state.queueProgress += Balance.CLICK.burstAmount;
     if (state.flags.comboUnlocked) {
       lastComboClick = now;
       state.combo = Math.min(state.comboCapMax, state.combo + Balance.CLICK.comboUp);
@@ -228,16 +238,14 @@ const Game = (function() {
   }
 
   function doRefill() {
-    if (state.patience >= state.refillCost) {
+    const cost = getRefillCost();
+    if (state.patience >= cost) {
       registerInteraction();
-      state.patience -= state.refillCost;
+      state.patience -= cost;
       state.wtl = Math.min(state.wtlMax, state.wtl + state.refillAmount);
       state._wtlFlash = Date.now();
       const bar = document.getElementById('bar-wtl');
       if (bar) { bar.style.background = '#fff'; setTimeout(() => { bar.style.background = ''; }, 200); }
-      // Update button text
-      const refillBtn = document.getElementById('btn-refill');
-      if (refillBtn) UI.setText('sub-refill', state.refillCost + 'p → +' + state.refillAmount + ' WtL');
     }
   }
 
@@ -282,10 +290,13 @@ const Game = (function() {
     document.getElementById('hangup-txt').textContent = Flavor.getHangup();
     document.getElementById('redial-btn').onclick = redial;
     state.hangups++;
-    const penalty = Math.min(5, Math.floor(state.queueAdvances * 0.03) + 1);
-    state.queue = Math.min(Balance.QUEUE.startPosition, state.queue + penalty);
+    // Harsh penalty: lose 20% of positions cleared
+    const cleared = Phase1.QUEUE_START - state.queue;
+    const penalty = Math.max(Balance.HANGUP.minPenalty, Math.floor(cleared * Balance.HANGUP.penaltyPercent));
+    state.queue = Math.min(Phase1.QUEUE_START, state.queue + penalty);
     state.patience = 0;
     state.wtl = state.wtlMax;
+    console.log('[METRICS] HANGUP PENALTY: ' + penalty + ' positions back → queue #' + state.queue);
   }
 
   function redial() {
@@ -329,7 +340,7 @@ const Game = (function() {
       state.combo = Math.max(1, state.combo - Balance.CLICK.comboDecay * dt);
     }
 
-    // WtL drain (active time based)
+    // WtL drain (active time based + pps based)
     if (!state.isIdle) {
       const activeMin = state.activePlayTime / 60;
       if (activeMin > Balance.WTL.baseDrainStart / 60) {
@@ -338,13 +349,15 @@ const Game = (function() {
           UI.showMilestone('The hold music is getting to you. Your will to live... slips.');
         }
         const drainMin = activeMin - (Balance.WTL.baseDrainStart / 60);
-        const rate = Math.min(Balance.WTL.maxDrainRate, Balance.WTL.baseDrainRate * Math.log2(drainMin + 1));
+        let rate = Balance.WTL.baseDrainRate * Math.log2(drainMin + 1);
+        // PPS-based drain: the more productive you are, the more the system grinds you
+        let ppsDrain = Math.sqrt(totalPPS()) * Balance.WTL.ppsDrainFactor;
+        if (state.flags.emotionalCallus) ppsDrain *= (1 - Balance.WTL.ppsDrainReduction);
+        rate += ppsDrain;
+        rate = Math.min(Balance.WTL.maxDrainRate, rate);
         state.wtl = Math.max(0, state.wtl - rate * dt);
       }
     }
-
-    // WtL regen
-    if (state.wtlRegen > 0) state.wtl = Math.min(state.wtlMax, state.wtl + state.wtlRegen * dt);
 
     // Hangup
     if (!state.isIdle && state.wtl < 0.1) { hangUp(); return; }
@@ -366,7 +379,8 @@ const Game = (function() {
     // === AUTO-QUEUE: progress fills, queue advances automatically ===
     if (!state.isIdle && state.queue > 0) {
       const pps = totalPPS();
-      state.queueProgress += pps * state.queueSpeedMult * dt;
+      const effectiveQueueSpeed = state.queueSpeedMult + state.phoneQueueBonus;
+      state.queueProgress += pps * effectiveQueueSpeed * dt;
       const cost = getQueuePositionCost(state.queue);
       
       if (state.queueProgress >= cost) {
@@ -375,8 +389,8 @@ const Game = (function() {
         state.queueAdvances++;
         state._queueFlash = Date.now(); // flash full bar for 200ms
         
-        // Reveal queue position at position 60
-        if (!state.queueRevealed && state.queue <= 120) {
+        // Reveal queue position
+        if (!state.queueRevealed && state.queue <= Balance.QUEUE.revealPosition) {
           state.queueRevealed = true;
           UI.addLog('"Your queue position is: ' + state.queue + '."');
           UI.showMilestone('"Your estimated queue position is: ' + state.queue + '."');
@@ -390,7 +404,7 @@ const Game = (function() {
           if (state.queuePass === 1) {
             // Department transfer
             state.queuePass = 2;
-            state.queue = 150;
+            state.queue = Balance.QUEUE.transferPosition;
             state.queueProgress = 0;
             UI.showMilestone('"Thank you for holding. I\'m transferring you to our Specialist Department."<br><br><em>*click*</em><br><br>"Please continue to hold."');
             UI.addLog('TRANSFERRED. The hold music changes.');
@@ -403,23 +417,20 @@ const Game = (function() {
       }
     }
 
-    // Phone tier check (based on in-game time from queue position)
-    const inGameTime = getInGameTime();
-    if (inGameTime >= 86400 * 365 * 5 && !state._phoneTier4) {
-      state._phoneTier4 = true;
-      document.querySelector('#phone-bar .phone-icon').textContent = '📱';
-      document.querySelector('#phone-bar .phone-name').textContent = 'Cordless Phone';
-      UI.addLog('Phone evolved: Cordless Phone');
-    } else if (inGameTime >= 86400 * 90 && !state._phoneTier3) {
-      state._phoneTier3 = true;
-      document.querySelector('#phone-bar .phone-icon').textContent = '📞';
-      document.querySelector('#phone-bar .phone-name').textContent = 'Landline';
-      UI.addLog('Phone evolved: Landline');
-    } else if (inGameTime >= 86400 * 7 && !state._phoneTier2) {
-      state._phoneTier2 = true;
-      document.querySelector('#phone-bar .phone-icon').textContent = '☎️';
-      document.querySelector('#phone-bar .phone-name').textContent = 'Rotary Phone';
-      UI.addLog('Phone evolved: Rotary Phone');
+    // Phone tier upgrades (queue-position gated, passive bonuses)
+    const phoneTiers = Balance.PHONE;
+    for (let i = phoneTiers.length - 1; i >= 0; i--) {
+      if (state.queue <= phoneTiers[i].queueGate && state.phoneTier < i) {
+        state.phoneTier = i;
+        state.phoneProdBonus = phoneTiers[i].prodBonus;
+        state.phoneQueueBonus = phoneTiers[i].queueBonus;
+        const phoneIcon = document.querySelector('#phone-bar .phone-icon');
+        const phoneName = document.querySelector('#phone-bar .phone-name');
+        if (phoneIcon) phoneIcon.textContent = phoneTiers[i].emoji;
+        if (phoneName) phoneName.textContent = phoneTiers[i].name;
+        UI.addLog('Connection upgrade: ' + phoneTiers[i].name);
+        break;
+      }
     }
 
     // Flavor text (in its own box, not log)
@@ -444,7 +455,7 @@ const Game = (function() {
   // ===== DISPLAY =====
   function updateDisplay() {
     UI.setText('val-patience', NumberFormat.format(state.patience));
-    UI.setText('val-wtl', Math.floor(state.wtl) + '/' + state.wtlMax);
+    UI.setText('val-wtl', Math.round(state.wtl) + '/' + state.wtlMax);
     
     // Queue display: hidden until revealed, draining bar
     if (state.queueRevealed) {
@@ -459,7 +470,7 @@ const Game = (function() {
     if (state._queueFlash && Date.now() - state._queueFlash < 200) {
       qPct = 100; // show full briefly on advance
     } else {
-      qPct = qCost > 0 ? ((qCost - state.queueProgress) / qCost) * 100 : 0;
+      qPct = qCost > 0 ? (state.queueProgress / qCost) * 100 : 0;
     }
     UI.setWidth('bar-queue', Math.max(0, Math.min(100, qPct)));
     
@@ -491,19 +502,18 @@ const Game = (function() {
       } else { ppsEl.textContent = ''; }
     }
 
-    // WtL rate
+    // WtL rate display
     const wtlEl = document.getElementById('val-wtl-rate');
     if (wtlEl) {
       const activeMin = state.activePlayTime / 60;
       if (activeMin > Balance.WTL.baseDrainStart / 60) {
         const drainMin = activeMin - (Balance.WTL.baseDrainStart / 60);
-        const rate = Math.min(Balance.WTL.maxDrainRate, Balance.WTL.baseDrainRate * Math.log2(drainMin + 1));
-        const net = state.wtlRegen - rate;
-        if (net < 0) { wtlEl.textContent = net.toFixed(1) + '/sec'; wtlEl.className = 'res-rate negative'; }
-        else if (net > 0) { wtlEl.textContent = '+' + net.toFixed(1) + '/sec'; wtlEl.className = 'res-rate positive'; }
-        else { wtlEl.textContent = ''; }
-      } else if (state.wtlRegen > 0) {
-        wtlEl.textContent = '+' + state.wtlRegen.toFixed(1) + '/sec'; wtlEl.className = 'res-rate positive';
+        let rate = Balance.WTL.baseDrainRate * Math.log2(drainMin + 1);
+        let ppsDrain = Math.sqrt(totalPPS()) * Balance.WTL.ppsDrainFactor;
+        if (state.flags.emotionalCallus) ppsDrain *= (1 - Balance.WTL.ppsDrainReduction);
+        rate = Math.min(Balance.WTL.maxDrainRate, rate + ppsDrain);
+        wtlEl.textContent = '-' + rate.toFixed(1) + '/sec';
+        wtlEl.className = 'res-rate negative';
       } else { wtlEl.textContent = ''; }
     }
 
@@ -524,11 +534,12 @@ const Game = (function() {
     }
 
     // Action buttons
+    const refillCost = getRefillCost();
     const refillBtn = document.getElementById('btn-refill');
     if (refillBtn) {
       if (state.wtl < state.wtlMax * 0.7) refillBtn.style.display = '';
-      refillBtn.disabled = state.patience < state.refillCost;
-      UI.setText('sub-refill', state.refillCost + 'p → +' + state.refillAmount + ' WtL');
+      refillBtn.disabled = state.patience < refillCost;
+      UI.setText('sub-refill', NumberFormat.compact(refillCost) + 'p → +' + state.refillAmount + ' WtL');
     }
     const endureBtn = document.getElementById('btn-endure');
     if (endureBtn) {
@@ -595,7 +606,7 @@ const Game = (function() {
     };
   }
 
-  return { init, state, getState, totalPPS, getInGameTime };
+  return { init, state, getState, totalPPS, getInGameTime, getRefillCost };
 })();
 
 document.addEventListener('DOMContentLoaded', Game.init);

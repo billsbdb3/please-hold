@@ -1,11 +1,12 @@
 /**
- * Phase 1: The Call (v3 Redesign)
+ * Phase 1: The Call (v4 Full Rebalance)
  * 
  * TIME = QUEUE. No independent clock.
- * Upgrades spread across 90 minutes via active time gates.
- * No x2-ALL except Time Blurs (3 total, 15 min apart).
- * Cascade capped at 2.5x. Soft cap growthRate^4.
- * Click value scales with pps (always 5% of 1 second).
+ * 200 queue positions, growth 1.06, base 200, pass2 x5.
+ * Hold Pressure gates click→queue early (~6min).
+ * Emotional Callus fixes WtL in late game.
+ * Phone upgrades provide passive bonuses.
+ * No WtL regen anywhere. No wtlMax increases.
  */
 const Phase1 = (function() {
 
@@ -33,100 +34,87 @@ const Phase1 = (function() {
   ];
 
   // === UPGRADES ===
-  // Pacing: something new every 3-5 min across 90 min.
-  // NO x2-ALL here. Time Blurs (in time-gated section) are the only globals.
-  // Gates: revealAt (total patience earned), revealAtQueue, revealAtActiveTime
+  // Gates rebalanced for 200 queue positions.
+  // No WtL regen. No wtlMax increases. All meaningful.
   const upgrades = [
-    // --- Early game: patience-gated only (min 0-15) ---
-    { id: 'u_snack', name: 'Snack Drawer', desc: 'Deep Breath: 3p → +12 WtL', cost: 40, revealAt: 20,
-      effect(s) { s.refillCost = 3; s.refillAmount = 12; } },
+    // --- Early game: patience-gated only (min 0-10) ---
+    { id: 'u_snack', name: 'Snack Drawer', desc: 'Deep Breath costs 50% less', cost: 40, revealAt: 20,
+      effect(s) { s.flags.deepBreathHalf = true; } },
     { id: 'u_tolerance', name: 'Hold Music Tolerance', desc: '+1 patience/click base', cost: 120, revealAt: 60,
       effect(s) { s.patiencePerClick += 1; } },
     { id: 'u_doodle2x', name: 'Colored Pencils', desc: 'Doodle Pads produce x2', cost: 250, revealAt: 130, revealAtGen: { id: 'gen_doodle', count: 5 },
       effect(s) { s.genMultipliers.gen_doodle *= 2; } },
-    { id: 'u_chair', name: 'Comfortable Chair', desc: '+5 max WtL, +0.3 WtL regen', cost: 500, revealAt: 280,
-      effect(s) { s.wtlMax += 5; s.wtlRegen += 0.3; } },
+    { id: 'u_chair', name: 'Comfortable Chair', desc: '+2 patience/click, WtL drain starts later', cost: 500, revealAt: 280,
+      effect(s) { s.patiencePerClick += 2; },
+      narrative: "You shift. The chair doesn't creak. Small victories." },
     { id: 'u_rhythm', name: 'Rhythmic Clicking', desc: 'Unlock click streak (fast clicks boost production)', cost: 900, revealAt: 500,
       effect(s) { s.flags.comboUnlocked = true; },
       narrative: "You find a rhythm. Click. Click. Click. The faster you go, the more the world gives back." },
-    { id: 'u_fidget2x', name: 'Titanium Bearings', desc: 'Fidget Spinners produce x2', cost: 1500, revealAt: 900, revealAtGen: { id: 'gen_fidget', count: 5 },
-      effect(s) { s.genMultipliers.gen_fidget *= 2; } },
-    { id: 'u_holdpressure', name: 'Hold Pressure', desc: 'Clicking now pushes queue progress', cost: 2000, revealAt: 1200, revealAtQueue: 80,
+    { id: 'u_holdpressure', name: 'Hold Pressure', desc: 'Clicking now pushes queue progress', cost: 600, revealAt: 400, revealAtQueue: 170,
       effect(s) { s.flags.holdPressure = true; },
       narrative: "Your persistence echoes through the system. Each click pushes the queue." },
-    { id: 'u_caffeine', name: 'Caffeine IV Drip', desc: '+50% click power, halve WtL cost', cost: 3000, revealAt: 2000,
+    { id: 'u_fidget2x', name: 'Titanium Bearings', desc: 'Fidget Spinners produce x2', cost: 1500, revealAt: 900, revealAtGen: { id: 'gen_fidget', count: 5 },
+      effect(s) { s.genMultipliers.gen_fidget *= 2; } },
+    { id: 'u_caffeine', name: 'Caffeine IV Drip', desc: '+50% click power, halve WtL cost per click', cost: 3000, revealAt: 2000,
       effect(s) { s.patiencePerClick += 1; s.wtlPerClick = Math.max(0.25, s.wtlPerClick * 0.5); } },
     { id: 'u_auto2x', name: 'Parallel Lines', desc: 'Autodialers produce x2', cost: 6000, revealAt: 4000, revealAtGen: { id: 'gen_autodialer', count: 3 },
       effect(s) { s.genMultipliers.gen_autodialer *= 2; } },
 
-    // --- Mid game: queue-gated (min 15-45) ---
-    { id: 'u_speed2x', name: 'Overclocked Modem', desc: 'Speed Dialers produce x2', cost: 25000, revealAt: 15000, revealAtQueue: 140, revealAtGen: { id: 'gen_speeddialer', count: 3 },
+    // --- Mid game: queue-gated (min 15-40) ---
+    { id: 'u_speed2x', name: 'Overclocked Modem', desc: 'Speed Dialers produce x2', cost: 25000, revealAt: 15000, revealAtQueue: 130, revealAtGen: { id: 'gen_speeddialer', count: 3 },
       effect(s) { s.genMultipliers.gen_speeddialer *= 2; } },
-    { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 50000, revealAt: 30000, revealAtQueue: 140,
+    { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 50000, revealAt: 50000, revealAtQueue: 120,
       effect(s) { s.dustPerSec = Balance.DUST.baseRate; s.flags.dustStarted = true; },
       narrative: "You glance down. There is a fine layer of dust on your arm. It wasn't there when you started this call." },
-    { id: 'u_robo2x', name: 'Machine Learning', desc: 'Robo-Callers produce x2', cost: 150000, revealAt: 80000, revealAtQueue: 80, revealAtGen: { id: 'gen_robocaller', count: 2 },
+    { id: 'u_robo2x', name: 'Machine Learning', desc: 'Robo-Callers produce x2', cost: 150000, revealAt: 80000, revealAtQueue: 110, revealAtGen: { id: 'gen_robocaller', count: 2 },
       effect(s) { s.genMultipliers.gen_robocaller *= 2; } },
-    { id: 'u_muscle', name: 'Muscle Memory', desc: 'Click streak never decays', cost: 300000, revealAt: 150000, revealAtQueue: 70,
-      effect(s) { s.flags.comboLocked = true; },
-      narrative: "Your fingers remember. The rhythm is in your bones now. The streak... stays." },
-    { id: 'u_qfamiliar', name: 'Optimized Routing', desc: 'Queue drains 10% faster', cost: 200000, revealAt: 100000, revealAtQueue: 75,
+    { id: 'u_qfamiliar', name: 'Optimized Routing', desc: 'Queue drains 10% faster', cost: 200000, revealAt: 100000, revealAtQueue: 100,
       effect(s) { s.queueSpeedMult += 0.10; },
       narrative: "You've found a shortcut in the system. Barely noticeable, but it's there." },
-    { id: 'u_shadow2x', name: 'Dark Network', desc: 'Shadow Call Centers produce x2', cost: 800000, revealAt: 500000, revealAtQueue: 50, revealAtGen: { id: 'gen_callcenter', count: 2 },
+    { id: 'u_muscle', name: 'Muscle Memory', desc: 'Click streak never decays', cost: 300000, revealAt: 150000, revealAtQueue: 85,
+      effect(s) { s.flags.comboLocked = true; },
+      narrative: "Your fingers remember. The rhythm is in your bones now. The streak... stays." },
+
+    // --- Mid-late game (min 35-50) ---
+    { id: 'u_shadow2x', name: 'Dark Network', desc: 'Shadow Call Centers produce x2', cost: 800000, revealAt: 500000, revealAtQueue: 65, revealAtGen: { id: 'gen_callcenter', count: 2 },
       effect(s) { s.genMultipliers.gen_callcenter *= 2; } },
-    { id: 'u_robo3x', name: 'Neural Network', desc: 'Robo-Callers produce x3', cost: 3000000, revealAt: 1500000, revealAtQueue: 35, revealAtGen: { id: 'gen_robocaller', count: 8 },
+    { id: 'u_callus', name: 'Emotional Callus', desc: 'Hold music drain reduced 75%', cost: 500000, revealAt: 400000, revealAtQueue: 60, revealAtActiveTime: 2400,
+      effect(s) { s.flags.emotionalCallus = true; },
+      narrative: "You've gone numb. The music still plays but it passes through you now." },
+    { id: 'u_robo3x', name: 'Neural Network', desc: 'Robo-Callers produce x3', cost: 3000000, revealAt: 2000000, revealAtQueue: 45, revealAtGen: { id: 'gen_robocaller', count: 5 },
       effect(s) { s.genMultipliers.gen_robocaller *= 3; } },
-    { id: 'u_speed3x', name: 'Quantum Dialing', desc: 'Speed Dialers produce x3', cost: 8000000, revealAt: 4000000, revealAtQueue: 25, revealAtGen: { id: 'gen_speeddialer', count: 8 },
+
+    // --- Late game (min 50-68) ---
+    { id: 'u_speed3x', name: 'Quantum Dialing', desc: 'Speed Dialers produce x3', cost: 8000000, revealAt: 5000000, revealAtQueue: 30, revealAtGen: { id: 'gen_speeddialer', count: 6 },
       effect(s) { s.genMultipliers.gen_speeddialer *= 3; } },
-    { id: 'u_allboost', name: 'Resonance Cascade', desc: 'ALL coping mechanisms +50%', cost: 20000000, revealAt: 12000000, revealAtQueue: 15,
+    { id: 'u_allboost', name: 'Resonance Cascade', desc: 'ALL coping mechanisms +50%', cost: 20000000, revealAt: 12000000, revealAtQueue: 18,
       effect(s) { s.globalGenMultiplier *= 1.5; },
       narrative: "Everything vibrates at the same frequency. The hold music. The dust. You." },
-    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 50000000, revealAt: 30000000, revealAtQueue: 5,
+    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 50000000, revealAt: 30000000, revealAtQueue: 8,
       effect(s) { s.wtlPerClick = 0; s.flags.noWtlCost = true; },
       narrative: "You no longer feel the drain from clicking. But the hold music... it still wears on you." },
 
-    // --- Time-gated: x2 ALL production (the ONLY global multipliers) ---
+    // --- Time-gated: x2 ALL production (the ONLY global multipliers from upgrades) ---
     { id: 'u_timewarp1', name: 'Time Blur I', desc: 'Everything accelerates. (ALL x2)', cost: 100000, revealAtActiveTime: 1800,
-      effect(s) { s.globalGenMultiplier *= 2; s.comboCapMax = 5; },
-      narrative: "Was that a minute? An hour? The clock has stopped making sense." },
+      effect(s) { s.globalGenMultiplier *= 2; s.comboCapMax = Balance.TIME.comboCapAfterBlurI; },
+      narrative: "Years. It's been years. The seasons outside the window have blurred into a single grey smear." },
     { id: 'u_timewarp2', name: 'Time Blur II', desc: 'Reality bends. (ALL x2)', cost: 500000, revealAtActiveTime: 2700,
-      effect(s) { s.globalGenMultiplier *= 2; s.comboCapMax = 6; },
-      narrative: "Days? Weeks? The concept of 'today' has become philosophical." },
+      effect(s) { s.globalGenMultiplier *= 2; s.comboCapMax = Balance.TIME.comboCapAfterBlurII; },
+      narrative: "Half a decade on hold. You've aged. The phone hasn't. It mocks you with its patience." },
     { id: 'u_timewarp3', name: 'Time Blur III', desc: 'Time is meaningless. (ALL x2)', cost: 2500000, revealAtActiveTime: 3600,
-      effect(s) { s.globalGenMultiplier *= 2; s.comboCapMax = 8; },
-      narrative: "You blink. Was that a week? The calendar is meaningless." },
+      effect(s) { s.globalGenMultiplier *= 2; s.comboCapMax = Balance.TIME.comboCapAfterBlurIII; },
+      narrative: "Seven years. You've been holding longer than some marriages last. The dust agrees." },
   ];
 
   // === QUEUE ===
-  // Auto-queue: progress fills from pps, advances automatically.
-  // 200 positions. Growth 1.06. Base 200. Pass2 x5.
-  const QUEUE_START = 200;
-
-  // Seconds curve: how long each advance should take at current pps
-  function getSecondsForPosition(queuePosition) {
-    // queuePosition: 100 (start) → 0 (end)
-    // progress: 0 (start) → 1 (end)
-    const progress = 1 - (queuePosition / 100);
-    // Starts at 15 sec, ramps to 120 sec at the end
-    return 15 + progress * progress * 105;
-  }
-
-  function getAdvanceCost(advances) {
-    // This is called with queueAdvances (how many you've done)
-    // Current position = QUEUE_START - advances (but we use advances for the curve)
-    const position = Math.max(0, QUEUE_START - advances);
-    const seconds = getSecondsForPosition(position);
-    // Return seconds (main.js multiplies by pps)
-    return seconds;
-  }
+  const QUEUE_START = Balance.QUEUE.startPosition;
 
   function getGeneratorCost(gen) {
     const owned = gen.owned;
     if (owned >= gen.softCapAt) {
       const base = gen.baseCost * Math.pow(gen.growthRate, gen.softCapAt);
       const excess = owned - gen.softCapAt;
-      const postCapGrowth = Math.pow(gen.growthRate, 4); // softer: ^4 instead of ^8
+      const postCapGrowth = Math.pow(gen.growthRate, Balance.SOFT_CAP_EXPONENT);
       return Math.floor(base * Math.pow(postCapGrowth, excess));
     }
     return Math.floor(gen.baseCost * Math.pow(gen.growthRate, owned));
@@ -174,14 +162,15 @@ const Phase1 = (function() {
     return Math.min(2.5, boost);
   }
 
-  // === MILESTONES ===
+  // === MILESTONES (adjusted for 200 positions) ===
   const milestones = [
-    { at: 90, msg: '"Your call is important to us." You doubt this.' },
-    { at: 75, msg: '"A representative will be with you shortly." Shortly is relative.' },
-    { at: 60, msg: 'A recorded voice apologizes. It is not sorry.' },
-    { at: 45, msg: 'The hold music has changed. You liked the old one better.' },
-    { at: 30, msg: '"Your call is very important to us." The emphasis on "very" is suspicious.' },
-    { at: 15, msg: 'You can feel it. The end is near. Probably.' },
+    { at: 180, msg: '"Your call is important to us." You doubt this.' },
+    { at: 150, msg: '"A representative will be with you shortly." Shortly is relative.' },
+    { at: 120, msg: 'A recorded voice apologizes. It is not sorry.' },
+    { at: 90, msg: 'The hold music has changed. You liked the old one better.' },
+    { at: 60, msg: '"Your call is EXTREMELY important." The emphasis is suspicious.' },
+    { at: 30, msg: 'You can feel it. The end is near. Probably.' },
+    { at: 15, msg: 'The recording stutters. Almost.' },
     { at: 8, msg: 'Single digits. This is real. This is happening.' },
     { at: 3, msg: 'Almost there. Almost.' },
     { at: 1, msg: 'Next in line.' },
@@ -197,7 +186,7 @@ const Phase1 = (function() {
   }
 
   return {
-    generators, upgrades, getAdvanceCost, getGeneratorCost,
+    generators, upgrades, getGeneratorCost,
     calcGeneratorPPS, getNestedBoost, checkMilestones, QUEUE_START
   };
 })();

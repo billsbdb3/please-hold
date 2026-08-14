@@ -7,47 +7,37 @@ const Balance = (function() {
 
   // === GENERATORS ===
   const GENERATORS = {
-    doodle:      { baseCost: 15,     growthRate: 1.18, baseProduction: 0.1,   softCapAt: 25, unlocksAt: 0,      boostPercent: 0 },
-    fidget:      { baseCost: 100,    growthRate: 1.17, baseProduction: 0.35,  softCapAt: 25, unlocksAt: 50,     boostPercent: 0.003 },
-    autodialer:  { baseCost: 600,    growthRate: 1.16, baseProduction: 2.0,   softCapAt: 22, unlocksAt: 400,    boostPercent: 0.008 },
-    speeddialer: { baseCost: 5000,   growthRate: 1.15, baseProduction: 10.0,  softCapAt: 20, unlocksAt: 4000,   boostPercent: 0.015 },
-    robocaller:  { baseCost: 40000,  growthRate: 1.14, baseProduction: 50.0,  softCapAt: 15, unlocksAt: 30000,  boostPercent: 0.02 },
-    callcenter:  { baseCost: 350000, growthRate: 1.13, baseProduction: 300.0, softCapAt: 12, unlocksAt: 250000, boostPercent: 0.03 },
+    doodle:      { baseCost: 15,     growthRate: 1.15, baseProduction: 0.2,   softCapAt: 30, unlocksAt: 0,      boostPercent: 0 },
+    fidget:      { baseCost: 100,    growthRate: 1.14, baseProduction: 1.0,   softCapAt: 25, unlocksAt: 80,     boostPercent: 0.004 },
+    autodialer:  { baseCost: 800,    growthRate: 1.13, baseProduction: 5.0,   softCapAt: 22, unlocksAt: 600,    boostPercent: 0.008 },
+    speeddialer: { baseCost: 6000,   growthRate: 1.12, baseProduction: 25.0,  softCapAt: 18, unlocksAt: 5000,   boostPercent: 0.012 },
+    robocaller:  { baseCost: 50000,  growthRate: 1.11, baseProduction: 120.0, softCapAt: 15, unlocksAt: 40000,  boostPercent: 0.016 },
+    callcenter:  { baseCost: 500000, growthRate: 1.10, baseProduction: 600.0, softCapAt: 12, unlocksAt: 350000, boostPercent: 0.02 },
   };
 
   // Soft cap: post-cap growth = growthRate^SOFT_CAP_EXPONENT
-  const SOFT_CAP_EXPONENT = 8;
+  const SOFT_CAP_EXPONENT = 4;
 
   // === QUEUE ===
   const QUEUE = {
-    startPosition: 150,
-    baseCost: 30,
-    growthRate: 1.095,
-    lateThreshold: 120,       // advances after which late multiplier kicks in
-    lateExponent: 1.8,        // depth^exponent
-    lateDivisor: 12,          // divisor for late multiplier: 1 + depth^exp / divisor
-    advanceLockTime: 300,     // seconds of active play before advance unlocks
-    familiarityPerAdvance: 0.02,
-    familiarityMax: 0.25,
-    familiarityDecayRate: 0.03,
-    familiarityTimeout: 15000, // ms before decay starts
-    transferResetRatio: 0.4,   // queueAdvances *= this on department transfer
-    transferQueuePosition: 75, // queue resets to this on transfer
-    scalingDivisor: 10000,      // dynamic cost: 1 + pps / this
+    startPosition: 200,
+    growthRate: 1.06,
+    baseCost: 200,
+    pass2Mult: 5,
+    transferPosition: 150,    // queue resets to this on dept transfer
+    revealPosition: 120,      // queue number shown to player at this position
+    queueSpeedBase: 1.0,      // base queue speed multiplier
   };
 
   // === TIME ===
   const TIME = {
     nineYears: 86400 * 365 * 9,
     tenYears: 86400 * 365 * 10,
-    timeBlurI_mult: 10,
-    timeBlurII_mult: 10,
-    timeBlurIII_mult: 12,
     timeBlurI_activeTime: 1800,   // 30 min
     timeBlurII_activeTime: 2700,  // 45 min
     timeBlurIII_activeTime: 3600, // 60 min
-    timeBlurI_cost: 200000,
-    timeBlurII_cost: 600000,
+    timeBlurI_cost: 100000,
+    timeBlurII_cost: 500000,
     timeBlurIII_cost: 2500000,
     comboCapAfterBlurI: 5,
     comboCapAfterBlurII: 6,
@@ -66,22 +56,22 @@ const Balance = (function() {
     timeFactorMax: 50000,       // hard cap on dust time factor
   };
 
-  // Dust collector definitions
+  // Dust collector definitions (all dust-removal themed, no WtL/flat dust effects)
   const DUST_COLLECTORS = [
-    { id: 'ds_cloth',       name: 'Microfiber Cloth',      desc: '+10% patience/sec',              cost: 300 },
-    { id: 'ds_mask',        name: 'Dust Mask',             desc: '+0.3 WtL regen/sec',             cost: 800 },
-    { id: 'ds_filter',      name: 'Air Filter',            desc: '+25% patience/sec',              cost: 2000 },
-    { id: 'ds_broom',       name: 'Industrial Broom',      desc: '+0.5 dust/sec base rate',        cost: 4000 },
-    { id: 'ds_map',         name: 'Phone Tree Map',        desc: 'Queue advances cost 15% less',   cost: 7000 },
-    { id: 'ds_vacuum',      name: 'Robotic Vacuum',        desc: '+50% patience/sec, +0.5 WtL',    cost: 12000 },
-    { id: 'ds_hepa',        name: 'HEPA System',           desc: '+1 dust/sec, +5 max WtL',        cost: 20000 },
-    { id: 'ds_static',      name: 'Static Collector',      desc: '+100% patience/sec (x2)',        cost: 32000 },
-    { id: 'ds_directline',  name: 'Executive Direct Line', desc: 'Queue advances cost 30% less',   cost: 50000 },
-    { id: 'ds_industrial',  name: 'Industrial Extraction', desc: '+3 dust/sec, +1 WtL regen',      cost: 75000 },
-    { id: 'ds_singularity', name: 'Dust Singularity',      desc: 'ALL production x3',              cost: 120000 },
-    { id: 'ds_entropy',     name: 'Entropy Harvester',     desc: '+5 dust/sec, ALL production x2', cost: 250000 },
-    { id: 'ds_temporal',    name: 'Temporal Accumulator',   desc: '+10 dust/sec, +2 WtL regen',    cost: 500000 },
-    { id: 'ds_void',        name: 'Void Condenser',        desc: 'ALL production x5',              cost: 1000000 },
+    { id: 'ds_cloth',     name: 'Microfiber Cloth',          cost: 300,       desc: '+10% patience/sec' },
+    { id: 'ds_feather',   name: 'Feather Duster',            cost: 800,       desc: '+15% queue speed' },
+    { id: 'ds_filter',    name: 'Air Filter',                cost: 2000,      desc: '+25% patience/sec' },
+    { id: 'ds_aircan',    name: 'Compressed Air Can',        cost: 5000,      desc: 'Dust income x1.5' },
+    { id: 'ds_dustpan',   name: 'Dustpan & Brush',           cost: 8000,      desc: 'Queue cost -15%' },
+    { id: 'ds_handvac',   name: 'Hand Vacuum',               cost: 15000,     desc: '+50% patience/sec' },
+    { id: 'ds_hepa',      name: 'HEPA Filter',               cost: 25000,     desc: 'Dust income x2' },
+    { id: 'ds_static',    name: 'Static Collector',          cost: 40000,     desc: 'ALL production x2' },
+    { id: 'ds_shopvac',   name: 'Shop Vac',                  cost: 60000,     desc: 'Queue cost -30%, +25% queue speed' },
+    { id: 'ds_cleanroom', name: 'Clean Room Protocol',       cost: 100000,    desc: 'ALL production x3, +1 combo cap' },
+    { id: 'ds_singular',  name: 'Dust Singularity',          cost: 150000,    desc: 'ALL production x3' },
+    { id: 'ds_entropy',   name: 'Entropy Harvester',         cost: 300000,    desc: 'ALL production x3, dust income x2' },
+    { id: 'ds_pressure',  name: 'Negative Pressure Chamber', cost: 600000,    desc: 'ALL production x4, +50% queue speed' },
+    { id: 'ds_void',      name: 'Void Condenser',            cost: 1200000,   desc: 'ALL production x5' },
   ];
 
   // === CLICK / COMBO ===
@@ -94,19 +84,37 @@ const Balance = (function() {
     comboDecay: 0.4,        // combo decay per second
     comboDecayDelay: 600,   // ms after last click before decay starts
     scaleFactor: 0.05,      // click value = base + pps * this (5% of 1 second)
+    burstAmount: 50,        // queue progress per click (after Hold Pressure)
   };
 
   // === WILL TO LIVE ===
   const WTL = {
-    baseMax: 15,
+    baseMax: 15,              // WtL max stays at 15 forever
     baseDrainStart: 300,      // active seconds before drain begins (5 min)
     baseDrainRate: 0.15,      // multiplier on log2 curve
-    lateDrainStart: 1800,     // active seconds (30 min) before late drain
-    lateDrainRate: 0.02,      // per minute after lateDrainStart
-    maxDrainRate: 1.5,        // cap on total drain/sec
-    baseRefillCost: 5,
-    baseRefillAmount: 12,
+    maxDrainRate: 4.0,        // cap on total drain/sec (raised from 1.5)
+    ppsDrainFactor: 0.003,    // ppsDrain = sqrt(pps) * this
+    ppsDrainReduction: 0.75,  // Emotional Callus reduces pps drain by this much
+    refillAmount: 12,         // Deep Breath restores this much WtL
+    refillMinCost: 5,         // minimum Deep Breath cost
+    refillPpsMult: 2,         // Deep Breath cost = max(min, pps * this)
   };
+
+  // === HANGUP ===
+  const HANGUP = {
+    penaltyPercent: 0.20,     // lose 20% of positions cleared
+    minPenalty: 3,            // minimum positions lost
+  };
+
+  // === PHONE UPGRADES (passive bonus track) ===
+  const PHONE = [
+    { id: 'phone_tincan',   name: 'Tin Can & String',  emoji: '🥫', queueGate: 999, prodBonus: 0,    queueBonus: 0 },
+    { id: 'phone_rotary',   name: 'Rotary Phone',      emoji: '☎️',  queueGate: 180, prodBonus: 0.05, queueBonus: 0 },
+    { id: 'phone_wall',     name: 'Wall Phone',        emoji: '📞', queueGate: 150, prodBonus: 0.10, queueBonus: 0 },
+    { id: 'phone_cordless', name: 'Cordless Phone',    emoji: '📱', queueGate: 100, prodBonus: 0.15, queueBonus: 0.05 },
+    { id: 'phone_smart',    name: 'Smartphone',        emoji: '📲', queueGate: 50,  prodBonus: 0.25, queueBonus: 0.10 },
+    { id: 'phone_neural',   name: 'Neural Link',       emoji: '🧠', queueGate: 10,  prodBonus: 0.50, queueBonus: 0.25 },
+  ];
 
   // === IDLE / OFFLINE ===
   const IDLE = {
@@ -126,6 +134,6 @@ const Balance = (function() {
   return {
     GENERATORS, SOFT_CAP_EXPONENT,
     QUEUE, TIME, DUST, DUST_COLLECTORS,
-    CLICK, WTL, IDLE, UI_CONFIG
+    CLICK, WTL, HANGUP, PHONE, IDLE, UI_CONFIG
   };
 })();
