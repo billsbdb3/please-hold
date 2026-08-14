@@ -222,8 +222,19 @@ const UI = (function() {
     // Dust collectors
     renderCollectors();
 
-    // Dust overlay
-    setDustOverlay(Dust.getOverlayOpacity());
+    // Overlays: WtL red tint when low, dust brown tint when accumulating
+    const overlayEl = document.getElementById('dust-overlay');
+    if (overlayEl) {
+      const wtlPctOverlay = Wtl.getPercent();
+      if (wtlPctOverlay < 50) {
+        const intensity = (1 - wtlPctOverlay / 50) * 0.25;
+        overlayEl.style.background = 'rgba(150,20,20,' + intensity.toFixed(3) + ')';
+      } else if (s.flags.dustStarted) {
+        overlayEl.style.background = 'rgba(80,60,30,' + Dust.getOverlayOpacity().toFixed(3) + ')';
+      } else {
+        overlayEl.style.background = 'rgba(0,0,0,0)';
+      }
+    }
 
     // Flavor text
     renderFlavor(now);
@@ -284,7 +295,10 @@ const UI = (function() {
     const s = State.get();
     if (!s.flags.dustStarted) return;
 
-    Dust.getCollectors().forEach(c => {
+    const collectors = Dust.getCollectors();
+    const ownedCount = s.collectorsOwned.length;
+
+    collectors.forEach((c, idx) => {
       const div = document.getElementById('dcbtn-' + c.id);
       if (!div) return;
 
@@ -298,9 +312,8 @@ const UI = (function() {
         return;
       }
 
-      // Show if affordable or within 5x of cost (so player can see what's coming)
-      const showThreshold = c.cost * 0.2;
-      if (s.dust >= showThreshold || s.collectorsOwned.length >= Dust.getCollectors().indexOf(c)) {
+      // Show next 3 unpurchased collectors (so player can see what's coming)
+      if (idx <= ownedCount + 2) {
         div.style.display = '';
         div.className = 'dust-item' + (s.dust < c.cost ? ' disabled' : '');
         div.innerHTML = '<div><span class="di-name">' + c.name + '</span><span class="di-desc">' + c.desc + '</span></div><span class="di-cost">' + NumberFormat.compact(c.cost) + ' dust</span>';
