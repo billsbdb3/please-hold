@@ -563,6 +563,10 @@ const Game = (function() {
         if (u.revealAt && state.maxPatience < u.revealAt) visible = false;
         if (u.revealAtQueue && state.queue > u.revealAtQueue) visible = false;
         if (u.revealAtActiveTime && state.activePlayTime < u.revealAtActiveTime) visible = false;
+        if (u.revealAtGen) {
+          const gen = Phase1.generators.find(g => g.id === u.revealAtGen.id);
+          if (!gen || gen.owned < u.revealAtGen.count) visible = false;
+        }
         if (visible && div.style.display === 'none') {
           console.log('[METRICS] UPGRADE AVAILABLE: "' + u.name + '" at ' + mins() + ' | active:' + (state.activePlayTime/60).toFixed(1) + 'm | queue:#' + state.queue + ' | pps:' + totalPPS().toFixed(1) + ' | maxP:' + Math.floor(state.maxPatience));
         }

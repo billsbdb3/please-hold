@@ -104,25 +104,10 @@ const NumberFormat = (function() {
 
   /**
    * Format dust with thematic unit progression.
-   * particles → dust bunnies → drifts → layers → strata
+   * Just uses compact number format — no unit names.
    */
-  function formatDust(particles) {
-    if (particles < 1000) return Math.floor(particles) + ' particles';
-    if (particles < 1000000) {
-      const bunnies = particles / 1000;
-      return bunnies.toFixed(1) + ' dust bunnies';
-    }
-    if (particles < 1000000000) {
-      const drifts = particles / 1000000;
-      return drifts.toFixed(2) + ' drifts';
-    }
-    if (particles < 1000000000000) {
-      const layers = particles / 1000000000;
-      return layers.toFixed(2) + ' layers';
-    }
-    const strata = particles / 1000000000000;
-    if (strata < 1000) return strata.toFixed(2) + ' strata';
-    return format(strata) + ' strata';
+  function formatDust(amount) {
+    return compact(amount);
   }
 
   return { format, compact, formatHoldTime, formatRealTime, formatDust };
