@@ -51,35 +51,38 @@ const Phase1 = (function() {
       narrative: "You find a rhythm. Click. Click. Click. The faster you go, the more the world gives back." },
     { id: 'u_fidget2x', name: 'Titanium Bearings', desc: 'Fidget Spinners produce x2', cost: 1500, revealAt: 900, revealAtGen: { id: 'gen_fidget', count: 5 },
       effect(s) { s.genMultipliers.gen_fidget *= 2; } },
+    { id: 'u_holdpressure', name: 'Hold Pressure', desc: 'Clicking now pushes queue progress', cost: 2000, revealAt: 1200, revealAtQueue: 80,
+      effect(s) { s.flags.holdPressure = true; },
+      narrative: "Your persistence echoes through the system. Each click pushes the queue." },
     { id: 'u_caffeine', name: 'Caffeine IV Drip', desc: '+50% click power, halve WtL cost', cost: 3000, revealAt: 2000,
       effect(s) { s.patiencePerClick += 1; s.wtlPerClick = Math.max(0.25, s.wtlPerClick * 0.5); } },
     { id: 'u_auto2x', name: 'Parallel Lines', desc: 'Autodialers produce x2', cost: 6000, revealAt: 4000, revealAtGen: { id: 'gen_autodialer', count: 3 },
       effect(s) { s.genMultipliers.gen_autodialer *= 2; } },
 
     // --- Mid game: queue-gated (min 15-45) ---
-    { id: 'u_speed2x', name: 'Overclocked Modem', desc: 'Speed Dialers produce x2', cost: 25000, revealAt: 15000, revealAtQueue: 70, revealAtGen: { id: 'gen_speeddialer', count: 3 },
+    { id: 'u_speed2x', name: 'Overclocked Modem', desc: 'Speed Dialers produce x2', cost: 25000, revealAt: 15000, revealAtQueue: 140, revealAtGen: { id: 'gen_speeddialer', count: 3 },
       effect(s) { s.genMultipliers.gen_speeddialer *= 2; } },
-    { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 50000, revealAt: 30000, revealAtQueue: 70,
+    { id: 'u_duststart', name: 'Entropy Noticed', desc: 'Something is accumulating...', cost: 50000, revealAt: 30000, revealAtQueue: 140,
       effect(s) { s.dustPerSec = Balance.DUST.baseRate; s.flags.dustStarted = true; },
       narrative: "You glance down. There is a fine layer of dust on your arm. It wasn't there when you started this call." },
-    { id: 'u_robo2x', name: 'Machine Learning', desc: 'Robo-Callers produce x2', cost: 150000, revealAt: 80000, revealAtQueue: 40, revealAtGen: { id: 'gen_robocaller', count: 2 },
+    { id: 'u_robo2x', name: 'Machine Learning', desc: 'Robo-Callers produce x2', cost: 150000, revealAt: 80000, revealAtQueue: 80, revealAtGen: { id: 'gen_robocaller', count: 2 },
       effect(s) { s.genMultipliers.gen_robocaller *= 2; } },
-    { id: 'u_muscle', name: 'Muscle Memory', desc: 'Click streak never decays', cost: 300000, revealAt: 150000, revealAtQueue: 35,
+    { id: 'u_muscle', name: 'Muscle Memory', desc: 'Click streak never decays', cost: 300000, revealAt: 150000, revealAtQueue: 70,
       effect(s) { s.flags.comboLocked = true; },
       narrative: "Your fingers remember. The rhythm is in your bones now. The streak... stays." },
-    { id: 'u_qfamiliar', name: 'Optimized Routing', desc: 'Queue drains 10% faster', cost: 200000, revealAt: 100000, revealAtQueue: 38,
+    { id: 'u_qfamiliar', name: 'Optimized Routing', desc: 'Queue drains 10% faster', cost: 200000, revealAt: 100000, revealAtQueue: 75,
       effect(s) { s.queueSpeedMult += 0.10; },
       narrative: "You've found a shortcut in the system. Barely noticeable, but it's there." },
-    { id: 'u_shadow2x', name: 'Dark Network', desc: 'Shadow Call Centers produce x2', cost: 800000, revealAt: 500000, revealAtQueue: 25, revealAtGen: { id: 'gen_callcenter', count: 2 },
+    { id: 'u_shadow2x', name: 'Dark Network', desc: 'Shadow Call Centers produce x2', cost: 800000, revealAt: 500000, revealAtQueue: 50, revealAtGen: { id: 'gen_callcenter', count: 2 },
       effect(s) { s.genMultipliers.gen_callcenter *= 2; } },
-    { id: 'u_robo3x', name: 'Neural Network', desc: 'Robo-Callers produce x3', cost: 3000000, revealAt: 1500000, revealAtQueue: 18, revealAtGen: { id: 'gen_robocaller', count: 8 },
+    { id: 'u_robo3x', name: 'Neural Network', desc: 'Robo-Callers produce x3', cost: 3000000, revealAt: 1500000, revealAtQueue: 35, revealAtGen: { id: 'gen_robocaller', count: 8 },
       effect(s) { s.genMultipliers.gen_robocaller *= 3; } },
-    { id: 'u_speed3x', name: 'Quantum Dialing', desc: 'Speed Dialers produce x3', cost: 8000000, revealAt: 4000000, revealAtQueue: 12, revealAtGen: { id: 'gen_speeddialer', count: 8 },
+    { id: 'u_speed3x', name: 'Quantum Dialing', desc: 'Speed Dialers produce x3', cost: 8000000, revealAt: 4000000, revealAtQueue: 25, revealAtGen: { id: 'gen_speeddialer', count: 8 },
       effect(s) { s.genMultipliers.gen_speeddialer *= 3; } },
-    { id: 'u_allboost', name: 'Resonance Cascade', desc: 'ALL coping mechanisms +50%', cost: 20000000, revealAt: 12000000, revealAtQueue: 8,
+    { id: 'u_allboost', name: 'Resonance Cascade', desc: 'ALL coping mechanisms +50%', cost: 20000000, revealAt: 12000000, revealAtQueue: 15,
       effect(s) { s.globalGenMultiplier *= 1.5; },
       narrative: "Everything vibrates at the same frequency. The hold music. The dust. You." },
-    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 50000000, revealAt: 30000000, revealAtQueue: 3,
+    { id: 'u_insider', name: 'Corporate Insider', desc: 'Clicking no longer costs WtL', cost: 50000000, revealAt: 30000000, revealAtQueue: 5,
       effect(s) { s.wtlPerClick = 0; s.flags.noWtlCost = true; },
       narrative: "You no longer feel the drain from clicking. But the hold music... it still wears on you." },
 
@@ -96,10 +99,9 @@ const Phase1 = (function() {
   ];
 
   // === QUEUE ===
-  // Cost = max(baseCost, currentPPS × secondsForPosition)
-  // Position 100→0. Time per advance escalates from 15s to 120s.
-  // Total queue time: ~65 min of advances across full game.
-  const QUEUE_START = 100;
+  // Auto-queue: progress fills from pps, advances automatically.
+  // 200 positions. Growth 1.06. Base 200. Pass2 x5.
+  const QUEUE_START = 200;
 
   // Seconds curve: how long each advance should take at current pps
   function getSecondsForPosition(queuePosition) {

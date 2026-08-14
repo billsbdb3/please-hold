@@ -21,7 +21,7 @@ process.argv.slice(2).forEach(a => {
   args[k] = parseFloat(v) || v;
 });
 
-const QUEUE_START = 100;
+const QUEUE_START = args.queuesize || 200;
 const GROWTH = args.growth || 1.12;
 const BASE_COST = args.base || 50;
 const TARGET_MINUTES = args.target || 90;

@@ -44,7 +44,8 @@ const Game = (function() {
     flags: {
       started: false, dustStarted: false, noWtlCost: false,
       comboUnlocked: false, comboLocked: false,
-      drainAnnounced: false, queueFamiliarity: false, timeFrozen: false
+      drainAnnounced: false, queueFamiliarity: false, timeFrozen: false,
+      holdPressure: false
     },
     boughtUpgrades: new Set(),
     triggeredMilestones: new Set(),
@@ -78,9 +79,10 @@ const Game = (function() {
 
   // Queue position cost: fixed curve, filled by pps over time
   function getQueuePositionCost(pos) {
-    // Growth 1.14, pass2 x12 (sim verified: 96 min active, 120 min idle)
-    let cost = Math.floor(50 * Math.pow(1.14, (Phase1.QUEUE_START - pos)));
-    if (state.queuePass === 2) cost = Math.floor(cost * 12);
+    // Growth 1.06, base 200, 200 positions. Pass2 x5.
+    // Sim verified: 103 min active, transfer at 66 min.
+    let cost = Math.floor(200 * Math.pow(1.06, (Phase1.QUEUE_START - pos)));
+    if (state.queuePass === 2) cost = Math.floor(cost * 5);
     return cost;
   }
 
@@ -217,8 +219,8 @@ const Game = (function() {
     state.maxPatience += clickVal;
     if (!state.flags.noWtlCost) state.wtl = Math.max(0, state.wtl - state.wtlPerClick);
     state.totalClicks++;
-    // Click also pushes queue progress (fixed burst)
-    state.queueProgress += 50;
+    // Click also pushes queue progress (only if Hold Pressure upgrade owned)
+    if (state.flags.holdPressure) state.queueProgress += 50;
     if (state.flags.comboUnlocked) {
       lastComboClick = now;
       state.combo = Math.min(state.comboCapMax, state.combo + Balance.CLICK.comboUp);
@@ -374,7 +376,7 @@ const Game = (function() {
         state._queueFlash = Date.now(); // flash full bar for 200ms
         
         // Reveal queue position at position 60
-        if (!state.queueRevealed && state.queue <= 60) {
+        if (!state.queueRevealed && state.queue <= 120) {
           state.queueRevealed = true;
           UI.addLog('"Your queue position is: ' + state.queue + '."');
           UI.showMilestone('"Your estimated queue position is: ' + state.queue + '."');
@@ -388,7 +390,7 @@ const Game = (function() {
           if (state.queuePass === 1) {
             // Department transfer
             state.queuePass = 2;
-            state.queue = 75;
+            state.queue = 150;
             state.queueProgress = 0;
             UI.showMilestone('"Thank you for holding. I\'m transferring you to our Specialist Department."<br><br><em>*click*</em><br><br>"Please continue to hold."');
             UI.addLog('TRANSFERRED. The hold music changes.');
