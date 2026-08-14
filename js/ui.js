@@ -197,10 +197,10 @@ const UI = (function() {
       setTextInner('sub-endure', '+' + NumberFormat.compact(cv) + wtlCostStr);
     }
 
-    // Deep Breath button (separate from Endure)
+    // Deep Breath button (shows whenever WtL drops below 80%)
     const refillBtn = document.getElementById('btn-refill');
     if (refillBtn) {
-      if (s.wtl < Balance.WTL.max * 0.8 && s.activePlayTime > Balance.WTL.drainStart) {
+      if (s.wtl < Balance.WTL.max * 0.8) {
         refillBtn.style.display = '';
         const cost = Wtl.getRefillCost(effectivePPS);
         refillBtn.disabled = s.patience < cost;
