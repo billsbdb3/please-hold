@@ -83,7 +83,6 @@ const Game = (function() {
     if (state.queuePass === 2) cost = Math.floor(cost * 12);
     return cost;
   }
-  }
 
   // ===== TIMING =====
   let lastTick = 0, lastFlavorTime = 0, lastComboClick = -Infinity, lastClickTime = -Infinity;
