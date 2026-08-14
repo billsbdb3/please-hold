@@ -78,8 +78,11 @@ const Game = (function() {
 
   // Queue position cost: fixed curve, filled by pps over time
   function getQueuePositionCost(pos) {
-    // Cost escalates: 50 at pos 100, ~5.8M at pos 1
-    return Math.floor(50 * Math.pow(1.12, (Phase1.QUEUE_START - pos)));
+    // Growth 1.14, pass2 x12 (sim verified: 96 min active, 120 min idle)
+    let cost = Math.floor(50 * Math.pow(1.14, (Phase1.QUEUE_START - pos)));
+    if (state.queuePass === 2) cost = Math.floor(cost * 12);
+    return cost;
+  }
   }
 
   // ===== TIMING =====
@@ -215,8 +218,8 @@ const Game = (function() {
     state.maxPatience += clickVal;
     if (!state.flags.noWtlCost) state.wtl = Math.max(0, state.wtl - state.wtlPerClick);
     state.totalClicks++;
-    // Click also pushes queue progress (3 seconds worth of pps)
-    state.queueProgress += totalPPS() * 3;
+    // Click also pushes queue progress (fixed burst)
+    state.queueProgress += 50;
     if (state.flags.comboUnlocked) {
       lastComboClick = now;
       state.combo = Math.min(state.comboCapMax, state.combo + Balance.CLICK.comboUp);
@@ -228,6 +231,7 @@ const Game = (function() {
       registerInteraction();
       state.patience -= state.refillCost;
       state.wtl = Math.min(state.wtlMax, state.wtl + state.refillAmount);
+      state._wtlFlash = Date.now();
       const bar = document.getElementById('bar-wtl');
       if (bar) { bar.style.background = '#fff'; setTimeout(() => { bar.style.background = ''; }, 200); }
       // Update button text
@@ -368,6 +372,7 @@ const Game = (function() {
         state.queueProgress -= cost;
         state.queue--;
         state.queueAdvances++;
+        state._queueFlash = Date.now(); // flash full bar for 200ms
         
         // Reveal queue position at position 60
         if (!state.queueRevealed && state.queue <= 60) {
@@ -449,10 +454,15 @@ const Game = (function() {
       UI.setText('val-queue', '...');
     }
     const qCost = getQueuePositionCost(state.queue);
-    const qPct = qCost > 0 ? ((qCost - state.queueProgress) / qCost) * 100 : 0;
+    let qPct;
+    if (state._queueFlash && Date.now() - state._queueFlash < 200) {
+      qPct = 100; // show full briefly on advance
+    } else {
+      qPct = qCost > 0 ? ((qCost - state.queueProgress) / qCost) * 100 : 0;
+    }
     UI.setWidth('bar-queue', Math.max(0, Math.min(100, qPct)));
     
-    const wtlPct = (state.wtl / state.wtlMax) * 100;
+    const wtlPct = (state._wtlFlash && Date.now() - state._wtlFlash < 200) ? 100 : (state.wtl / state.wtlMax) * 100;
     UI.setWidth('bar-wtl', wtlPct);
     UI.setBarColor('bar-wtl', wtlPct);
     UI.setWtlOverlay(wtlPct);
