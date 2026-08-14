@@ -118,7 +118,7 @@ const Game = (function() {
     if (paused) return;
     registerInteraction();
     const s = State.get();
-    const ePPS = getEffectivePPS() * s.combo;
+    const ePPS = getEffectivePPS(); // no combo — matches display
     const before = s.wtl;
     if (Wtl.doRefill(ePPS)) {
       Log.event('deep_breath', { cost: Wtl.getRefillCost(ePPS), before, after: s.wtl, pps: ePPS });

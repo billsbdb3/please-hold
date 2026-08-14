@@ -13,7 +13,7 @@ const Click = (function() {
   function getValue(effectivePPS) {
     const s = State.get();
     const wtlState = Wtl.getState();
-    const base = Balance.CLICK.baseValue + (effectivePPS * Balance.CLICK.ppsScale);
+    const base = Balance.CLICK.baseValue + (s.clickBaseBonus || 0) + (effectivePPS * Balance.CLICK.ppsScale);
     return base * s.clickValueMult * wtlState.clickMult;
   }
 

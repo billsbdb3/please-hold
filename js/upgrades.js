@@ -14,7 +14,7 @@ const Upgrades = (function() {
 
     { id: 'u_tolerance', name: 'Hold Music Tolerance', desc: '+1 base click value',
       cost: 120, revealAt: 60,
-      effect(s) { /* clickValueMult stays, we just bump the base via state */ } },
+      effect(s) { s.clickBaseBonus = (s.clickBaseBonus || 0) + 1; } },
 
     { id: 'u_chair', name: 'Comfortable Chair', desc: 'WtL drain reduced 25%',
       cost: 500, revealAt: 280,
@@ -38,7 +38,7 @@ const Upgrades = (function() {
     // --- Mid game (min 15-35) ---
     { id: 'u_entropy', name: 'Entropy Noticed', desc: 'Something is accumulating...',
       cost: 50000, revealAt: 50000, revealAtQueue: 120,
-      effect(s) { s.flags.dustStarted = true; s.dustPerSec = Balance.DUST.baseRate; },
+      effect(s) { s.flags.dustStarted = true; },
       narrative: "You glance down. There is a fine layer of dust on your arm. It wasn't there when you started this call." },
 
     { id: 'u_routing', name: 'Optimized Routing', desc: 'Queue drains 10% faster',

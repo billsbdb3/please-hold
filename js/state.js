@@ -30,6 +30,7 @@ const State = (function() {
       comboCapMax: Balance.CLICK.comboMaxBase,
       wtlPerClick: Balance.CLICK.wtlCost,
       clickValueMult: 1.0,
+      clickBaseBonus: 0,
       totalClicks: 0,
 
       // Generators (owned counts stored here, defs in generators.js)
@@ -66,6 +67,7 @@ const State = (function() {
 
       // Events
       connectionBuffExpires: 0,
+      connectionExpires: 0,
       nextConnectionTime: 0,
       connectionActive: false,
 

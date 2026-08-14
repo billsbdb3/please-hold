@@ -26,7 +26,6 @@ const UI = (function() {
       </div>
       <div id="actions-secondary">
         <button id="btn-refill" class="btn btn-secondary" style="display:none">Deep Breath<span class="btn-sub" id="sub-refill"></span></button>
-        <button id="btn-connection" class="btn btn-connection" style="display:none">📞 SIGNAL DETECTED</button>
       </div>
     `;
 
@@ -208,10 +207,10 @@ const UI = (function() {
       }
     }
 
-    // Connection button
-    const connBtn = document.getElementById('btn-connection');
-    if (connBtn) {
-      connBtn.style.display = s.connectionActive ? '' : 'none';
+    // Connection button (prominent, above panels)
+    const connDiv = document.getElementById('connection-event');
+    if (connDiv) {
+      connDiv.style.display = s.connectionActive ? '' : 'none';
     }
 
     // Generators
@@ -413,7 +412,9 @@ const UI = (function() {
     p.textContent = msg;
     if (className) p.className = className;
     logEl.appendChild(p);
-    logEl.scrollTop = logEl.scrollHeight;
+    // Scroll the output panel (parent has overflow-y: auto)
+    const scrollable = logEl.parentElement;
+    if (scrollable) scrollable.scrollTop = scrollable.scrollHeight;
     // Keep log trimmed
     while (logEl.children.length > 50) logEl.removeChild(logEl.firstChild);
   }
