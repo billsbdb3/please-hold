@@ -267,6 +267,7 @@ const UI = (function() {
       const div = document.getElementById('ubtn-' + u.id);
       if (!div) return;
       if (s.boughtUpgrades.includes(u.id)) {
+        div.style.display = '';
         if (!div.classList.contains('owned')) {
           div.className = 'upgrade-item owned';
           div.innerHTML = '<span class="ui-name">' + u.name + ' ✓</span>';
