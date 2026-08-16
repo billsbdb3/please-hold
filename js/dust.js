@@ -18,18 +18,17 @@ const Dust = (function() {
 
   /**
    * Calculate dust accumulation rate per second.
-   * Dust rate increases with PPS (your machines generate dust as byproduct)
-   * and with active play time (it just keeps building).
+   * Formula: sqrt(maxPatience) × scaleFactor × (collectorBoost ^ collectorsOwned)
+   * Each collector you buy makes dust accumulate FASTER (amplifier feedback loop).
+   * This naturally scales with player progression.
    */
   function getRate() {
     const s = State.get();
     if (!s.flags.dustStarted) return 0;
 
-    const basePPS = Generators.getBasePPS();
-    const ppsContrib = basePPS * Balance.DUST.ppsLinkFactor;
-    const timeContrib = (s.activePlayTime / 60) * Balance.DUST.timeScaleFactor;
-
-    return (Balance.DUST.baseRate + ppsContrib + timeContrib) * s.dustMultiplier;
+    const base = Math.sqrt(s.maxPatience) * Balance.DUST.scaleFactor;
+    const collectorMult = Math.pow(Balance.DUST.collectorBoost, s.collectorsOwned.length);
+    return base * collectorMult;
   }
 
   /**

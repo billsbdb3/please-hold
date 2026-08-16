@@ -50,7 +50,6 @@ const State = (function() {
 
       // Dust system
       dustPerSec: 0,
-      dustMultiplier: 1,
       collectorsOwned: [],   // array of collector IDs purchased
 
       // Phone

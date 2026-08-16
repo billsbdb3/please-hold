@@ -31,13 +31,12 @@ const Balance = Object.freeze({
 
   // === DUST (threat system) ===
   DUST: Object.freeze({
-    baseRate: 0.1,            // dust/sec base accumulation (always on after Entropy Noticed)
-    ppsLinkFactor: 0.00005,   // additional dust/sec = pps × this
-    baseThreshold: 1000,      // degradation formula denominator base
+    // Dust rate = sqrt(maxPatience) × scaleFactor × (collectorBoostPerOwned ^ collectorsOwned)
+    scaleFactor: 0.01,          // base multiplier on sqrt(maxPatience)
+    collectorBoost: 1.3,        // each collector multiplies dust rate by this
+    baseThreshold: 1000,        // degradation formula denominator base
     thresholdPerCollector: 1000, // each collector adds this to threshold
-    maxDegradation: 0.70,     // production can never lose more than 70%
-    // Dust accumulation increases over time (it's getting worse)
-    timeScaleFactor: 0.001,   // dust rate += activeMinutes × this
+    maxDegradation: 0.70,       // production can never lose more than 70%
     // Visual overlay
     overlayMax: 0.45,
     overlayDivisor: 3000,
