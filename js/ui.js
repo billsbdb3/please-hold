@@ -157,7 +157,7 @@ const UI = (function() {
       }
       // Show dust section in right panel
       const dustSection = document.getElementById('dust-section');
-      if (dustSection) dustSection.style.display = '';
+      if (dustSection) dustSection.style.display = 'block';
     }
 
     // Queue
