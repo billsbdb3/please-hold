@@ -31,16 +31,12 @@ const Balance = Object.freeze({
 
   // === DUST (threat system) ===
   DUST: Object.freeze({
-    // Dust accumulation: sqrt(maxPatience) × scaleFactor × (collectorAcceleration ^ collectorsOwned)
+    // Dust accumulation: sqrt(maxPatience) × scaleFactor
     scaleFactor: 0.01,
-    collectorAcceleration: 1.3,   // each collector makes dust accumulate faster (threat grows)
-    // Dust reduction: collectors actively remove dust
-    reductionBase: 20,            // each collector removes this much dust/sec base
-    reductionScaling: 0.25,       // bonus per collector: reduction × (1 + owned × this)
-    // Degradation
-    baseThreshold: 1000,
-    thresholdPerCollector: 1000,
-    maxDegradation: 0.70,
+    // Degradation threshold: collectors raise this so dust hurts less
+    baseThreshold: 1000,          // starting threshold (no collectors)
+    thresholdPerCollector: 5000,  // each collector adds this much
+    maxDegradation: 0.70,         // production can never lose more than 70%
     // Visual overlay
     overlayMax: 0.45,
     overlayDivisor: 3000,

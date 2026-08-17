@@ -142,13 +142,8 @@ const UI = (function() {
       const dustRate = Dust.getRate();
       const dustRateEl = document.getElementById('val-dust-rate');
       if (dustRateEl) {
-        if (dustRate >= 0) {
-          dustRateEl.textContent = '+' + dustRate.toFixed(1) + '/sec';
-          dustRateEl.className = 'res-rate negative'; // dust growing = bad
-        } else {
-          dustRateEl.textContent = dustRate.toFixed(1) + '/sec';
-          dustRateEl.className = 'res-rate positive'; // dust shrinking = good
-        }
+        dustRateEl.textContent = '+' + dustRate.toFixed(1) + '/sec';
+        dustRateEl.className = 'res-rate negative';
       }
       const degradeEl = document.getElementById('val-dust-degrade');
       if (degradeEl) {
