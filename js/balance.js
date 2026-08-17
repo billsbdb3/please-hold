@@ -16,7 +16,15 @@ const Balance = Object.freeze({
     callcenter:  { baseCost: 500000, growthRate: 1.10, baseProduction: 600.0, softCapAt: 12, unlocksAt: 350000, boostPercent: 0.02 },
   }),
   SOFT_CAP_EXPONENT: 4,
-  MILESTONE_INTERVAL: 25,     // x2 every 25 owned (automatic, free)
+  // Staggered milestones: x2 per threshold reached (rotating dominance)
+  MILESTONES: Object.freeze({
+    doodle:      [10, 25, 50, 100],
+    fidget:      [15, 35, 70],
+    autodialer:  [12, 30, 60],
+    speeddialer: [10, 25, 50],
+    robocaller:  [8, 20, 40],
+    callcenter:  [5, 15, 30],
+  }),
   CASCADE_CAP: 2.5,           // max boost from higher-tier cascade
 
   // === QUEUE ===
@@ -31,33 +39,33 @@ const Balance = Object.freeze({
 
   // === DUST (threat system) ===
   DUST: Object.freeze({
-    // Dust accumulation: sqrt(maxPatience) × scaleFactor
-    scaleFactor: 0.01,
+    // Dust accumulation: effectivePPS × dustFactor (proportional to production)
+    dustFactor: 0.001,            // dust/sec = PPS × this
     // Degradation threshold: collectors raise this so dust hurts less
     baseThreshold: 1000,          // starting threshold (no collectors)
-    thresholdPerCollector: 5000,  // each collector adds this much
+    thresholdPerCollector: 3000,  // each collector adds this much
     maxDegradation: 0.70,         // production can never lose more than 70%
     // Visual overlay
     overlayMax: 0.45,
-    overlayDivisor: 3000,
+    overlayDivisor: 5000,
   }),
 
-  // === DUST COLLECTORS (14 total, all protect against degradation) ===
+  // === DUST COLLECTORS (14 total, costs = 200 × 1.8^n) ===
   COLLECTORS: Object.freeze([
     { id: 'dc_cloth',     name: 'Microfiber Cloth',          cost: 200,      desc: 'Wipe down the desk' },
-    { id: 'dc_feather',   name: 'Feather Duster',            cost: 600,      desc: 'Brush the cobwebs forming' },
-    { id: 'dc_aircan',    name: 'Compressed Air Can',        cost: 1500,     desc: 'Blast the vents clear' },
-    { id: 'dc_dustpan',   name: 'Dustpan & Brush',           cost: 4000,     desc: 'Sweep the floor around you' },
-    { id: 'dc_filter',    name: 'Air Filter',                cost: 8000,     desc: 'The air itself is thick' },
-    { id: 'dc_handvac',   name: 'Hand Vacuum',               cost: 15000,    desc: 'It growls at the dust' },
-    { id: 'dc_hepa',      name: 'HEPA Filter',               cost: 30000,    desc: 'Medical grade. Necessary.' },
-    { id: 'dc_shopvac',   name: 'Shop Vac',                  cost: 60000,    desc: 'Industrial. Loud. Effective.' },
-    { id: 'dc_purifier',  name: 'Air Purifier',              cost: 120000,   desc: 'Runs 24/7. Barely keeps up.' },
-    { id: 'dc_cleanroom', name: 'Clean Room Protocol',       cost: 250000,   desc: 'Sealed environment. Still leaks.' },
-    { id: 'dc_scrubber',  name: 'Electrostatic Scrubber',    cost: 400000,   desc: 'Charges the air. Dust clings to walls.' },
-    { id: 'dc_negative',  name: 'Negative Pressure Chamber', cost: 800000,   desc: 'Nothing should survive in here.' },
-    { id: 'dc_singular',  name: 'Dust Singularity',          cost: 1500000,  desc: 'A small vortex. Concerning but effective.' },
-    { id: 'dc_void',      name: 'Void Condenser',            cost: 3000000,  desc: 'The dust ceases to exist. For now.' },
+    { id: 'dc_feather',   name: 'Feather Duster',            cost: 360,      desc: 'Brush the cobwebs forming' },
+    { id: 'dc_aircan',    name: 'Compressed Air Can',        cost: 648,      desc: 'Blast the vents clear' },
+    { id: 'dc_dustpan',   name: 'Dustpan & Brush',           cost: 1166,     desc: 'Sweep the floor around you' },
+    { id: 'dc_filter',    name: 'Air Filter',                cost: 2099,     desc: 'The air itself is thick' },
+    { id: 'dc_handvac',   name: 'Hand Vacuum',               cost: 3779,     desc: 'It growls at the dust' },
+    { id: 'dc_hepa',      name: 'HEPA Filter',               cost: 6802,     desc: 'Medical grade. Necessary.' },
+    { id: 'dc_shopvac',   name: 'Shop Vac',                  cost: 12244,    desc: 'Industrial. Loud. Effective.' },
+    { id: 'dc_purifier',  name: 'Air Purifier',              cost: 22039,    desc: 'Runs 24/7. Barely keeps up.' },
+    { id: 'dc_cleanroom', name: 'Clean Room Protocol',       cost: 39671,    desc: 'Sealed environment. Still leaks.' },
+    { id: 'dc_scrubber',  name: 'Electrostatic Scrubber',    cost: 71409,    desc: 'Charges the air. Dust clings to walls.' },
+    { id: 'dc_negative',  name: 'Negative Pressure Chamber', cost: 128536,   desc: 'Nothing should survive in here.' },
+    { id: 'dc_singular',  name: 'Dust Singularity',          cost: 231366,   desc: 'A small vortex. Concerning but effective.' },
+    { id: 'dc_void',      name: 'Void Condenser',            cost: 416459,   desc: 'The dust ceases to exist. For now.' },
   ]),
 
   // === CLICK / COMBO ===

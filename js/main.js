@@ -301,7 +301,7 @@ const Game = (function() {
     s.maxPatience += earned;
 
     // Dust accumulation
-    Dust.accumulate(dt);
+    Dust.accumulate(dt, effectivePPS);
 
     // Queue advance
     const qResult = Queue.tick(effectivePPS, dt);

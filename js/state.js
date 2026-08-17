@@ -49,7 +49,6 @@ const State = (function() {
       globalGenMultiplier: 1,
 
       // Dust system
-      dustPerSec: 0,
       collectorsOwned: [],   // array of collector IDs purchased
 
       // Phone

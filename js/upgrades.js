@@ -52,6 +52,36 @@ const Upgrades = (function() {
       narrative: "Your fingers remember. The rhythm is in your bones. The decay... slows." },
 
     // --- Mid-late game (min 35-50) ---
+    { id: 'u_robo2x', name: 'Overclocked Robotics', desc: 'Robo-Caller production x2',
+      cost: 150000, revealAt: 80000, revealAtQueue: 110,
+      effect(s) { s.genMultipliers.robocaller = (s.genMultipliers.robocaller || 1) * 2; },
+      narrative: "The robo-callers evolve. Their circuits burn hotter but hold longer." },
+
+    { id: 'u_allprod25', name: 'Synergy Protocol', desc: 'ALL production +25%',
+      cost: 250000, revealAt: 120000, revealAtQueue: 90,
+      effect(s) { s.globalGenMultiplier *= 1.25; },
+      narrative: "Everything clicks together. The systems harmonize." },
+
+    { id: 'u_qspeed15', name: 'Queue Optimization', desc: 'Queue drains 15% faster',
+      cost: 200000, revealAt: 100000, revealAtQueue: 100,
+      effect(s) { s.queueSpeedMult += 0.15; },
+      narrative: "You've memorized the hold music. You can predict the pauses. Time moves faster." },
+
+    { id: 'u_shadow2x', name: 'Shadow Expansion', desc: 'Shadow Call Center production x2',
+      cost: 800000, revealAt: 500000, revealAtQueue: 70,
+      effect(s) { s.genMultipliers.callcenter = (s.genMultipliers.callcenter || 1) * 2; },
+      narrative: "The shadow call center spans continents now. Invisible. Relentless." },
+
+    { id: 'u_allprod50', name: 'Persistence Engine', desc: 'ALL production +50%',
+      cost: 2000000, revealAt: 1000000, revealAtQueue: 40,
+      effect(s) { s.globalGenMultiplier *= 1.5; },
+      narrative: "Pure stubbornness becomes a force of nature. The universe bends around your refusal to hang up." },
+
+    { id: 'u_qspeed25', name: 'Quantum Queue', desc: 'Queue drains 25% faster',
+      cost: 3000000, revealAt: 1500000, revealAtQueue: 20,
+      effect(s) { s.queueSpeedMult += 0.25; },
+      narrative: "The queue position flickers. You exist in multiple spots simultaneously." },
+
     { id: 'u_callus', name: 'Emotional Callus', desc: 'WtL drain reduced 50%',
       cost: 500000, revealAt: 400000, revealAtQueue: 60, revealAtActiveTime: 2400,
       effect(s) { s.flags.emotionalCallus = true; },

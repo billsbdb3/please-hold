@@ -139,7 +139,7 @@ const UI = (function() {
     if (s.flags.dustStarted) {
       show('res-dust');
       setText('val-dust', NumberFormat.compact(s.dust));
-      const dustRate = Dust.getRate();
+      const dustRate = Dust.getRate(effectivePPS);
       const dustRateEl = document.getElementById('val-dust-rate');
       if (dustRateEl) {
         dustRateEl.textContent = '+' + dustRate.toFixed(1) + '/sec';

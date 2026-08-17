@@ -15,21 +15,24 @@ const Dust = (function() {
 
   /**
    * Calculate dust accumulation rate per second.
-   * Formula: sqrt(maxPatience) × scaleFactor
+   * Formula: effectivePPS × dustFactor (proportional to production)
+   * @param {number} effectivePPS - passed from main loop to avoid circular dep
    */
-  function getRate() {
+  function getRate(effectivePPS) {
     const s = State.get();
     if (!s.flags.dustStarted) return 0;
-    return Math.sqrt(s.maxPatience) * Balance.DUST.scaleFactor;
+    return (effectivePPS || 0) * Balance.DUST.dustFactor;
   }
 
   /**
-   * Accumulate dust for a tick.
+   * Accumulate dust for a tick. No cap — dust grows freely.
+   * @param {number} dt - seconds elapsed
+   * @param {number} effectivePPS - current effective PPS from main loop
    */
-  function accumulate(dt) {
+  function accumulate(dt, effectivePPS) {
     const s = State.get();
     if (!s.flags.dustStarted) return;
-    s.dust += getRate() * dt;
+    s.dust += getRate(effectivePPS) * dt;
   }
 
   /**

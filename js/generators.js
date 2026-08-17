@@ -45,11 +45,15 @@ const Generators = (function() {
     return Math.floor(cfg.baseCost * Math.pow(cfg.growthRate, owned));
   }
 
-  /** Get milestone multiplier for a generator (x2 at every MILESTONE_INTERVAL) */
+  /** Get milestone multiplier for a generator (x2 per threshold in staggered array) */
   function getMilestoneMult(id) {
     const owned = State.get().generators[id].owned;
-    const milestones = Math.floor(owned / Balance.MILESTONE_INTERVAL);
-    return Math.pow(2, milestones);
+    const thresholds = Balance.MILESTONES[id] || [];
+    let mult = 1;
+    for (let i = 0; i < thresholds.length; i++) {
+      if (owned >= thresholds[i]) mult *= 2;
+    }
+    return mult;
   }
 
   /** 
@@ -153,18 +157,20 @@ const Generators = (function() {
 
     DEFS.forEach(def => {
       const owned = s.generators[def.id].owned;
-      if (owned > 0 && owned % Balance.MILESTONE_INTERVAL === 0) {
-        const milestoneNum = owned / Balance.MILESTONE_INTERVAL;
-        const key = def.id + '_m' + milestoneNum;
-        if (!s.triggeredGenMilestones.includes(key)) {
-          s.triggeredGenMilestones.push(key);
-          fired.push({
-            id: def.id,
-            name: def.name,
-            milestoneNum: milestoneNum,
-            totalMult: Math.pow(2, milestoneNum),
-            owned: owned,
-          });
+      const thresholds = Balance.MILESTONES[def.id] || [];
+      for (let i = 0; i < thresholds.length; i++) {
+        if (owned >= thresholds[i]) {
+          const key = def.id + '_m' + i;
+          if (!s.triggeredGenMilestones.includes(key)) {
+            s.triggeredGenMilestones.push(key);
+            fired.push({
+              id: def.id,
+              name: def.name,
+              milestoneNum: i + 1,
+              totalMult: Math.pow(2, i + 1),
+              owned: owned,
+            });
+          }
         }
       }
     });
