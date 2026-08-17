@@ -35,8 +35,8 @@ const Balance = Object.freeze({
     scaleFactor: 0.01,
     collectorAcceleration: 1.3,   // each collector makes dust accumulate faster (threat grows)
     // Dust reduction: collectors actively remove dust
-    reductionBase: 5,             // each collector removes this much dust/sec base
-    reductionScaling: 0.15,       // bonus per collector: reduction × (1 + owned × this)
+    reductionBase: 20,            // each collector removes this much dust/sec base
+    reductionScaling: 0.25,       // bonus per collector: reduction × (1 + owned × this)
     // Degradation
     baseThreshold: 1000,
     thresholdPerCollector: 1000,
