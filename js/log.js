@@ -27,7 +27,7 @@ const Log = (function() {
     console.log('[METRICS] TIME ' + mins() + ' | active:' + (s.activePlayTime / 60).toFixed(1) + 'm | pps:' + effectivePPS.toFixed(0) + ' | q:#' + s.queue + ' | pass:' + s.queuePass + ' | hold:' + NumberFormat.formatHoldTime(Queue.getInGameTime()));
     console.log('[METRICS]   WtL:' + s.wtl.toFixed(1) + '/' + Balance.WTL.max + ' [' + wtlState.name + '] drain:' + drain.toFixed(2) + '/s | refill:' + refillCost + ' | combo:' + s.combo.toFixed(1) + '/' + s.comboCapMax);
     console.log('[METRICS]   Queue: speed=' + (s.queueSpeedMult + Phone.getBonus().queue).toFixed(2) + '×' + wtlState.queueMult + ' | cost=' + qCost + ' | ETA=' + (eta === Infinity ? '∞' : eta.toFixed(1) + 's') + ' | clickPush=' + clickPush.toFixed(0) + '/click');
-    console.log('[METRICS]   Dust:' + Math.floor(s.dust) + ' | degrade:' + (degradation * 100).toFixed(1) + '% | collectors:' + s.collectorsOwned.length + '/14 | threshold:' + Dust.getThreshold());
+    console.log('[METRICS]   Dust:' + Math.floor(s.dust) + ' | degrade:' + (degradation * 100).toFixed(1) + '% | net:' + Dust.getRate().toFixed(1) + '/s | collectors:' + s.collectorsOwned.length + '/14 | threshold:' + Dust.getThreshold());
     console.log('[METRICS]   Gens: ' + Generators.getDefs().map(d => d.id[0] + ':' + s.generators[d.id].owned).join(' ') + ' | ' + domStr);
     console.log('[METRICS]   Phone:' + s.phoneTier + ' | clicks:' + s.totalClicks + ' | upgrades:' + s.boughtUpgrades.length + '/' + Upgrades.getDefs().length);
   }

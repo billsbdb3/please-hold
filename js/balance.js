@@ -31,12 +31,16 @@ const Balance = Object.freeze({
 
   // === DUST (threat system) ===
   DUST: Object.freeze({
-    // Dust rate = sqrt(maxPatience) × scaleFactor × (collectorBoostPerOwned ^ collectorsOwned)
-    scaleFactor: 0.01,          // base multiplier on sqrt(maxPatience)
-    collectorBoost: 1.3,        // each collector multiplies dust rate by this
-    baseThreshold: 1000,        // degradation formula denominator base
-    thresholdPerCollector: 1000, // each collector adds this to threshold
-    maxDegradation: 0.70,       // production can never lose more than 70%
+    // Dust accumulation: sqrt(maxPatience) × scaleFactor × (collectorAcceleration ^ collectorsOwned)
+    scaleFactor: 0.01,
+    collectorAcceleration: 1.3,   // each collector makes dust accumulate faster (threat grows)
+    // Dust reduction: collectors actively remove dust
+    reductionBase: 5,             // each collector removes this much dust/sec base
+    reductionScaling: 0.15,       // bonus per collector: reduction × (1 + owned × this)
+    // Degradation
+    baseThreshold: 1000,
+    thresholdPerCollector: 1000,
+    maxDegradation: 0.70,
     // Visual overlay
     overlayMax: 0.45,
     overlayDivisor: 3000,
@@ -54,10 +58,10 @@ const Balance = Object.freeze({
     { id: 'dc_shopvac',   name: 'Shop Vac',                  cost: 60000,    desc: 'Industrial. Loud. Effective.' },
     { id: 'dc_purifier',  name: 'Air Purifier',              cost: 120000,   desc: 'Runs 24/7. Barely keeps up.' },
     { id: 'dc_cleanroom', name: 'Clean Room Protocol',       cost: 250000,   desc: 'Sealed environment. Still leaks.' },
-    { id: 'dc_scrubber',  name: 'Electrostatic Scrubber',    cost: 500000,   desc: 'Charges the air. Dust clings to walls.' },
-    { id: 'dc_negative',  name: 'Negative Pressure Chamber', cost: 1000000,  desc: 'Nothing should survive in here.' },
-    { id: 'dc_singular',  name: 'Dust Singularity',          cost: 2500000,  desc: 'A small vortex. Concerning but effective.' },
-    { id: 'dc_void',      name: 'Void Condenser',            cost: 5000000,  desc: 'The dust ceases to exist. For now.' },
+    { id: 'dc_scrubber',  name: 'Electrostatic Scrubber',    cost: 400000,   desc: 'Charges the air. Dust clings to walls.' },
+    { id: 'dc_negative',  name: 'Negative Pressure Chamber', cost: 800000,   desc: 'Nothing should survive in here.' },
+    { id: 'dc_singular',  name: 'Dust Singularity',          cost: 1500000,  desc: 'A small vortex. Concerning but effective.' },
+    { id: 'dc_void',      name: 'Void Condenser',            cost: 3000000,  desc: 'The dust ceases to exist. For now.' },
   ]),
 
   // === CLICK / COMBO ===

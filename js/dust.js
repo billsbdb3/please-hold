@@ -1,39 +1,55 @@
 /**
  * PLEASE HOLD - Dust System (v6)
  * 
- * Dust is a THREAT. It accumulates over time and DEGRADES generator production.
- * Dust collectors raise the degradation threshold, protecting your coping mechanisms.
+ * Dust is a THREAT that accumulates and degrades production.
+ * Collectors ACTIVELY REMOVE dust (they fight it, not just tolerate it).
  * 
- * Core formula:
- *   degradation = min(maxDegradation, dust / (dust + threshold))
- *   threshold = baseThreshold + (collectorsOwned × thresholdPerCollector)
- *   effectivePPS = basePPS × (1 - degradation)
+ * Accumulation: sqrt(maxPatience) × scaleFactor (grows with progress)
+ * Reduction: collectors × reductionBase × (1 + collectors × reductionScaling)
+ * Net rate: accumulation - reduction (can be negative = dust decreasing)
  * 
- * Without collectors: at 1000 dust, 50% production loss.
- * With all 14 collectors: threshold = 15000, at 1000 dust only 6% loss.
- * 
- * Collectors cost DUST to buy (you spend accumulated dust to install them).
+ * Arc: losing (0-5 collectors) → holding (6-10) → winning (11-14)
+ * Phase 2 setup: collectors explode, dust floods back.
  */
 const Dust = (function() {
 
   /**
-   * Calculate dust accumulation rate per second.
-   * Formula: sqrt(maxPatience) × scaleFactor × (collectorBoost ^ collectorsOwned)
-   * Each collector you buy makes dust accumulate FASTER (amplifier feedback loop).
-   * This naturally scales with player progression.
+   * Calculate dust accumulation rate (how fast dust builds up).
    */
-  function getRate() {
+  function getAccumulationRate() {
     const s = State.get();
     if (!s.flags.dustStarted) return 0;
+    return Math.sqrt(s.maxPatience) * Balance.DUST.scaleFactor;
+  }
 
-    const base = Math.sqrt(s.maxPatience) * Balance.DUST.scaleFactor;
-    const collectorMult = Math.pow(Balance.DUST.collectorBoost, s.collectorsOwned.length);
-    return base * collectorMult;
+  /**
+   * Calculate dust reduction rate (how fast collectors remove dust).
+   * Each collector removes dust. More collectors = each works better (synergy).
+   */
+  function getReductionRate() {
+    const owned = State.get().collectorsOwned.length;
+    if (owned <= 0) return 0;
+    return owned * Balance.DUST.reductionBase * (1 + owned * Balance.DUST.reductionScaling);
+  }
+
+  /**
+   * Get net dust rate. Positive = accumulating, negative = being cleaned.
+   */
+  function getRate() {
+    return getAccumulationRate() - getReductionRate();
+  }
+
+  /**
+   * Accumulate (or reduce) dust for a tick. Floor at 0.
+   */
+  function accumulate(dt) {
+    const s = State.get();
+    if (!s.flags.dustStarted) return;
+    s.dust = Math.max(0, s.dust + getRate() * dt);
   }
 
   /**
    * Get current degradation threshold.
-   * Higher threshold = dust has less impact on production.
    */
   function getThreshold() {
     const s = State.get();
@@ -43,25 +59,13 @@ const Dust = (function() {
 
   /**
    * Calculate current production degradation (0 to maxDegradation).
-   * This is the fraction of production LOST to dust.
-   *   effectivePPS = basePPS × (1 - getDegradation())
    */
   function getDegradation() {
     const s = State.get();
     if (s.dust <= 0) return 0;
-
     const threshold = getThreshold();
     const rawDegradation = s.dust / (s.dust + threshold);
     return Math.min(Balance.DUST.maxDegradation, rawDegradation);
-  }
-
-  /**
-   * Accumulate dust for a tick. Called from game loop.
-   */
-  function accumulate(dt) {
-    const s = State.get();
-    if (!s.flags.dustStarted) return;
-    s.dust += getRate() * dt;
   }
 
   /**
@@ -117,7 +121,8 @@ const Dust = (function() {
   }
 
   return {
-    getRate, getThreshold, getDegradation, accumulate,
+    getAccumulationRate, getReductionRate, getRate, accumulate,
+    getThreshold, getDegradation,
     getCollectors, isCollectorOwned, buyCollector,
     allCollectorsPurchased, getOwnedCount, getOverlayOpacity,
   };
