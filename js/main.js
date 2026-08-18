@@ -272,6 +272,8 @@ const Game = (function() {
 
     // --- SYSTEMS TICK ---
     const effectivePPS = getEffectivePPS();
+    // Raw PPS (before dust degradation) for dust accumulation - prevents death spiral
+    const rawPPS = Generators.getBasePPS() * (1 + Phone.getBonus().prod) * Wtl.getState().genMult * Events.getConnectionMult(Date.now());
 
     // Combo decay
     Click.decayCombo(dt, now);
@@ -300,8 +302,8 @@ const Game = (function() {
     s.patience += earned;
     s.maxPatience += earned;
 
-    // Dust accumulation
-    Dust.accumulate(dt, effectivePPS);
+    // Dust accumulation (uses rawPPS so degradation doesn't create death spiral)
+    Dust.accumulate(dt, rawPPS);
 
     // Queue advance
     const qResult = Queue.tick(effectivePPS, dt);
@@ -362,7 +364,7 @@ const Game = (function() {
     }
 
     // Render UI
-    UI.render(effectivePPS);
+    UI.render(effectivePPS, rawPPS);
 
     requestAnimationFrame(tick);
   }

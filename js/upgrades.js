@@ -95,17 +95,17 @@ const Upgrades = (function() {
 
     // --- Time-gated: x2 ALL production ---
     { id: 'u_blur1', name: 'Time Blur I', desc: 'Everything accelerates. (ALL x2)',
-      cost: 100000, revealAtActiveTime: 1800,
+      cost: 100000, revealAtActiveTime: 1200,
       effect(s) { s.globalGenMultiplier *= 2; s.comboCapMax = 5; },
       narrative: "Years. It's been years. The seasons outside have blurred into a single grey smear." },
 
     { id: 'u_blur2', name: 'Time Blur II', desc: 'Reality bends. (ALL x2)',
-      cost: 500000, revealAtActiveTime: 2700,
+      cost: 500000, revealAtActiveTime: 1800,
       effect(s) { s.globalGenMultiplier *= 2; s.comboCapMax = 6; },
       narrative: "Half a decade on hold. You've aged. The phone hasn't. It mocks you with its patience." },
 
     { id: 'u_blur3', name: 'Time Blur III', desc: 'Time is meaningless. (ALL x2)',
-      cost: 2500000, revealAtActiveTime: 3600,
+      cost: 2500000, revealAtActiveTime: 2400,
       effect(s) { s.globalGenMultiplier *= 2; s.comboCapMax = 8; },
       narrative: "Seven years. You've been holding longer than some marriages last. The dust agrees." },
   ];

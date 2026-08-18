@@ -69,7 +69,7 @@ const UI = (function() {
 
   // === RENDER (called every frame) ===
 
-  function render(effectivePPS) {
+  function render(effectivePPS, rawPPS) {
     const s = State.get();
     const now = Date.now();
 
@@ -139,7 +139,7 @@ const UI = (function() {
     if (s.flags.dustStarted) {
       show('res-dust');
       setText('val-dust', NumberFormat.compact(s.dust));
-      const dustRate = Dust.getRate(effectivePPS);
+      const dustRate = Dust.getRate(rawPPS || effectivePPS);
       const dustRateEl = document.getElementById('val-dust-rate');
       if (dustRateEl) {
         dustRateEl.textContent = '+' + dustRate.toFixed(1) + '/sec';

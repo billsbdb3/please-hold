@@ -40,9 +40,9 @@ const QUEUE_TRANSFER = 150;
 // === UPGRADES (20 total, spread across game) ===
 const UPGRADES = [
   // Time-gated globals
-  { id: 'blur1', cost: 100000, revealTime: 1800, mult: 'global', val: 2 },
-  { id: 'blur2', cost: 500000, revealTime: 2700, mult: 'global', val: 2 },
-  { id: 'blur3', cost: 2500000, revealTime: 3600, mult: 'global', val: 2 },
+  { id: 'blur1', cost: 100000, revealTime: 1200, mult: 'global', val: 2 },
+  { id: 'blur2', cost: 500000, revealTime: 1800, mult: 'global', val: 2 },
+  { id: 'blur3', cost: 2500000, revealTime: 2400, mult: 'global', val: 2 },
   // Queue-gated targeted
   { id: 'robo2x', cost: 150000, revealQ: 110, mult: 'r', val: 2 },
   { id: 'allprod25', cost: 250000, revealQ: 90, mult: 'global', val: 1.25 },
@@ -77,7 +77,7 @@ function getMilestoneMult(gen) {
 }
 
 // === PPS ===
-function calcPPS() {
+function calcRawPPS() {
   let total = 0;
   for (const g of s.gens) {
     if (g.owned <= 0) continue;
@@ -85,6 +85,11 @@ function calcPPS() {
     total += g.prod * g.owned * mult;
   }
   total *= (1 + s.phoneProd);
+  return total;
+}
+
+function calcPPS() {
+  let total = calcRawPPS();
   // Dust degradation
   const threshold = DUST_BASE_THRESHOLD + s.collectorsOwned * DUST_THRESHOLD_PER_COLLECTOR;
   const degrade = s.dust > 0 ? Math.min(DUST_MAX_DEGRADE, s.dust / (s.dust + threshold)) : 0;
@@ -154,9 +159,10 @@ function simulate() {
     // Combo decay
     if (s.combo > 1) s.combo = Math.max(1, s.combo - 0.2 * DT);
 
-    // Dust (exchange rate model: proportional to PPS, NO CAP)
+    // Dust (exchange rate model: proportional to RAW PPS, NO CAP)
+    // Uses raw PPS so degradation doesn't create death spiral
     if (s.dustStarted) {
-      s.dust += pps * DUST_FACTOR * DT;
+      s.dust += calcRawPPS() * DUST_FACTOR * DT;
     }
 
     // Queue
