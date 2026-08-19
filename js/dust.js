@@ -47,13 +47,18 @@ const Dust = (function() {
 
   /**
    * Calculate current production degradation (0 to maxDegradation).
+   * WtL reduces effective degradation — high willpower resists the dust.
+   * Formula: rawDegrade × (1 - wtlPercent × wtlResistance)
    */
   function getDegradation() {
     const s = State.get();
     if (s.dust <= 0) return 0;
     const threshold = getThreshold();
-    const rawDegradation = s.dust / (s.dust + threshold);
-    return Math.min(Balance.DUST.maxDegradation, rawDegradation);
+    const rawDegradation = Math.min(Balance.DUST.maxDegradation, s.dust / (s.dust + threshold));
+    // WtL resistance: at 100% WtL, degradation is halved
+    const wtlPercent = s.wtl / Balance.WTL.max;
+    const resistance = wtlPercent * Balance.DUST.wtlResistance;
+    return rawDegradation * (1 - resistance);
   }
 
   /**

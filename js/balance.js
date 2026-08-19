@@ -45,6 +45,8 @@ const Balance = Object.freeze({
     baseThreshold: 1000,          // starting threshold (no collectors)
     thresholdPerCollector: 3000,  // each collector adds this much
     maxDegradation: 0.70,         // production can never lose more than 70%
+    // WtL resistance: high willpower reduces effective degradation
+    wtlResistance: 0.5,           // at 100% WtL, degradation is halved
     // Visual overlay
     overlayMax: 0.45,
     overlayDivisor: 5000,

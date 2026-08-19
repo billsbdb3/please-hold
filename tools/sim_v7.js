@@ -34,7 +34,7 @@ for (let i = 0; i < NUM_COLLECTORS; i++) COLLECTOR_COSTS.push(Math.floor(200 * M
 const QUEUE_START = 200;
 const QUEUE_GROWTH = 1.06;
 const QUEUE_BASE_COST = 200;
-const QUEUE_PASS2_MULT = 5;
+const QUEUE_PASS2_MULT = 4;
 const QUEUE_TRANSFER = 150;
 
 // === UPGRADES (20 total, spread across game) ===
@@ -64,6 +64,7 @@ function reset() {
     activeTime: 0, clicks: 0, bought: new Set(),
     dustStarted: false, dust: 0, collectorsOwned: 0,
     phoneTier: 0, phoneProd: 0, phoneQueue: 0,
+    wtl: 100, wtlMax: 100,
   };
 }
 
@@ -90,9 +91,13 @@ function calcRawPPS() {
 
 function calcPPS() {
   let total = calcRawPPS();
-  // Dust degradation
+  // Dust degradation with WtL resistance
   const threshold = DUST_BASE_THRESHOLD + s.collectorsOwned * DUST_THRESHOLD_PER_COLLECTOR;
-  const degrade = s.dust > 0 ? Math.min(DUST_MAX_DEGRADE, s.dust / (s.dust + threshold)) : 0;
+  const rawDegrade = s.dust > 0 ? Math.min(DUST_MAX_DEGRADE, s.dust / (s.dust + threshold)) : 0;
+  // WtL resistance: at 100% WtL, degradation is halved (0.5 factor)
+  const wtlPercent = s.wtl / s.wtlMax;
+  const resistance = wtlPercent * 0.5;
+  const degrade = rawDegrade * (1 - resistance);
   total *= (1 - degrade);
   return total;
 }
@@ -158,6 +163,15 @@ function simulate() {
 
     // Combo decay
     if (s.combo > 1) s.combo = Math.max(1, s.combo - 0.2 * DT);
+
+    // WtL drain and Deep Breath (simplified)
+    if (s.activeTime > 300) { // drain starts at 5 min
+      s.wtl -= 0.5 * DT;
+      if (s.wtl < 30) {
+        // Sim player uses Deep Breath when low
+        s.wtl = Math.min(s.wtlMax, s.wtl + 40);
+      }
+    }
 
     // Dust (exchange rate model: proportional to RAW PPS, NO CAP)
     // Uses raw PPS so degradation doesn't create death spiral
