@@ -32,7 +32,7 @@ const Balance = Object.freeze({
     startPosition: 200,
     growthRate: 1.06,
     baseCost: 200,
-    pass2Mult: 5,             // second pass costs multiplied by this
+    pass2Mult: 4,             // second pass costs multiplied by this
     transferPosition: 150,    // queue resets here on department transfer
     revealPosition: 120,      // queue number revealed to player
   }),

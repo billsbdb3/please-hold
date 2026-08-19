@@ -63,7 +63,7 @@ const Upgrades = (function() {
       narrative: "Everything clicks together. The systems harmonize." },
 
     { id: 'u_qspeed15', name: 'Queue Optimization', desc: 'Queue drains 15% faster',
-      cost: 200000, revealAt: 100000, revealAtQueue: 100,
+      cost: 200000, revealAt: 100000, revealAtQueue: 80,
       effect(s) { s.queueSpeedMult += 0.15; },
       narrative: "You've memorized the hold music. You can predict the pauses. Time moves faster." },
 
