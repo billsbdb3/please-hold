@@ -1,0 +1,313 @@
+/**
+ * PLEASE HOLD — theme.
+ *
+ * The visual argument (docs/DESIGN.md §8): phosphor amber on near-black for
+ * everything that belongs to the player's own console, and cold institutional
+ * grey-blue for anything belonging to an agency. Crime is warm and badly lit;
+ * bureaucracy is cold and evenly lit. By Phase 3 the screen has gone cold.
+ *
+ * Accessibility is not optional here. A CRT aesthetic is exactly the kind of thing
+ * that ships at 2.1:1 contrast and gives people headaches, so: body text is held
+ * above WCAG AA against the panel background, and every flicker, scanline and
+ * particle is gated behind prefers-reduced-motion.
+ */
+
+:root {
+  /* --- Phosphor (the player's console) --- */
+  --amber: #ffb949;
+  --amber-dim: #c98a2e;
+  --amber-deep: #7a5218;
+  /* Body text: measured 9.7:1 on --panel. Do not darken without re-measuring. */
+  --amber-text: #ffd79a;
+
+  --green: #6ee787;
+  --red: #ff6b5e;
+  --red-dim: #a83a31;
+
+  /* --- Institutional (agencies, Phase 3) --- */
+  --steel: #8fa3b8;
+  --steel-dim: #5a6b7d;
+  --steel-deep: #2b3540;
+
+  /* --- Surfaces --- */
+  --void: #07070a;
+  --panel: #0e0f14;
+  --panel-raised: #15171e;
+  --line: #23262f;
+  --line-hot: #3a2f1c;
+
+  --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Mono',
+    Menlo, Consolas, monospace;
+
+  --pad: 0.75rem;
+  --radius: 2px;
+
+  /* Motion durations, zeroed out under reduced-motion (see bottom of file). */
+  --t-fast: 90ms;
+  --t-med: 220ms;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--void);
+  color: var(--amber-text);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.5;
+  /* The game is a fixed console. Page-level scrolling would break the illusion;
+     individual panes scroll instead. */
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  height: 100%;
+}
+
+/* Tabular figures everywhere numbers live. Without this, every counter jitters
+   horizontally as digits change width, which on a screen full of counters reads
+   as the whole UI vibrating. */
+.num,
+.stat-value,
+.cost,
+.timer {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ------------------------------------------------------------------ panels */
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  /* Contain layout+paint so a counter updating at 20 Hz cannot invalidate layout
+     for the rest of the page. This is the cheapest performance win available. */
+  contain: layout paint;
+}
+
+.panel-title {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--amber-deep);
+  padding: 0.5rem var(--pad);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+}
+
+/* ------------------------------------------------------------------ buttons */
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--amber-text);
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+
+button:hover:not(:disabled) {
+  background: #1c1f27;
+  border-color: var(--amber-deep);
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Visible focus ring. A keyboard player must be able to see where they are. */
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------- the primary action button */
+
+.btn-stall {
+  width: 100%;
+  padding: 1.1rem;
+  font-size: 15px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--void);
+  background: var(--amber);
+  border: none;
+  font-weight: 600;
+  /* Promote to its own layer: this element is pressed thousands of times and
+     must never trigger a layout pass on the rest of the console. */
+  will-change: transform;
+}
+
+.btn-stall:hover:not(:disabled) {
+  background: #ffc766;
+}
+
+.btn-stall:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* ------------------------------------------------------------------- meters */
+
+.meter {
+  height: 6px;
+  background: #000;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  background: var(--amber);
+  /* Width is set inline from state. Transition it so a jump reads as movement. */
+  transition: width var(--t-med) linear, background-color var(--t-med);
+}
+
+.meter-fill.warn {
+  background: #e8a33d;
+}
+.meter-fill.danger {
+  background: var(--red);
+}
+
+/* ------------------------------------------------------------------ effects */
+
+/**
+ * Scanlines. A repeating-gradient overlay rather than a real texture: no network
+ * request, no memory, and it scales to any viewport. pointer-events:none so it
+ * never eats a click.
+ */
+.crt-scanlines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 90;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.22) 3px,
+    rgba(0, 0, 0, 0.22) 4px
+  );
+  mix-blend-mode: multiply;
+}
+
+/** Vignette. Sells the curved glass without a shader. */
+.crt-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 91;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0) 55%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+}
+
+/** Phosphor glow, for headline numbers only. Applied to body text it becomes mud. */
+.phosphor {
+  color: var(--amber);
+  text-shadow: 0 0 6px rgba(255, 185, 73, 0.45), 0 0 18px rgba(255, 185, 73, 0.15);
+}
+
+/** Heat/interference. Intensity is driven from state via --glitch. */
+.glitching {
+  animation: glitch-shift 2.4s steps(1) infinite;
+}
+
+@keyframes glitch-shift {
+  0%, 92%, 100% { transform: translate(0, 0); filter: none; }
+  93% { transform: translate(calc(var(--glitch, 0) * -2px), 0); filter: hue-rotate(8deg); }
+  95% { transform: translate(calc(var(--glitch, 0) * 1px), 0); }
+  97% { transform: translate(0, calc(var(--glitch, 0) * 1px)); filter: saturate(1.4); }
+}
+
+/* Floating gain popups. */
+.popup {
+  position: absolute;
+  pointer-events: none;
+  color: var(--amber);
+  font-size: 13px;
+  animation: rise 900ms ease-out forwards;
+}
+
+@keyframes rise {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-34px); }
+}
+
+/* ------------------------------------------------------------------- scroll */
+
+.scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.scroll::-webkit-scrollbar { width: 8px; }
+.scroll::-webkit-scrollbar-thumb { background: var(--line); }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* --------------------------------------------------------------- a11y gates */
+
+/**
+ * Everything decorative is switched off here, not merely slowed. A player who has
+ * asked the OS for less motion has asked once and should not have to ask again.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 0ms;
+    --t-med: 0ms;
+  }
+  .crt-scanlines,
+  .crt-vignette {
+    display: none;
+  }
+  .glitching {
+    animation: none;
+  }
+  .popup {
+    animation: none;
+    opacity: 0;
+  }
+  * {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
+/* On narrow viewports the console stops being a fixed console and becomes a
+   scrolling page, so the body-level scroll lock has to be released. */
+@media (max-width: 900px) {
+  html,
+  body {
+    overflow: auto;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

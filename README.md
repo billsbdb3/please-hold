@@ -1,83 +1,113 @@
 # PLEASE HOLD
 
-An incremental game about being on hold, losing your mind, and accidentally ending the universe.
+An incremental game about wasting a scammer's time, and then his entire operation.
 
-## The Premise
+You are the one making the call. You are pretending to be someone who does not know
+what a browser is, because the longer he believes that, the longer he is not talking
+to somebody's grandmother.
 
-You need to dispute a charge on your statement. It's $1.47. It's the principle of the thing.
+Then it stops being about the phone call.
 
-You call Meridian Solutions Inc. You are placed on hold.
+---
 
-What follows is a journey across three phases of escalating absurdity — from clicking to survive, to raging at bureaucracy, to managing geological-scale entropy — all while the hold music plays and the dust accumulates.
+## Status
 
-## How to Play
+**Phase 1 — THE MARK: playable.** Roughly 35 minutes, measured rather than guessed.
 
-Open `index.html` in a browser. No build step, no dependencies, no server required.
+Phases 2 and 3 are designed but not built. See `docs/DESIGN.md`.
 
-## Game Structure
+> The previous version of this game (a corporate hold-music idle game) is preserved
+> under `legacy/` for reference. Its saves are deliberately discarded rather than
+> migrated — its upgrade multipliers were corrupt by construction, and importing
+> them would import the corruption. See `docs/DESIGN.md` §1.
 
-**Phase 1: The Call** (~90-120 minutes)
-- Click [ ENDURE ] to generate Patience
-- Manage your Will to Live (it drains — the hold music is getting to you)
-- Buy Coping Mechanisms (generators) for passive Patience income
-- Purchase upgrades that multiply your generators
-- Advance through a 150-position queue toward the front of the line
-- Watch as dust particles accumulate and time perception decays
-- In-game time reaches ~10 years by Phase 1 end
-- 17 upgrades + 11 dust collectors to discover
-
-**Phase 2: The Escalation** (coming soon)
-- Someone answers. They want to talk about your car's extended warranty.
-- Rage becomes a resource. Composure replaces Will to Live.
-- New mechanics. New absurdity. Dust goes global.
-
-**Phase 3: The Geological** (coming soon)
-- You are beyond clicking. You are a system now.
-- Resource allocation strategy. Balance competing forces.
-- Dust reaches cosmic scale. Time loses meaning.
-- The $1.47 gets resolved. Eventually.
-
-## Technical Details
-
-Vanilla JavaScript. No frameworks. No build tools. Just open the HTML file.
+## Running it
 
 ```
-please-hold/
-├── index.html          — shell, layout
-├── css/
-│   ├── main.css        — base styles
-│   ├── phase1.css      — phase 1 specific
-│   ├── phase2.css      — phase 2 specific
-│   └── phase3.css      — phase 3 specific
-├── js/
-│   ├── main.js         — game loop, state, coordination
-│   ├── phase1.js       — generators, upgrades, queue
-│   ├── phase2.js       — (placeholder)
-│   ├── phase3.js       — (placeholder)
-│   ├── dust.js         — dust system (collectors, accumulation, time factor)
-│   ├── ui.js           — DOM utilities, overlays, modals
-│   ├── flavor.js       — all flavor text pools
-│   ├── save.js         — localStorage auto-save
-│   └── numbers.js      — big number + dust unit formatting
-├── tools/
-│   └── simulate.js     — Node.js balance simulator
-└── README.md
+npm install
+npm run dev
 ```
 
-## Balance Simulator
-
-Tune game balance without manual playtesting:
+Then open the URL it prints. There is no server, no account, and no analytics. The
+save lives in your own browser's localStorage and nowhere else.
 
 ```
-node tools/simulate.js --player=active    # ~98 min, matches real player
-node tools/simulate.js --player=casual    # ~101 min
-node tools/simulate.js --player=idle      # cannot complete (by design)
+npm run build      # typecheck, then production bundle (~20 kB gzipped)
+npm run check      # svelte-check, strict TypeScript
+npm test           # 25 tests
+npm run sim        # headless balance simulation
 ```
 
-## Save System
+## The balance simulator
 
-Game auto-saves to localStorage every 30 seconds. Close the tab and come back later.
+Balance is engineered, not felt out. The simulator imports the *real* balance data
+and calls the *real* tick function, so it cannot drift from the game the way the
+previous version's two simulators both did.
 
-## Credits
+```
+npm run sim
+npm run sim -- --curve --archetype=active    # growth curve, minute by minute
+npm run sim -- --archetype=optimal --verbose # milestone-by-milestone timings
+```
 
-Built with dry humor and excessive research into incremental game design.
+Current measurements:
+
+| Archetype | Reaches the gate | Stalls | Final rate |
+|---|---|---|---|
+| optimal | 28 min | 13.5K | 1.25M/s |
+| active | 35 min | 6.7K | 1.73M/s |
+| casual | 57 min | 1.6K | 2.64M/s |
+| idle | 152 min | 229 | 2.54M/s |
+
+`npm test` fails the build if the active archetype's duration leaves its target
+window. This is deliberate: the previous version was hand-tuned across seven
+revisions with no automated check, and its documentation ended up disagreeing with
+its code in 34 of 40 parameters.
+
+## Architecture
+
+```
+src/
+  engine/
+    loop.ts      fixed-timestep loop, decoupled from rendering
+    types.ts     state shape — and the rule that keeps it correct
+    state.ts     the initial fact set
+    derive.ts    facts -> conclusions. Pure. Called every tick.
+    sim.ts       the simulation and the player actions
+    save.ts      versioned envelope, migration chain, A/B slots
+    numbers.ts   formatting, including notation-as-difficulty-signal
+    log.ts       the transcript, which is also the narration
+  data/
+    balance.ts   every tunable number in the game
+    upgrades.ts  the upgrade graph
+  store.svelte.ts  the one-way bridge from simulation to UI
+  App.svelte       the console
+tools/
+  simulate.ts   headless balance simulator
+tests/          save round-trip and balance regression gates
+docs/DESIGN.md  the design document. Start here.
+```
+
+**The one rule worth knowing before editing anything:** persisted state contains
+only *facts* — what you own, what you bought, how long it has been. Every multiplier
+is derived from those facts on every tick and is never stored. The previous version
+persisted its multipliers *and* re-applied them on load, so every reload doubled all
+twelve numeric upgrades until the save reached `Infinity` and then `NaN`. There is a
+test that fails if anyone reintroduces it.
+
+## Tech
+
+TypeScript, Svelte 5 (runes), Vite. No backend. Fine-grained reactivity because a
+20 Hz tick touching hundreds of values has to patch individual text nodes rather
+than re-render component trees.
+
+Accessibility: every flicker, scanline and particle is gated behind
+`prefers-reduced-motion`, the primary action is keyboard-operable, and phosphor text
+is held above WCAG AA on its panel background.
+
+## Content note
+
+The game is fiction. It contains no operational instructions for compromising
+systems, and the research behind it was scoped to exclude them. "You gain access" is
+a narrative state and a number. The domain research is journalistic — how these
+operations are structured, how the money moves, and what actually shuts one down.
