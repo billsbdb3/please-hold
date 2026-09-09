@@ -12,7 +12,7 @@ Then it stops being about the phone call.
 
 ## Status
 
-**Phase 1 — THE MARK: playable and complete.** ~102 minutes for an engaged player,
+**Phase 1 — THE MARK: playable and complete.** ~100 minutes for an engaged player,
 measured rather than guessed.
 
 The loop: stall the caller to bank Hold Time, buy tactics that waste his time
@@ -41,7 +41,7 @@ save lives in your own browser's localStorage and nowhere else.
 ```
 npm run build      # typecheck, then production bundle (~20 kB gzipped)
 npm run check      # svelte-check, strict TypeScript
-npm test           # 40 tests
+npm test           # 47 tests
 npm run sim        # headless balance simulation
 ```
 
@@ -59,12 +59,15 @@ npm run sim -- --archetype=optimal --verbose # milestone-by-milestone timings
 
 Current measurements:
 
-| Archetype | Reaches the gate | Redials | Dossier | Events caught | Longest gap |
+| Archetype | Wall-clock | At the keyboard | First redial | Dossier | Longest gap |
 |---|---|---|---|---|---|
-| optimal | 58 min | 45 | 12/12 | 29/29 | 0.3 min |
-| active | 102 min | 30 | 12/12 | 36/47 | 0.4 min |
-| casual | 282 min | 23 | 12/12 | 34/93 | 8.2 min |
-| idle | 642 min | 10 | 8/12 | 3/54 | 40.0 min |
+| optimal | 54 min | 54 min | 3.7 min | 13/13 | 0.3 min |
+| active | 100 min | 99 min | 5.9 min | 12/13 | 0.6 min |
+| casual | 249 min | 173 min | 16.1 min | 12/13 | 8.5 min |
+| idle | 515 min | 108 min | 96.0 min | 9/13 | 40.0 min |
+
+Two duration columns, because they need different fixes: a casual player is away 40% of
+the time, so wall-clock overstates how long they actually spent playing.
 
 "Longest gap" is the dead-time detector: the longest stretch with nothing affordable
 to buy. An earlier build of this phase measured 35 minutes of play followed by an hour

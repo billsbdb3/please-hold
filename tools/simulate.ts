@@ -62,8 +62,8 @@ const POLICIES: Record<Archetype, Policy> = {
     eventCatchRate: 0.05, redialGainThreshold: 1.5,
   },
   casual: {
-    stallsPerSecond: 0.7, shopEverySeconds: 45, attentionFraction: 0.6,
-    eventCatchRate: 0.35, redialGainThreshold: 0.9,
+    stallsPerSecond: 0.7, shopEverySeconds: 30, attentionFraction: 0.6,
+    eventCatchRate: 0.35, redialGainThreshold: 0.75,
   },
   active: {
     stallsPerSecond: 3.2, shopEverySeconds: 12, attentionFraction: 1.0,
@@ -89,6 +89,14 @@ export interface SimResult {
   generatorsOwned: Record<GeneratorId, number>;
   /** Highest count ever owned of each tier, across every call in the run. */
   peakOwned: Record<GeneratorId, number>;
+  /** Minutes the player was actually AT the keyboard. The felt duration. */
+  presentMinutes: number;
+  /** Minutes elapsed before the first redial — how long the loop stays hidden. */
+  minutesToFirstRedial: number;
+  /** Mean minutes per call. Short calls mean the ladder never gets climbed. */
+  meanCallMinutes: number;
+  /** Career total at the moment of the first redial. */
+  careerAtFirstRedial: number;
   /** Minutes spent with composure at zero — a proxy for "was this miserable". */
   brokenMinutes: number;
   redials: number;
@@ -136,6 +144,9 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
   let longestStallSeconds = 0;
   const peakOwned = {} as Record<GeneratorId, number>;
   for (const g of GENERATORS) peakOwned[g.id] = 0;
+  let presentSeconds = 0;
+  let minutesToFirstRedial = Infinity;
+  let careerAtFirstRedial = 0;
 
   const maxTicks = ((opts.maxMinutes ?? MAX_SIM_MINUTES) * 60) / DT;
 
@@ -151,6 +162,7 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
     tick(s, DT);
 
     if (p.composure <= 0) brokenSeconds += DT;
+    if (present) presentSeconds += DT;
     secondsSincePurchase += DT;
 
     // --- Stalling ---
@@ -184,7 +196,14 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
     // --- Redial decision ---
     if (present && canRedial(s)) {
       const gain = s.d.notesOnRedial;
-      if (gain > 0 && gain >= Math.max(1, p.notes * policy.redialGainThreshold)) {
+      // Never trade a whole call for a single page: require a payout that can
+      // actually buy something, as well as being a real gain on what is held.
+      const worthIt = gain >= 2 && gain >= Math.max(2, p.notes * policy.redialGainThreshold);
+      if (worthIt) {
+        if (p.redials === 0) {
+          minutesToFirstRedial = virtualMs / 60000;
+          careerAtFirstRedial = p.holdTimeCareer;
+        }
         redial(s);
         // Spend immediately; an unspent prestige currency is just a number, and the
         // dossier is the thing that makes the next call shorter.
@@ -234,6 +253,10 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
     upgradesBought: p.upgrades.length,
     generatorsOwned: { ...p.generators },
     peakOwned,
+    presentMinutes: presentSeconds / 60,
+    minutesToFirstRedial,
+    meanCallMinutes: p.redials > 0 ? (virtualMs / 60000) / (p.redials + 1) : virtualMs / 60000,
+    careerAtFirstRedial,
     brokenMinutes: brokenSeconds / 60,
     redials: p.redials,
     notesLifetime: p.notesLifetime,

@@ -204,7 +204,7 @@ export function notesFor(p: Persisted, notesMultiplier = 1): number {
       if (dd?.notesMultiplier) notesMultiplier *= dd.notesMultiplier;
     }
   }
-  return Math.floor(Math.sqrt(best / REDIAL.divisor) * notesMultiplier);
+  return Math.max(REDIAL.minNotes, Math.floor(Math.sqrt(best / REDIAL.divisor) * notesMultiplier));
 }
 
 /** Max composure including permanent dossier bonuses. */

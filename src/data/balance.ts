@@ -329,7 +329,7 @@ const PHASE1_MILESTONE_DEFS: Omit<MilestoneDef, 'at'>[] = [
 ];
 
 /** Career Hold Time that ends Phase 1. The last milestone sits exactly here. */
-export const PHASE1_GATE = 1_000_000_000;
+export const PHASE1_GATE = 300_000_000;
 
 /**
  * The milestones, with absolute thresholds derived from the gate. Exported in the
@@ -352,10 +352,29 @@ export const PHASE1_MILESTONES: MilestoneDef[] = PHASE1_MILESTONE_DEFS.map((m, i
  * the tree. `divisor` sets how deep the first call must go before a redial is worth it.
  */
 export const REDIAL = {
-  /** notes = floor(sqrt(bestCallLifetime / divisor)) */
-  divisor: 250_000,
-  /** Hold Time you must have banked on this call before redialling is allowed. */
-  minLifetimeToRedial: 1_000_000,
+  /** notes = max(1, floor(sqrt(bestCallLifetime / divisor))) */
+  divisor: 12_000,
+  /**
+   * Hold Time a single call must reach before redialling unlocks.
+   *
+   * Lowered 1_000_000 -> 120_000 after measurement. The old value was an ABSOLUTE
+   * threshold, which made the gate regressive: an engaged player met the redial loop
+   * at minute 14, a casual one at minute 34, and a barely-attentive one not until
+   * minute 103. The slower you played, the longer you were locked out of the single
+   * mechanic that makes playing faster — the exact "prestige too late" failure the
+   * research names as a top-five killer of the genre.
+   *
+   * At 120_000 the first redial lands in the first ten minutes for everyone, which is
+   * where the genre puts it: the first reset should arrive before boredom, not after.
+   */
+  minLifetimeToRedial: 120_000,
+  /**
+   * An eligible redial always pays at least one page. Without this floor a player who
+   * redials at exactly the minimum earns sqrt(120_000/250_000) = 0 Notes, so the
+   * mechanic would unlock and then visibly do nothing, which is worse than it staying
+   * locked. The cheapest dossier entry costs exactly 1 for the same reason.
+   */
+  minNotes: 1,
   /** Rapport retained across a redial, as a fraction. He half-remembers you. */
   rapportRetained: 0.35,
 } as const;
@@ -387,6 +406,16 @@ export interface DossierDef {
   stallMultiplier?: number;
   /** Opportunity events arrive this much more often. */
   eventRateMultiplier?: number;
+  /**
+   * Automatically re-buy the cheapest affordable tactic every few seconds.
+   *
+   * Automation as an earned reward is one of the genre's core satisfaction beats, and
+   * it is also the correctly-targeted fix for the measured problem: a low-attention
+   * player loses almost nothing to being absent (generators run while idle) and almost
+   * everything to not BUYING while absent. This closes that specific gap without
+   * making an engaged player meaningfully faster, because they were already buying.
+   */
+  autoBuy?: boolean;
 }
 
 export const DOSSIER: DossierDef[] = [
@@ -395,7 +424,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'His Direct Number',
     effect: 'Start every call with 15 rapport.',
     flavor: 'You do not have to be transferred any more. You ask for him by name.',
-    cost: 2,
+    cost: 1,
     startingRapport: 15,
   },
   {
@@ -403,7 +432,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Copy Of The Script',
     effect: 'All production ×1.5.',
     flavor: 'You know what he is going to say. You let him say it.',
-    cost: 4,
+    cost: 14,
     globalMultiplier: 1.5,
   },
   {
@@ -411,7 +440,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Pre-Written Confusion',
     effect: 'Begin each call with 10 Genuine Confusion.',
     flavor: 'You have the questions written down in advance now.',
-    cost: 6,
+    cost: 20,
     startingGenerators: { confusion: 10 },
   },
   {
@@ -419,7 +448,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Better Chair',
     effect: '+25 maximum composure.',
     flavor: 'It was expensive. It was, on reflection, the correct decision.',
-    cost: 9,
+    cost: 30,
     composureBonus: 25,
   },
   {
@@ -427,7 +456,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Shorthand',
     effect: 'Notes earned ×1.5.',
     flavor: 'You have stopped writing full sentences. There is not time.',
-    cost: 14,
+    cost: 48,
     notesMultiplier: 1.5,
   },
   {
@@ -435,7 +464,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Rehearsed Helplessness',
     effect: 'Manual stalls ×2.',
     flavor: 'You have practised sounding like this. It comes easily now, which you have chosen not to examine.',
-    cost: 20,
+    cost: 68,
     stallMultiplier: 2,
     requires: ['d.script'],
   },
@@ -444,15 +473,24 @@ export const DOSSIER: DossierDef[] = [
     name: 'The Shift Roster',
     effect: 'Opportunity windows arrive twice as often.',
     flavor: 'You know when the floor manager takes his break. It is 3:15.',
-    cost: 28,
+    cost: 95,
     eventRateMultiplier: 2,
+  },
+  {
+    id: 'd.routine',
+    name: 'The Routine',
+    effect: 'Re-buys your cheapest tactic on its own, every few seconds.',
+    flavor: 'You no longer decide to do any of this. You have a way of doing it.',
+    cost: 100,
+    autoBuy: true,
+    requires: ['d.rehearsed'],
   },
   {
     id: 'd.deadname',
     name: 'The Name He Uses',
     effect: 'Start every call with 35 rapport. All production ×1.6.',
     flavor: '"Brandon." He has been Brandon for four years. He answers to it before he thinks.',
-    cost: 40,
+    cost: 136,
     startingRapport: 35,
     globalMultiplier: 1.6,
     requires: ['d.callback'],
@@ -462,7 +500,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Prepared Machine',
     effect: 'Begin each call with 15 Incorrect Password and 8 The Cat.',
     flavor: 'The virtual machine is already running. The cat is real.',
-    cost: 55,
+    cost: 187,
     startingGenerators: { wrongPassword: 15, catInterrupt: 8 },
     requires: ['d.warmup'],
   },
@@ -471,7 +509,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Filing System',
     effect: 'Notes earned ×2.',
     flavor: 'Sixty-one pages. Cross-referenced. You have started using tabs.',
-    cost: 80,
+    cost: 272,
     notesMultiplier: 2,
     requires: ['d.shorthand'],
   },
@@ -480,7 +518,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Professional Detachment',
     effect: '+40 maximum composure. All production ×1.8.',
     flavor: 'It stopped being upsetting somewhere around the fourth call. You have not decided whether that is good.',
-    cost: 120,
+    cost: 408,
     composureBonus: 40,
     globalMultiplier: 1.8,
     requires: ['d.chair'],
@@ -490,7 +528,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'The Shape Of It',
     effect: 'All production ×2.5.',
     flavor: 'It is not one man with a phone. You have drawn the org chart on the back of an envelope and it does not fit.',
-    cost: 200,
+    cost: 680,
     globalMultiplier: 2.5,
     requires: ['d.deadname', 'd.filing'],
   },

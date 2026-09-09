@@ -238,6 +238,8 @@ export interface Transient {
   /** Events caught and missed, for the end-of-call summary. */
   eventsCaught: number;
   eventsMissed: number;
+  /** Seconds since the auto-buyer last fired. */
+  sinceAutoBuy: number;
 }
 
 export interface ActiveEvent {

@@ -20,7 +20,7 @@ import { freshTransient } from '../src/engine/log';
 import { tick, redial, canRedial, buyDossier, catchEvent } from '../src/engine/sim';
 import { DT } from '../src/engine/loop';
 import {
-  GENERATORS, PHASE1_TARGET_MINUTES, PHASE1_GATE, DOSSIER,
+  GENERATORS, PHASE1_TARGET_MINUTES, PHASE1_GATE, DOSSIER, REDIAL,
 } from '../src/data/balance';
 import { UPGRADES } from '../src/data/upgrades';
 import type { GameState } from '../src/engine/types';
@@ -53,6 +53,60 @@ describe('phase 1 duration', () => {
     expect(idle.completed).toBe(true);
   });
 
+  /**
+   * Casual play must stay within a sane multiple of engaged play.
+   *
+   * This measured 2.9x wall-clock (282 min against 102) before the pacing pass and had
+   * no test, so nothing would have caught it drifting further. The fix that mattered
+   * was automation — a low-attention player loses almost nothing to being absent, since
+   * generators run while idle, and almost everything to not BUYING while absent.
+   *
+   * Present-minutes is the fairer of the two comparisons: wall-clock counts time the
+   * casual player was not even at the keyboard.
+   */
+  it('casual play stays within a reasonable multiple of active play', () => {
+    const active = simulate('active');
+    const casual = simulate('casual');
+
+    expect(casual.completed).toBe(true);
+    // Felt duration: time actually spent at the keyboard.
+    expect(casual.presentMinutes / active.presentMinutes).toBeLessThan(2.2);
+    // Wall-clock, which legitimately includes absence.
+    expect(casual.minutesToGate / active.minutesToGate).toBeLessThan(3);
+  });
+
+  /**
+   * The redial loop must be discoverable early, for EVERYONE.
+   *
+   * `minLifetimeToRedial` was an absolute 1e6, which made the gate regressive: engaged
+   * players met the loop at minute 14, casual at 34, barely-attentive not until 103 —
+   * so the slower you played, the longer you were locked out of the one mechanic that
+   * makes playing faster. "Prestige too late" is a named top-five killer of the genre.
+   */
+  it('the redial loop is reachable early by engaged and casual players alike', () => {
+    expect(simulate('active').minutesToFirstRedial).toBeLessThan(10);
+    expect(simulate('casual').minutesToFirstRedial).toBeLessThan(25);
+  });
+
+  it('an eligible redial always pays at least one page', () => {
+    // Unlocking a mechanic that then visibly does nothing is worse than leaving it
+    // locked, so the payout is floored.
+    const p = freshState();
+    p.bestCallLifetime = REDIAL.minLifetimeToRedial;
+    expect(notesFor(p)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('the dossier is paced to complete near the end of the phase, not early', () => {
+    // At one point the tree cost 577 against ~1,957 Notes earned, so it finished around
+    // the one-third mark and the prestige currency stopped meaning anything.
+    const totalCost = DOSSIER.reduce((sum, d) => sum + d.cost, 0);
+    const earned = simulate('active').notesLifetime;
+    expect(earned).toBeGreaterThan(totalCost * 0.8);
+    expect(earned).toBeLessThan(totalCost * 2.5);
+  });
+});
+
+describe('phase 1 pacing across archetypes', () => {
   it('is deterministic — the same archetype twice gives the same answer', () => {
     // A balance tool that returns a different number each run cannot gate a build.
     const a = simulate('active');
@@ -243,6 +297,34 @@ describe('redial (the soft reset)', () => {
     expect(derive(p).band.id).toBe('breaking');
     p.composure = max;
     expect(derive(p).band.id).toBe('steady');
+  });
+});
+
+describe('The Routine (auto-buy)', () => {
+  it('buys nothing until the dossier entry is owned', () => {
+    const p = freshState();
+    p.holdTime = 10_000;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    for (let i = 0; i < Math.ceil(20 / DT); i++) tick(s, DT);
+    expect(p.generators.confusion).toBe(0);
+  });
+
+  it('re-buys the cheapest tactic once earned', () => {
+    const p = freshState();
+    p.holdTime = 10_000;
+    p.dossier = ['d.routine'];
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    for (let i = 0; i < Math.ceil(20 / DT); i++) tick(s, DT);
+    expect(p.generators.confusion).toBeGreaterThan(0);
+  });
+
+  it('never spends more than is banked', () => {
+    const p = freshState();
+    p.holdTime = 12;
+    p.dossier = ['d.routine'];
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    for (let i = 0; i < Math.ceil(60 / DT); i++) tick(s, DT);
+    expect(p.holdTime).toBeGreaterThanOrEqual(0);
   });
 });
 

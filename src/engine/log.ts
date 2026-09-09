@@ -61,5 +61,6 @@ export function freshTransient(nowMs: number): GameState['t'] {
     burstMultiplier: 1,
     eventsCaught: 0,
     eventsMissed: 0,
+    sinceAutoBuy: 0,
   };
 }

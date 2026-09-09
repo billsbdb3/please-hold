@@ -315,17 +315,53 @@ Adding prestige broke things in ways that were only visible in simulation:
    enough to reach rung nine. Moved to `PHASE2_RESERVED_GENERATORS`, where an economy
    with no reset can use them. A test now fails the build if any live tier goes unbought.
 
+### Pass 5: the pacing pass
+
+Casual play measured 282 minutes against active's 102 — 2.9× — with no test guarding
+the ratio. Diagnosis first, and it produced two findings that changed the fix:
+
+**Wall-clock was the wrong metric.** Casual is absent 40% of the time, so 90 of those
+282 minutes were not spent playing. Felt duration was 214 minutes. The simulator now
+reports `presentMinutes` alongside wall-clock, because the two need different fixes.
+
+**The redial gate was regressive.** Every archetype's first redial landed at career
+≈ 1.0M, which was `minLifetimeToRedial` — an *absolute* threshold. So an engaged player
+met the loop at minute 14, a casual one at 34, and a barely-attentive one not until 103:
+the slower you played, the longer you were locked out of the mechanic that makes playing
+faster. "Prestige too late" is a named top-five killer. Lowered to 120,000, with the
+Notes payout floored at 1 page and the cheapest dossier entry priced at 1, so an
+unlocked mechanic never visibly does nothing.
+
+Lowering it alone made things *worse* — casual 308 min, and idle stopped finishing
+entirely — because it made it easy to take a reset that was not worth taking. A one-page
+payout does not compensate for losing a whole call. So the Notes divisor came down
+250,000 → 12,000 (payout ≈3 pages at the entry threshold), and dossier costs were
+rescaled ×3.4 to match what is actually earned: the tree cost 577 against ~1,957 Notes
+earned, so it completed around the one-third mark and the currency stopped mattering.
+
+**The fix that actually mattered was automation.** A low-attention player loses almost
+nothing to being absent — generators run while idle — and almost *everything* to not
+buying while absent. So `d.routine` ("The Routine") re-buys the cheapest tactic every
+three seconds. It is correctly targeted: casual gains substantially, engaged players
+move by one minute, because they were already buying. Automation-as-earned-reward is
+also one of the genre's core satisfaction beats.
+
+One model correction, stated plainly rather than buried: the casual policy shopped every
+45 s *while present*, which is inattentive play stacked on top of an already-reduced
+0.6 attention fraction. 30 s is the defensible figure; absence is already modelled.
+
 ### Measured
 
-| Archetype | Gate | Redials | Dossier | Events caught | Longest gap with nothing to buy |
-|---|---|---|---|---|---|
-| optimal | 58 min | 45 | 12/12 | 29/29 | 0.3 min |
-| active | **102 min** | 30 | 12/12 | 36/47 | 0.4 min |
-| casual | 282 min | 23 | 12/12 | 34/93 | 8.2 min |
-| idle | 642 min | 10 | 8/12 | 3/54 | 40.0 min |
+| Archetype | Gate (wall) | Present | 1st redial | Redials | Dossier | Longest gap |
+|---|---|---|---|---|---|---|
+| optimal | 54 min | 54 min | 3.7 min | 54 | 13/13 | 0.3 min |
+| active | **100 min** | 99 min | 5.9 min | 32 | 12/13 | 0.6 min |
+| casual | 249 min | 173 min | 16.1 min | 27 | 12/13 | 8.5 min |
+| idle | 515 min | 108 min | 96.0 min | 12 | 9/13 | 40.0 min |
 
-The "longest gap" column is the dead-time detector. At 0.4 minutes for an active
-player, the flatline that made pass 3 unshippable is gone.
+Net of the pacing pass: casual 282→249 wall and 214→173 present, idle 642→515, active
+held in window. Casual now sits at 1.75× active on present-minutes, and a test enforces
+both that ratio and the early-redial guarantee.
 
-Casual at 282 minutes is longer than ideal for one phase of a ~10-hour game and is the
-next thing I would tune.
+The "longest gap" column is the dead-time detector. At 0.6 minutes for an active player,
+the flatline that made pass 3 unshippable is gone.

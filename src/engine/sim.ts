@@ -13,7 +13,7 @@ import {
 } from './derive';
 import {
   COMPOSURE, RAPPORT, STALL, IDLE,
-  PHASE1_MILESTONES, PHASE1_GATE, GENERATOR_BY_ID,
+  PHASE1_MILESTONES, PHASE1_GATE, GENERATOR_BY_ID, GENERATORS,
   EVENTS, DOSSIER, DOSSIER_BY_ID, REDIAL,
 } from '../data/balance';
 import { GENERATOR_IDS } from './state';
@@ -50,6 +50,13 @@ export function tick(s: GameState, dt: number): void {
 
   // --- Opportunity events ---
   updateEvents(s, dt);
+
+  // --- The Routine (auto-buy), once earned ---
+  s.t.sinceAutoBuy += dt;
+  if (s.t.sinceAutoBuy >= AUTOBUY_INTERVAL && hasAutoBuy(p)) {
+    s.t.sinceAutoBuy = 0;
+    autoBuyCheapest(s);
+  }
 
   // --- Combo decay ---
   // Grace period after the last stall, then decay, unless locked by an upgrade.
@@ -93,6 +100,29 @@ export function tick(s: GameState, dt: number): void {
   } else if (s.t.criticalFor) {
     s.t.criticalFor = 0;
   }
+}
+
+/** How often The Routine fires. Frequent enough to help, slow enough to feel passive. */
+const AUTOBUY_INTERVAL = 3;
+
+function hasAutoBuy(p: GameState['p']): boolean {
+  return p.dossier.some((id) => DOSSIER_BY_ID[id]?.autoBuy);
+}
+
+/**
+ * Buy the single cheapest affordable tactic. Deliberately cheapest rather than
+ * best-payback: the auto-buyer should keep the floor ticking over, not out-play a
+ * human who is making considered purchases.
+ */
+function autoBuyCheapest(s: GameState): void {
+  let best: GeneratorId | null = null;
+  let bestCost = Infinity;
+  for (const g of GENERATORS) {
+    if (!isUnlocked(s.p, g.id)) continue;
+    const cost = costOf(g.id, s.p.generators[g.id] ?? 0);
+    if (cost <= s.p.holdTime && cost < bestCost) { bestCost = cost; best = g.id; }
+  }
+  if (best) buyGenerator(s, best, 1);
 }
 
 function hasGrant(p: GameState['p'], grant: string): boolean {
