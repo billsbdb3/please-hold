@@ -1,0 +1,86 @@
+name: Deploy to GitHub Pages
+
+# The site is BUILT, not served from the branch.
+#
+# This repo previously served a no-build static game straight from master/root. That
+# will not work any more: the root index.html is now a Vite entry point that references
+# /src/main.ts, which exists only in dev. If Pages is left on "Deploy from a branch" it
+# will serve that file verbatim and the site will be a blank screen.
+#
+# So the Pages source MUST be set to "GitHub Actions" in
+# Settings -> Pages -> Build and deployment -> Source. That is a one-time manual change
+# and it cannot be made from a workflow file.
+
+on:
+  push:
+    branches: [master]
+    # Skip runs that cannot change the built output.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'legacy/**'
+  # Lets you deploy by hand from the Actions tab, including the first time.
+  workflow_dispatch:
+
+# The minimum the deploy needs: read the code, mint an OIDC token, write Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time. `cancel-in-progress: false` because cancelling a half-finished
+# Pages deployment can leave the site in a partial state — better to queue.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      # `npm ci` not `npm install`: it installs exactly the lockfile and fails if
+      # package.json and the lock have drifted, which is what you want in CI.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run check
+
+      # A broken build should never reach the site. Balance regressions count as broken:
+      # the suite fails if a phase's measured duration leaves its target window.
+      - name: Test
+        run: npm test
+
+      - name: Build
+        # build:pages sets BASE_PATH=/please-hold/ to match the repo name. It calls
+        # `vite build` directly rather than `npm run build`, which would re-run the
+        # typecheck already done above.
+        run: npm run build:pages
+
+      # Pages runs Jekyll over the artifact unless told otherwise, and Jekyll silently
+      # drops files and directories whose names begin with an underscore.
+      - name: Disable Jekyll
+        run: touch dist/.nojekyll
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

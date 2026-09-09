@@ -11,7 +11,9 @@
     "check": "svelte-check --tsconfig ./tsconfig.json --threshold error",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sim": "vite-node tools/simulate.ts"
+    "sim": "vite-node tools/simulate.ts",
+    "build:pages": "BASE_PATH=/please-hold/ vite build",
+    "preview:pages": "BASE_PATH=/please-hold/ vite preview --host 127.0.0.1"
   },
   "dependencies": {
     "break_infinity.js": "2.0.0",

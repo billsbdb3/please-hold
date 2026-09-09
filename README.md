@@ -80,6 +80,40 @@ window. This is deliberate: the previous version was hand-tuned across seven
 revisions with no automated check, and its documentation ended up disagreeing with
 its code in 34 of 40 parameters.
 
+## Deploying
+
+The site is **built**, not served from the branch:
+`.github/workflows/deploy.yml` typechecks, runs the tests, builds, and publishes to
+Pages on every push to `master`. A failing test blocks the deploy, and that includes
+balance regressions — if a phase's measured duration leaves its target window, the site
+does not update.
+
+> [!IMPORTANT]
+> **One manual step, once.** This repo used to serve a no-build static game straight
+> from `master`/root. The root `index.html` is now a Vite entry that references
+> `/src/main.ts`, which only exists in dev — so if Pages stays on "Deploy from a
+> branch" the live site becomes a blank screen the moment this merges.
+>
+> Set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**.
+> A workflow cannot change that setting itself.
+
+Reproduce the exact production build locally, subpath and all:
+
+```
+npm run build:pages     # BASE_PATH=/please-hold/
+npm run preview:pages    # serves http://127.0.0.1:4173/please-hold/
+```
+
+That subpath is the thing worth testing. `base` must match the repo name or every asset
+404s in production while working perfectly in dev, which is the most common and most
+silent Pages failure there is.
+
+Existing players start fresh: the old game stored its save under `pleaseHold_save` and
+this one uses `pleasehold.save.*`, so a v7 save is never read at all. (The v1 branch in
+the migration chain is belt-and-braces for anything that does turn up wearing the new
+key.) This is the intended outcome either way — the old saves carried corrupt multipliers
+by construction, so importing them would import the corruption.
+
 ## Architecture
 
 ```

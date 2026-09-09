@@ -2,12 +2,18 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 /**
- * GitHub Pages serves this repo at /please-hold/, so `base` must match or every
- * asset 404s in production while working perfectly in dev. This is the single most
- * common Pages deployment failure and it is silent locally.
+ * GitHub Pages serves this repo from a subpath (/please-hold/), so `base` must match
+ * or every asset 404s in production while working perfectly in dev. This is the most
+ * common Pages deployment failure and it is completely silent locally.
+ *
+ * `BASE_PATH` is set explicitly by .github/workflows/deploy.yml rather than sniffed
+ * from `GITHUB_ACTIONS`, so the exact production build can be reproduced — and
+ * therefore tested — on a laptop:
+ *
+ *     BASE_PATH=/please-hold/ npm run build && npm run preview:pages
  */
 export default defineConfig({
-  base: process.env.GITHUB_ACTIONS ? '/please-hold/' : '/',
+  base: process.env.BASE_PATH ?? '/',
   plugins: [svelte()],
   build: {
     target: 'es2022',
