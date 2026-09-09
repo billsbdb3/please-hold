@@ -12,7 +12,14 @@ Then it stops being about the phone call.
 
 ## Status
 
-**Phase 1 — THE MARK: playable.** Roughly 35 minutes, measured rather than guessed.
+**Phase 1 — THE MARK: playable and complete.** ~102 minutes for an engaged player,
+measured rather than guessed.
+
+The loop: stall the caller to bank Hold Time, buy tactics that waste his time
+passively, catch opportunity windows when they open, and — once a call has run deep
+enough — **hang up and call back**. A redial costs you the call and pays you Notes,
+which buy permanent entries in a dossier that makes every future call shorter. Which
+is, more or less, the actual job.
 
 Phases 2 and 3 are designed but not built. See `docs/DESIGN.md`.
 
@@ -34,7 +41,7 @@ save lives in your own browser's localStorage and nowhere else.
 ```
 npm run build      # typecheck, then production bundle (~20 kB gzipped)
 npm run check      # svelte-check, strict TypeScript
-npm test           # 25 tests
+npm test           # 40 tests
 npm run sim        # headless balance simulation
 ```
 
@@ -52,12 +59,18 @@ npm run sim -- --archetype=optimal --verbose # milestone-by-milestone timings
 
 Current measurements:
 
-| Archetype | Reaches the gate | Stalls | Final rate |
-|---|---|---|---|
-| optimal | 28 min | 13.5K | 1.25M/s |
-| active | 35 min | 6.7K | 1.73M/s |
-| casual | 57 min | 1.6K | 2.64M/s |
-| idle | 152 min | 229 | 2.54M/s |
+| Archetype | Reaches the gate | Redials | Dossier | Events caught | Longest gap |
+|---|---|---|---|---|---|
+| optimal | 58 min | 45 | 12/12 | 29/29 | 0.3 min |
+| active | 102 min | 30 | 12/12 | 36/47 | 0.4 min |
+| casual | 282 min | 23 | 12/12 | 34/93 | 8.2 min |
+| idle | 642 min | 10 | 8/12 | 3/54 | 40.0 min |
+
+"Longest gap" is the dead-time detector: the longest stretch with nothing affordable
+to buy. An earlier build of this phase measured 35 minutes of play followed by an hour
+of flat curve, which is the most common way an incremental dies. It also reports any
+generator tier no archetype ever buys, and three tiers were moved out of Phase 1 on
+that evidence.
 
 `npm test` fails the build if the active archetype's duration leaves its target
 window. This is deliberate: the previous version was hand-tuned across seven
@@ -78,8 +91,8 @@ src/
     numbers.ts   formatting, including notation-as-difficulty-signal
     log.ts       the transcript, which is also the narration
   data/
-    balance.ts   every tunable number in the game
-    upgrades.ts  the upgrade graph
+    balance.ts   every tunable number: tiers, milestones, redial, dossier, events
+    upgrades.ts  the in-call upgrade graph (30 entries, gated 3 different ways)
   store.svelte.ts  the one-way bridge from simulation to UI
   App.svelte       the console
 tools/
@@ -87,6 +100,12 @@ tools/
 tests/          save round-trip and balance regression gates
 docs/DESIGN.md  the design document. Start here.
 ```
+
+**Two currencies that look alike and are not:** `holdTimeLifetime` is *this call* and
+is wiped by a redial; `holdTimeCareer` never resets. Tier unlocks and upgrade gates
+read the career total (discovery is permanent — you do not re-learn that your nephew
+exists), while affordability is paid from the current call. Getting this backwards made
+narrative milestones unreachable and stranded three generator tiers as dead content.
 
 **The one rule worth knowing before editing anything:** persisted state contains
 only *facts* — what you own, what you bought, how long it has been. Every multiplier

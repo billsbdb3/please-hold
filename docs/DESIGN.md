@@ -279,37 +279,53 @@ repo's failure mode was three half-built phases and a doc describing none of the
 
 ---
 
-## 12. Measured reality vs the target (open gap)
+## 12. Phase 1: target met (and what it cost)
 
-The simulator is honest, so this section is too.
+The design target was 90–120 minutes. Phase 1 now measures **102 minutes** for the
+active archetype. The route there is worth recording, because every wrong turn was
+found by the simulator rather than by playing.
 
-Phase 1's design target is 90–120 minutes. The content that currently exists —
-6 generator tiers, 16 upgrades — measures at **35 minutes for the active
-archetype**, and that is the *good* answer after three tuning passes:
-
-| Pass | Active duration | What was wrong |
+| Pass | Active | What was actually wrong |
 |---|---|---|
-| 1 | 2 min | Multiplier chain stacked to ~1e5× against a 6-decade budget. Two generator tiers unlocked *above* the gate and were unreachable. |
+| 1 | 2 min | Multiplier chain stacked to ~1e5× against a 6-decade budget. Two tiers unlocked *above* the gate and were unreachable. |
 | 2 | 8 min | Multipliers cut to ~160×; still far too generous. |
-| 3 | 35 min | Softcaps tightened, cost growth steepened to 1.13–1.18, softcap exponent softened 0.7→0.85 so deep stacks keep paying. |
+| 3 | 35 min | Softcaps tightened, growth steepened to 1.13–1.18, softcap exponent softened 0.7→0.85. Curve then **flatlined from minute 45** — a content problem, not a tuning one. |
+| 4 | 102 min | Content added: 3 more tiers, 16→33 upgrades, penalty-free opportunity windows, and the **redial** soft reset with a 12-entry dossier. |
 
-The measured curve then flatlines: rate is constant from roughly minute 45, and the
-only things still moving the numbers are the two `requiresActiveTime` upgrades. That
-is a **content-volume problem, not a tuning problem** — no coefficient creates
-content, and stretching the curve further would ship an hour of dead time, which the
-research names as the single most common incremental killer.
+What closed the gap was **not** the extra generator tiers. It was the redial loop, the
+upgrade count, and the events. The tiers turned out to be dead weight (below).
 
-So `PHASE1_TARGET_MINUTES` is set to the measured window (18–45) and the regression
-test enforces *that*. Closing the gap to 90–120 needs, in rough value order:
+### The four bugs the expansion introduced
 
-1. **Roughly triple the upgrade count** (16 → ~45). Cheapest content per minute of
-   play, and it directly fixes the flatline.
-2. **The mid-phase event mechanic** — the old build's "connection opportunity" idea
-   was sound: a random window the player can catch for a burst. Active-play reward
-   that does not punish idle.
-3. **Two or three more generator tiers**, extending the ladder past The Nephew.
-4. **A within-phase soft reset** (redial for a permanent bonus), which is the
-   genre's standard answer to a phase that needs to be twice as long.
+Adding prestige broke things in ways that were only visible in simulation:
 
-Until those land, Phase 1 is a complete, correct, 35-minute game rather than an
-incomplete 100-minute one. That is the deliberate trade.
+1. **Milestones became unreachable.** They gated on `holdTimeLifetime`, which a redial
+   resets — so beats 4–6 could never fire. Fixed by splitting the currency:
+   `holdTimeLifetime` is *this call*, `holdTimeCareer` never resets. Milestones and the
+   phase gate read the career total; tier unlocks and upgrade gates read the call.
+2. **Two simulators disagreed again.** The curve mode claimed the gate fell at minute
+   105 while the summary measured 173 — the *exact* sin the old build committed. There
+   is now one `run()` function and both outputs derive from it.
+3. **A circular dependency in tuning.** Milestones grant multipliers, so respacing them
+   changes the curve their positions were read off. Fixed by defining milestone
+   positions as *fractions* of the gate, reducing tuning to bisecting one constant.
+4. **Three tiers were dead content.** The Other Line, The Neighbour and The Filing
+   Cabinet were never bought once by any archetype. Generator cost comes out of banked
+   Hold Time, a redial zeroes it, and a player redialling every few minutes never banks
+   enough to reach rung nine. Moved to `PHASE2_RESERVED_GENERATORS`, where an economy
+   with no reset can use them. A test now fails the build if any live tier goes unbought.
+
+### Measured
+
+| Archetype | Gate | Redials | Dossier | Events caught | Longest gap with nothing to buy |
+|---|---|---|---|---|---|
+| optimal | 58 min | 45 | 12/12 | 29/29 | 0.3 min |
+| active | **102 min** | 30 | 12/12 | 36/47 | 0.4 min |
+| casual | 282 min | 23 | 12/12 | 34/93 | 8.2 min |
+| idle | 642 min | 10 | 8/12 | 3/54 | 40.0 min |
+
+The "longest gap" column is the dead-time detector. At 0.4 minutes for an active
+player, the flatline that made pass 3 unshippable is gone.
+
+Casual at 282 minutes is longer than ideal for one phase of a ~10-hour game and is the
+next thing I would tune.

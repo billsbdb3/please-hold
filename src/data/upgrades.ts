@@ -194,14 +194,176 @@ export const UPGRADES: UpgradeDef[] = [
   {
     id: 'u.recorder',
     name: 'Recording The Call',
-    effect: 'All production ×2. Required for the evidence package.',
+    effect: 'All production x1.5. Required for the evidence package.',
     flavor: 'One-party consent. You checked. You checked first.',
     cost: 60_000_000,
-    requiresLifetime: 5_000_000,
+    requiresLifetime: 70_000_000,
     requiresRapport: 70,
     globalMultiplier: 1.5,
   },
+
+  // ============================================================================
+  // The long tail.
+  //
+  // The first version of this tree had 16 entries and the simulator showed the
+  // economy flatlining at minute 45 with nothing left to buy - the single most
+  // common way an incremental dies. These exist so a purchase is always within
+  // reach, and they are gated across all three currencies (lifetime, rapport and
+  // real active time) so the reach is never in the same direction twice.
+  // ============================================================================
+
+  {
+    id: 'u.glasses',
+    name: 'Finding Your Glasses',
+    effect: 'Genuine Confusion x3.',
+    flavor: 'They were on your head. You tell him this. He says nothing.',
+    cost: 320_000,
+    requiresLifetime: 450_000,
+    generatorMultipliers: { confusion: 3 },
+  },
+  {
+    id: 'u.hold2',
+    name: 'Asking Him To Hold Again',
+    effect: 'All production x1.4.',
+    flavor: 'He agrees. He has been trained to agree.',
+    cost: 500_000,
+    requiresLifetime: 700_000,
+    requires: ['u.holdmusic'],
+    globalMultiplier: 1.4,
+  },
+  {
+    id: 'u.capslock',
+    name: 'Caps Lock',
+    effect: 'Incorrect Password x3.',
+    flavor: 'It was on the whole time. Neither of you thought to check.',
+    cost: 1_100_000,
+    requiresLifetime: 1_400_000,
+    generatorMultipliers: { wrongPassword: 3 },
+  },
+  {
+    id: 'u.doorbell',
+    name: 'The Doorbell',
+    effect: 'All production x1.5.',
+    flavor: 'It is a delivery. It is not for you. You explain this to him at length.',
+    cost: 2_600_000,
+    requiresLifetime: 3_200_000,
+    globalMultiplier: 1.5,
+  },
+  {
+    id: 'u.kettle',
+    name: 'The Kettle Again',
+    effect: 'Composure drain -20%.',
+    flavor: 'He asks if you are still there. You are. You are making tea.',
+    cost: 4_800_000,
+    requiresLifetime: 6_000_000,
+    requires: ['u.tea'],
+    composureDrainMultiplier: 0.8,
+  },
+  {
+    id: 'u.wrongbank',
+    name: 'The Wrong Bank',
+    effect: 'All production x1.6.',
+    flavor: 'You have given him details for a bank you have never used. He is verifying them.',
+    cost: 9_500_000,
+    requiresLifetime: 12_000_000,
+    requiresRapport: 40,
+    globalMultiplier: 1.6,
+  },
+  {
+    id: 'u.catnap',
+    name: 'The Cat Is Asleep On It',
+    effect: 'The Cat x3.',
+    flavor: 'On the router. You cannot move her. You will not move her.',
+    cost: 14_000_000,
+    requiresLifetime: 18_000_000,
+    requires: ['u.speaker2'],
+    generatorMultipliers: { catInterrupt: 3 },
+  },
+  {
+    id: 'u.hardofhearing',
+    name: 'Mishearing Him',
+    effect: 'Speakerphone x3.',
+    flavor: 'Every letter has to be given as a word now. He has started saying "Charlie".',
+    cost: 22_000_000,
+    requiresLifetime: 28_000_000,
+    generatorMultipliers: { speakerphone: 3 },
+  },
+  {
+    id: 'u.ipadlocked',
+    name: 'The iPad Is Locked',
+    effect: 'The iPad x3.',
+    flavor: 'It belongs to a grandchild. The passcode is a birthday. It is not this birthday.',
+    cost: 45_000_000,
+    requiresLifetime: 55_000_000,
+    generatorMultipliers: { secondDevice: 3 },
+  },
+  {
+    id: 'u.speakerloud',
+    name: 'Turning It Up',
+    effect: 'Manual stalls x1.8.',
+    flavor: 'Now the whole room can hear him. Your nephew has opinions.',
+    cost: 80_000_000,
+    requiresLifetime: 95_000_000,
+    stallMultiplier: 1.8,
+  },
+  {
+    id: 'u.composure2',
+    name: 'Emotional Callus',
+    effect: 'Composure drain -35%.',
+    flavor: 'It used to make your hands shake. It does not now.',
+    cost: 120_000_000,
+    requiresLifetime: 160_000_000,
+    requires: ['u.kettle'],
+    composureDrainMultiplier: 0.65,
+  },
+
+  {
+    id: 'u.patience3',
+    name: 'The Second Shift Change',
+    effect: 'All production x2.',
+    flavor: 'The first voice is back. He does not remember you. You remind him.',
+    cost: 100_000_000,
+    requiresActiveTime: 100 * 60,
+    requires: ['u.patience2'],
+    globalMultiplier: 2,
+  },
+  {
+    id: 'u.rhythm2',
+    name: 'Perfect Rhythm',
+    effect: 'Manual stalls x2.2.',
+    flavor: 'Uh huh. Right. Okay. And then? Uh huh.',
+    cost: 120_000_000,
+    requiresLifetime: 250_000_000,
+    requires: ['u.muscle'],
+    stallMultiplier: 2.2,
+  },
+
+  {
+    id: 'u.supervisor',
+    name: 'Asking For His Supervisor',
+    effect: 'All production x2.2.',
+    flavor: 'The supervisor is also called Brandon. You note this down.',
+    cost: 160_000_000,
+    requiresLifetime: 400_000_000,
+    requiresRapport: 80,
+    globalMultiplier: 2.2,
+  },
+
+  {
+    id: 'u.extension',
+    name: 'The Extension List',
+    effect: 'All production x2.5.',
+    flavor: 'Two hundred and six numbers. You have started dialling them in order.',
+    cost: 300_000_000,
+    requiresLifetime: 800_000_000,
+    requiresRapport: 88,
+    requires: ['u.supervisor'],
+    globalMultiplier: 2.5,
+  },
 ];
+
+// Upgrades for the Phase 2 reserved tiers (Call Waiting, Her Laptop Too, Thirty Years
+// Of Statements) were removed alongside them; see PHASE2_RESERVED_GENERATORS.
 
 export const UPGRADES_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(
   UPGRADES.map((u) => [u.id, u]),

@@ -6,11 +6,17 @@
  */
 
 import type { GameState, GeneratorId } from './types';
-import { derive, costOf, costOfN, maxAffordable, isUnlocked } from './derive';
+import type { DossierDef } from '../data/balance';
+import {
+  derive, costOf, costOfN, maxAffordable, isUnlocked,
+  maxComposure, dossierAvailable,
+} from './derive';
 import {
   COMPOSURE, RAPPORT, STALL, IDLE,
   PHASE1_MILESTONES, PHASE1_GATE, GENERATOR_BY_ID,
+  EVENTS, DOSSIER, DOSSIER_BY_ID, REDIAL,
 } from '../data/balance';
+import { GENERATOR_IDS } from './state';
 import { UPGRADES_BY_ID, isAvailable, UPGRADES } from '../data/upgrades';
 import { pushLog } from './log';
 
@@ -29,10 +35,21 @@ export function tick(s: GameState, dt: number): void {
   // Conclusions for this tick, recomputed from facts. Never accumulated.
   s.d = derive(p);
 
-  // --- Production ---
-  const produced = s.d.hps * dt;
+  // --- Production, including any active opportunity burst ---
+  const burst = s.t.burstFor > 0 ? s.t.burstMultiplier : 1;
+  const produced = s.d.hps * burst * dt;
   p.holdTime += produced;
   p.holdTimeLifetime += produced;
+  p.holdTimeCareer += produced;
+  if (p.holdTimeLifetime > p.bestCallLifetime) p.bestCallLifetime = p.holdTimeLifetime;
+
+  if (s.t.burstFor > 0) {
+    s.t.burstFor = Math.max(0, s.t.burstFor - dt);
+    if (s.t.burstFor === 0) s.t.burstMultiplier = 1;
+  }
+
+  // --- Opportunity events ---
+  updateEvents(s, dt);
 
   // --- Combo decay ---
   // Grace period after the last stall, then decay, unless locked by an upgrade.
@@ -43,18 +60,19 @@ export function tick(s: GameState, dt: number): void {
   }
 
   // --- Composure ---
+  const cMax = maxComposure(p);
   if (s.t.idle) {
     // Off the phone: recover.
-    p.composure = Math.min(COMPOSURE.max, p.composure + COMPOSURE.regen * dt * 2);
+    p.composure = Math.min(cMax, p.composure + COMPOSURE.regen * dt * 2);
   } else {
     const net = COMPOSURE.regen - s.d.composureDrain;
-    p.composure = Math.max(0, Math.min(COMPOSURE.max, p.composure + net * dt));
+    p.composure = Math.max(0, Math.min(cMax, p.composure + net * dt));
   }
 
   // --- Rapport ---
   // Passive gain only while genuinely holding it together. Falling apart does not
   // build trust, which is the tradeoff the composure bands exist to express.
-  if (!s.t.idle && p.composure >= COMPOSURE.bands[1].min) {
+  if (!s.t.idle && p.composure >= (COMPOSURE.bands[1].min / COMPOSURE.max) * cMax) {
     p.rapport = Math.min(
       RAPPORT.max,
       p.rapport + RAPPORT.perSecond * s.d.band.rapportMultiplier * dt,
@@ -67,7 +85,7 @@ export function tick(s: GameState, dt: number): void {
   // --- Composure failure ---
   // A grace countdown rather than an instant loss, so the player gets a chance to
   // react and so the failure reads as a slow slide rather than a gotcha.
-  if (p.composure <= COMPOSURE.criticalAt) {
+  if (p.composure <= (COMPOSURE.criticalAt / COMPOSURE.max) * cMax) {
     s.t.criticalFor = (s.t.criticalFor ?? 0) + dt;
     if (s.t.criticalFor >= COMPOSURE.criticalGraceSeconds) {
       loseTheCall(s);
@@ -81,12 +99,165 @@ function hasGrant(p: GameState['p'], grant: string): boolean {
   return p.upgrades.some((id) => UPGRADES_BY_ID[id]?.grants === grant);
 }
 
+/**
+ * Opportunity windows.
+ *
+ * Deliberately penalty-free: a missed window logs a line and nothing else. The
+ * research is clear that the golden-cookie pattern works because it rewards
+ * attention rather than punishing absence — the moment a missed event costs you
+ * something, an idle game becomes a chore with a timer.
+ *
+ * Scheduling uses a COUNTDOWN, never an absolute timestamp. The old build stored
+ * `Date.now()` deadlines in the save (audit bug #5), so reloading after a break
+ * rapid-fired every event that had "expired" while the tab was closed.
+ */
+function updateEvents(s: GameState, dt: number): void {
+  // Windows only open while the player is actually present. Firing them into an
+  // empty room would just manufacture a miss.
+  if (s.t.idle) return;
+
+  if (s.t.event) {
+    s.t.event.expiresIn -= dt;
+    if (s.t.event.expiresIn <= 0) {
+      s.t.event = null;
+      s.t.eventsMissed++;
+      s.t.nextEventIn = rollEventDelay(s);
+      pushLog(s, 'The moment passes. He picks up where he left off.', 'system');
+    }
+    return;
+  }
+
+  s.t.nextEventIn -= dt;
+  if (s.t.nextEventIn > 0) return;
+
+  const pool = EVENTS.pool;
+  // Deterministic selection from the elapsed clock, so the simulator and the browser
+  // agree and a run is reproducible.
+  const pick = pool[Math.floor(Math.abs(Math.sin(s.p.elapsed * 7.3) * pool.length)) % pool.length];
+  s.t.event = {
+    id: pick.id,
+    label: pick.label,
+    expiresIn: EVENTS.windowSeconds,
+    multiplier: pick.multiplier,
+    duration: pick.duration,
+  };
+}
+
+function rollEventDelay(s: GameState): number {
+  let rate = 1;
+  for (const id of s.p.dossier) {
+    const dd = DOSSIER_BY_ID[id];
+    if (dd?.eventRateMultiplier) rate *= dd.eventRateMultiplier;
+  }
+  const span = EVENTS.maxInterval - EVENTS.minInterval;
+  const jitter = Math.abs(Math.sin(s.p.elapsed * 3.1)) * span;
+  return (EVENTS.minInterval + jitter) / rate;
+}
+
+/** Catch the open window. Returns the multiplier granted, or 0 if there was none. */
+export function catchEvent(s: GameState): number {
+  const e = s.t.event;
+  if (!e) return 0;
+  s.t.burstMultiplier = e.multiplier;
+  s.t.burstFor = e.duration;
+  s.t.event = null;
+  s.t.eventsCaught++;
+  s.t.nextEventIn = rollEventDelay(s);
+  pushLog(s, `Production ×${e.multiplier} for ${e.duration} seconds.`, 'intel');
+  return e.multiplier;
+}
+
+// ------------------------------------------------------------------------ redial
+
+/** Whether hanging up and calling back is currently allowed. */
+export function canRedial(s: GameState): boolean {
+  return Math.max(s.p.bestCallLifetime, s.p.holdTimeLifetime) >= REDIAL.minLifetimeToRedial;
+}
+
+/**
+ * Hang up and call back — the within-phase soft reset.
+ *
+ * Banks Notes, wipes the call, keeps the dossier. Note what is NOT reset:
+ * `holdTimeLifetime` is, because it measures this call, but `bestCallLifetime`,
+ * `notesLifetime`, `redials`, `dossier`, `roster` and `beatsSeen` persist. Milestones
+ * persist too — you do not re-watch the narrative beats you have already seen, which
+ * is the difference between a prestige loop and a punishment.
+ */
+export function redial(s: GameState): number {
+  const p = s.p;
+  if (!canRedial(s)) return 0;
+
+  const gained = s.d.notesOnRedial;
+  p.notes += gained;
+  p.notesLifetime += gained;
+  p.redials++;
+
+  // Wipe the call itself.
+  p.holdTime = 0;
+  p.holdTimeLifetime = 0;
+  p.upgrades = [];
+  p.combo = 1;
+  p.totalStalls = 0;
+  for (const id of GENERATOR_IDS) p.generators[id] = 0;
+
+  // He half-remembers you. Some rapport survives.
+  p.rapport = Math.floor(p.rapport * REDIAL.rapportRetained);
+
+  applyDossierStart(s);
+
+  s.t.event = null;
+  s.t.burstFor = 0;
+  s.t.burstMultiplier = 1;
+  s.t.nextEventIn = 70;
+  s.d = derive(p);
+
+  pushLog(s, `You hang up. You wait four minutes. You call back. ${gained} pages.`, 'beat');
+  return gained;
+}
+
+/** Apply permanent dossier head-starts to a fresh call. */
+export function applyDossierStart(s: GameState): void {
+  const p = s.p;
+  p.composure = maxComposure(p);
+  let startRapport = 0;
+  for (const id of p.dossier) {
+    const dd = DOSSIER_BY_ID[id];
+    if (!dd) continue;
+    if (dd.startingRapport) startRapport = Math.max(startRapport, dd.startingRapport);
+    if (dd.startingGenerators) {
+      for (const [gid, n] of Object.entries(dd.startingGenerators)) {
+        p.generators[gid as GeneratorId] = (p.generators[gid as GeneratorId] ?? 0) + (n ?? 0);
+      }
+    }
+  }
+  p.rapport = Math.max(p.rapport, startRapport);
+}
+
+export function buyDossier(s: GameState, id: string): boolean {
+  const p = s.p;
+  const dd = DOSSIER_BY_ID[id];
+  if (!dd) return false;
+  if (!dossierAvailable(p, dd)) return false;
+  if (dd.cost > p.notes) return false;
+  p.notes -= dd.cost;
+  p.dossier.push(id);
+  // Head-starts apply immediately, so a purchase is felt now rather than next call.
+  applyDossierStart(s);
+  s.d = derive(p);
+  pushLog(s, dd.flavor, 'intel');
+  return true;
+}
+
+export function availableDossier(s: GameState): DossierDef[] {
+  return DOSSIER.filter((d) => dossierAvailable(s.p, d));
+}
+
 /** Milestones fire exactly once, in order, and are recorded as facts. */
 function checkMilestones(s: GameState): void {
   const p = s.p;
   for (const m of PHASE1_MILESTONES) {
     if (p.milestones.includes(m.id)) continue;
-    if (p.holdTimeLifetime < m.at) continue;
+    if (p.holdTimeCareer < m.at) continue;
 
     p.milestones.push(m.id);
     if (m.rapportFloor) p.rapport = Math.max(p.rapport, m.rapportFloor);
@@ -99,7 +270,7 @@ function checkMilestones(s: GameState): void {
     }
   }
 
-  if (p.holdTimeLifetime >= PHASE1_GATE && p.phase === 1) {
+  if (p.holdTimeCareer >= PHASE1_GATE && p.phase === 1) {
     // Phase transition is a UI event, not an automatic state change — the player
     // chooses to proceed, because the point of no return should be pressed.
     s.t.phaseGateReached = true;
@@ -119,7 +290,7 @@ function loseTheCall(s: GameState): void {
   const p = s.p;
   p.holdTime = 0;
   p.rapport = Math.max(0, p.rapport - 8);
-  p.composure = COMPOSURE.max * 0.6;
+  p.composure = maxComposure(p) * 0.6;
   p.combo = 1;
   s.t.criticalFor = 0;
   s.t.callEnded = true;
@@ -137,6 +308,7 @@ export function stall(s: GameState, nowMs: number): number {
   const gain = s.d.stallValue;
   p.holdTime += gain;
   p.holdTimeLifetime += gain;
+  p.holdTimeCareer += gain;
   p.totalStalls++;
 
   // Composure cost, unless an upgrade has removed it.
@@ -187,7 +359,7 @@ export function buyUpgrade(s: GameState, id: string): boolean {
 
   const owned = new Set(p.upgrades);
   if (!isAvailable(u, {
-    lifetime: p.holdTimeLifetime,
+    lifetime: p.holdTimeCareer,
     rapport: p.rapport,
     activeTime: p.activeElapsed,
     owned,
@@ -205,7 +377,7 @@ export function availableUpgrades(s: GameState) {
   const owned = new Set(p.upgrades);
   return UPGRADES.filter((u) =>
     isAvailable(u, {
-      lifetime: p.holdTimeLifetime,
+      lifetime: p.holdTimeCareer,
       rapport: p.rapport,
       activeTime: p.activeElapsed,
       owned,
@@ -240,6 +412,7 @@ export function applyOffline(s: GameState, seconds: number): number {
   const gained = s.d.hps * capped * IDLE.offlineRate;
   s.p.holdTime += gained;
   s.p.holdTimeLifetime += gained;
+  s.p.holdTimeCareer += gained;
   s.p.elapsed += capped;
   return gained;
 }

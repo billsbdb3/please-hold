@@ -33,9 +33,14 @@ export type GeneratorId =
   | 'catInterrupt'   // The cat is on the desk now.
   | 'speakerphone'   // Muffled. They ask you to repeat everything.
   | 'secondDevice'   // "Should I use the iPad instead?"
-  | 'relative';      // Putting your nephew on. He also has questions.
+  | 'relative'       // Putting your nephew on. He also has questions.
+  | 'otherLine'      // A second call is coming in. It is also him.
+  | 'neighbour'      // She has come round. Her problem is unrelated.
+  | 'filingCabinet'; // Account numbers from 1987, read aloud, in full.
 
 export type UpgradeId = string;
+/** Dossier upgrades are bought with Notes and survive a redial. */
+export type DossierId = string;
 
 /**
  * FACTS ONLY. This is the shape that gets serialised.
@@ -50,8 +55,13 @@ export interface Persisted {
   // --- Primary currencies. Plain numbers until Phase 3 needs break_infinity. ---
   /** Phase 1 primary: seconds of the scammer's time wasted. */
   holdTime: number;
-  /** Lifetime total, never spent. Drives milestone gates. */
+  /** Total for THIS CALL. Reset by a redial. Drives tier unlocks and upgrade gates. */
   holdTimeLifetime: number;
+  /**
+   * Career total across every call. NEVER reset. Drives narrative milestones and the
+   * phase gate — progress through the story is not undone by hanging up.
+   */
+  holdTimeCareer: number;
 
   /** Phase 2 primary. */
   intel: number;
@@ -83,6 +93,26 @@ export interface Persisted {
   upgrades: UpgradeId[];
   /** Milestone ids already fired, so they fire exactly once. */
   milestones: string[];
+
+  // --- Redial (the within-phase soft reset) ---
+  /**
+   * Notes: the prestige currency. Pages of the dossier you are building on this
+   * operation. Earned by hanging up and calling back, and never lost.
+   *
+   * This exists because Phase 1's content supports ~35 minutes of first-call
+   * progression against a 90-minute target, and a soft reset is the genre's
+   * standard answer to that gap. It is also the one prestige mechanic that needs no
+   * narrative justification at all: calling back repeatedly to build a file is
+   * *literally what the job is*.
+   */
+  notes: number;
+  notesLifetime: number;
+  /** How many times you have hung up and called back. */
+  redials: number;
+  /** Dossier upgrade ids. Bought with Notes; survive every redial. */
+  dossier: DossierId[];
+  /** Best lifetime Hold Time reached on any single call, for the Notes formula. */
+  bestCallLifetime: number;
 
   // --- Click state ---
   totalStalls: number;
@@ -143,6 +173,10 @@ export interface Derived {
   band: ComposureBand;
   /** Cost of the next unit of each generator. */
   nextCost: Record<GeneratorId, number>;
+  /** Notes the player would bank by redialling right now. Drives the decision. */
+  notesOnRedial: number;
+  /** Permanent multiplier from the dossier, shown so the reset reads as a gain. */
+  dossierMultiplier: number;
 }
 
 export interface ComposureBand {
@@ -187,6 +221,35 @@ export interface Transient {
   returnedFromIdle: boolean;
   /** Monotonic id source for log lines and popups. */
   nextId: number;
+
+  // --- Opportunity events ---
+  /**
+   * The active event, if any. A short window the player can catch for a burst.
+   * This is the active-play reward that does not punish idle play: missing one
+   * costs nothing, catching one is a bonus.
+   */
+  event: ActiveEvent | null;
+  /** Seconds until the next event window opens. */
+  nextEventIn: number;
+  /** Seconds remaining on the current production burst, 0 when none. */
+  burstFor: number;
+  /** Multiplier applied while `burstFor` is running. */
+  burstMultiplier: number;
+  /** Events caught and missed, for the end-of-call summary. */
+  eventsCaught: number;
+  eventsMissed: number;
+}
+
+export interface ActiveEvent {
+  id: string;
+  /** The prompt shown on the button. Always a flat statement. */
+  label: string;
+  /** Seconds left to click it. */
+  expiresIn: number;
+  /** Production multiplier granted on catch. */
+  multiplier: number;
+  /** Seconds the burst lasts. */
+  duration: number;
 }
 
 export interface LogLine {

@@ -12,11 +12,17 @@
  */
 
 import type { Persisted, Derived, GeneratorId, ComposureBand } from './types';
+import type { DossierDef } from '../data/balance';
 import {
   GENERATORS, GENERATOR_BY_ID, SOFT_CAP_EXPONENT, CASCADE_CAP,
-  STALL, COMPOSURE, PHASE1_MILESTONES,
+  STALL, COMPOSURE, PHASE1_MILESTONES, DOSSIER_BY_ID, REDIAL,
 } from '../data/balance';
 import { UPGRADES_BY_ID } from '../data/upgrades';
+
+/** Composure band boundaries scale with the dossier's max, so bands stay proportional. */
+function bandThreshold(min: number, max: number): number {
+  return (min / COMPOSURE.max) * max;
+}
 
 /** Cost of the next unit: baseCost · growth^owned. */
 export function costOf(id: GeneratorId, owned: number): number {
@@ -60,10 +66,17 @@ export function effectiveOwned(owned: number, softCapAt: number): number {
   return softCapAt + Math.pow(owned - softCapAt, SOFT_CAP_EXPONENT);
 }
 
-/** Which composure band we are in. Bands are ordered high -> low. */
-export function bandFor(composure: number): ComposureBand {
+/**
+ * Which composure band we are in. Bands are ordered high -> low.
+ *
+ * Thresholds are proportional to the player's CURRENT maximum, not absolute. The
+ * dossier can raise max composure to 165, and with absolute thresholds "Breaking"
+ * would then be unreachable — the tradeoff bands would quietly stop existing for
+ * anyone who had invested in them, which is the opposite of the intent.
+ */
+export function bandFor(composure: number, max: number = COMPOSURE.max): ComposureBand {
   for (const b of COMPOSURE.bands) {
-    if (composure >= b.min) return b as unknown as ComposureBand;
+    if (composure >= bandThreshold(b.min, max)) return b as unknown as ComposureBand;
   }
   return COMPOSURE.bands[COMPOSURE.bands.length - 1] as unknown as ComposureBand;
 }
@@ -71,8 +84,20 @@ export function bandFor(composure: number): ComposureBand {
 export function derive(p: Persisted): Derived {
   const fired = new Set(p.milestones);
 
+  // --- Permanent dossier effects. Bought with Notes; survive every redial. ---
+  let dossierMultiplier = 1;
+  let dossierStallMultiplier = 1;
+  let notesMultiplier = 1;
+  for (const id of p.dossier) {
+    const dd = DOSSIER_BY_ID[id];
+    if (!dd) continue;
+    if (dd.globalMultiplier) dossierMultiplier *= dd.globalMultiplier;
+    if (dd.stallMultiplier) dossierStallMultiplier *= dd.stallMultiplier;
+    if (dd.notesMultiplier) notesMultiplier *= dd.notesMultiplier;
+  }
+
   // --- Global multiplier: recomputed from the bought-id set, every time. ---
-  let globalMultiplier = 1;
+  let globalMultiplier = dossierMultiplier;
   for (const id of p.upgrades) {
     const u = UPGRADES_BY_ID[id];
     if (u?.globalMultiplier) globalMultiplier *= u.globalMultiplier;
@@ -122,7 +147,7 @@ export function derive(p: Persisted): Derived {
   }
 
   // --- Composure band and its tradeoffs ---
-  const band = bandFor(p.composure);
+  const band = bandFor(p.composure, maxComposure(p));
 
   // --- Manual stall value ---
   // Scales with passive rate so clicking never becomes irrelevant, and with the
@@ -133,6 +158,7 @@ export function derive(p: Persisted): Derived {
     if (u?.stallFlat) stallBase += u.stallFlat;
     if (u?.stallMultiplier) stallBase *= u.stallMultiplier;
   }
+  stallBase *= dossierStallMultiplier;
   const stallValue = stallBase * p.combo * band.stallMultiplier;
 
   // --- Composure drain ---
@@ -156,12 +182,58 @@ export function derive(p: Persisted): Derived {
     composureDrain,
     band,
     nextCost,
+    notesOnRedial: notesFor(p, notesMultiplier),
+    dossierMultiplier,
   };
 }
 
-/** Whether a generator tier should be visible at all yet. */
+/**
+ * Notes banked by redialling now: floor(sqrt(best call / divisor)) × dossier bonus.
+ *
+ * A square root rather than a linear cut, per the standard prestige result — it
+ * compresses an unbounded currency into a spendable one and requires 4× the progress
+ * to double the payout, so one exceptional call cannot trivialise the whole tree.
+ */
+export function notesFor(p: Persisted, notesMultiplier = 1): number {
+  const best = Math.max(p.bestCallLifetime, p.holdTimeLifetime);
+  if (best < REDIAL.minLifetimeToRedial) return 0;
+  if (notesMultiplier === 1) {
+    // Resolve the dossier's own Notes bonus when the caller has not passed it in.
+    for (const id of p.dossier) {
+      const dd = DOSSIER_BY_ID[id];
+      if (dd?.notesMultiplier) notesMultiplier *= dd.notesMultiplier;
+    }
+  }
+  return Math.floor(Math.sqrt(best / REDIAL.divisor) * notesMultiplier);
+}
+
+/** Max composure including permanent dossier bonuses. */
+export function maxComposure(p: Persisted): number {
+  let max: number = COMPOSURE.max;
+  for (const id of p.dossier) {
+    const dd = DOSSIER_BY_ID[id];
+    if (dd?.composureBonus) max += dd.composureBonus;
+  }
+  return max;
+}
+
+/** Whether a dossier upgrade can be bought right now. */
+export function dossierAvailable(p: Persisted, d: DossierDef): boolean {
+  if (p.dossier.includes(d.id)) return false;
+  if (d.requires?.some((id) => !p.dossier.includes(id))) return false;
+  return true;
+}
+
+/**
+ * Whether a generator tier is known yet.
+ *
+ * Keyed on the CAREER total, not this call's. Discovery is permanent: a redial wipes
+ * what you own, never what you have learned exists. Gating this on per-call progress
+ * made the top three tiers unreachable the moment redialling started, because no
+ * single call ever climbed that high again.
+ */
 export function isUnlocked(p: Persisted, id: GeneratorId): boolean {
-  return p.holdTimeLifetime >= GENERATOR_BY_ID[id].unlocksAt;
+  return p.holdTimeCareer >= GENERATOR_BY_ID[id].unlocksAt;
 }
 
 /** True when the player has bought the upgrade. */

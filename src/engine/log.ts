@@ -53,5 +53,13 @@ export function freshTransient(nowMs: number): GameState['t'] {
     phaseGateReached: false,
     returnedFromIdle: false,
     nextId: 1,
+    event: null,
+    // First window is deliberately early so the mechanic teaches itself before the
+    // player has settled into pure autopilot.
+    nextEventIn: 70,
+    burstFor: 0,
+    burstMultiplier: 1,
+    eventsCaught: 0,
+    eventsMissed: 0,
   };
 }

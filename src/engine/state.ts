@@ -10,10 +10,11 @@ import type { Persisted, GeneratorId } from './types';
 
 /**
  * Bump on any breaking change to `Persisted`, and add the matching migration in
- * save.ts. Version 2 is the first version of the Payback overhaul; version 1 was
- * the vanilla v7 build, whose saves are deliberately discarded.
+ * save.ts. Version 2 was the first Payback build; version 3 adds the redial soft
+ * reset (Notes + dossier) and three more generator tiers. Version 1 was the vanilla
+ * v7 build, whose saves are deliberately discarded.
  */
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 
 export const GENERATOR_IDS: GeneratorId[] = [
   'confusion',
@@ -22,6 +23,9 @@ export const GENERATOR_IDS: GeneratorId[] = [
   'speakerphone',
   'secondDevice',
   'relative',
+  'otherLine',
+  'neighbour',
+  'filingCabinet',
 ];
 
 export function freshState(): Persisted {
@@ -34,6 +38,7 @@ export function freshState(): Persisted {
 
     holdTime: 0,
     holdTimeLifetime: 0,
+    holdTimeCareer: 0,
     intel: 0,
     intelLifetime: 0,
     evidence: 0,
@@ -58,6 +63,12 @@ export function freshState(): Persisted {
     elapsed: 0,
     activeElapsed: 0,
     lastSeenAt: Date.now(),
+
+    notes: 0,
+    notesLifetime: 0,
+    redials: 0,
+    dossier: [],
+    bestCallLifetime: 0,
 
     roster: [],
     beatsSeen: [],

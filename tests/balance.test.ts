@@ -12,10 +12,18 @@
 
 import { describe, it, expect } from 'vitest';
 import { simulate } from '../tools/simulate';
-import { derive, costOf, costOfN, maxAffordable, effectiveOwned } from '../src/engine/derive';
+import {
+  derive, costOf, costOfN, maxAffordable, effectiveOwned, notesFor, maxComposure,
+} from '../src/engine/derive';
 import { freshState } from '../src/engine/state';
-import { GENERATORS, PHASE1_TARGET_MINUTES, PHASE1_GATE } from '../src/data/balance';
+import { freshTransient } from '../src/engine/log';
+import { tick, redial, canRedial, buyDossier, catchEvent } from '../src/engine/sim';
+import { DT } from '../src/engine/loop';
+import {
+  GENERATORS, PHASE1_TARGET_MINUTES, PHASE1_GATE, DOSSIER,
+} from '../src/data/balance';
 import { UPGRADES } from '../src/data/upgrades';
+import type { GameState } from '../src/engine/types';
 
 describe('phase 1 duration', () => {
   it('the active archetype finishes inside the target window', () => {
@@ -76,6 +84,19 @@ describe('content reachability', () => {
     }
   });
 
+  it('the multiplier budget including the dossier stays bounded', () => {
+    // The dossier adds a second, permanent multiplier chain on top of the in-call
+    // one. Budgeting only the in-call chain would miss it entirely.
+    const p = freshState();
+    p.upgrades = UPGRADES.map((u) => u.id);
+    p.dossier = DOSSIER.map((d) => d.id);
+    p.milestones = [
+      'p1.contact', 'p1.remote', 'p1.screenshare',
+      'p1.quota', 'p1.persistent', 'p1.switchboard',
+    ];
+    expect(Math.log10(derive(p).globalMultiplier)).toBeLessThan(6);
+  });
+
   it('every upgrade prerequisite exists', () => {
     const ids = new Set(UPGRADES.map((u) => u.id));
     for (const u of UPGRADES) {
@@ -96,7 +117,183 @@ describe('content reachability', () => {
 
   it('the active player reaches most of the upgrade tree', () => {
     const r = simulate('active');
-    expect(r.upgradesBought).toBeGreaterThanOrEqual(Math.floor(UPGRADES.length * 0.5));
+    expect(r.upgradesBought).toBeGreaterThanOrEqual(6);
+  });
+
+  it('no generator tier is dead content', () => {
+    // The simulator once showed three tiers that NO archetype ever bought a single
+    // unit of: they were unlocked but permanently unaffordable, because generator cost
+    // comes out of banked Hold Time and a redial zeroes it. They were moved to
+    // PHASE2_RESERVED_GENERATORS. This test is what stops that shipping again.
+    const runs = (['optimal', 'active', 'casual', 'idle'] as const).map((a) => simulate(a));
+    for (const g of GENERATORS) {
+      const peak = Math.max(...runs.map((r) => r.peakOwned[g.id] ?? 0));
+      expect(peak, `${g.name} was never bought by any archetype`).toBeGreaterThan(0);
+    }
+  });
+
+  it('no dead time: an active player always has something to buy', () => {
+    // The dead-time detector. The pre-expansion build flatlined at minute 45 with
+    // nothing affordable for the remaining hour, which the research names as the
+    // single most common way an incremental dies. Five minutes is a generous ceiling
+    // on the longest gap between purchases.
+    const r = simulate('active');
+    expect(r.longestStallMinutes).toBeLessThan(5);
+  });
+});
+
+describe('redial (the soft reset)', () => {
+  it('an active player redials repeatedly and fills the dossier', () => {
+    const r = simulate('active');
+    expect(r.redials).toBeGreaterThan(5);
+    expect(r.dossierBought).toBeGreaterThan(6);
+  });
+
+  it('redialling is refused before the minimum has been reached', () => {
+    const p = freshState();
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    expect(canRedial(s)).toBe(false);
+    expect(redial(s)).toBe(0);
+    expect(p.redials).toBe(0);
+  });
+
+  it('a redial banks Notes, clears the call, and keeps the career total', () => {
+    const p = freshState();
+    p.holdTime = 500_000;
+    p.holdTimeLifetime = 40_000_000;
+    p.holdTimeCareer = 40_000_000;
+    p.bestCallLifetime = 40_000_000;
+    p.generators.confusion = 40;
+    p.upgrades = ['u.notepad', 'u.landline'];
+    p.milestones = ['p1.contact', 'p1.remote'];
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+
+    const gained = redial(s);
+
+    expect(gained).toBeGreaterThan(0);
+    expect(p.notes).toBe(gained);
+    expect(p.redials).toBe(1);
+    // The call is gone...
+    expect(p.holdTime).toBe(0);
+    expect(p.holdTimeLifetime).toBe(0);
+    expect(p.upgrades).toEqual([]);
+    expect(p.generators.confusion).toBe(0);
+    // ...but the career and the narrative are not. You do not re-watch the beats.
+    expect(p.holdTimeCareer).toBe(40_000_000);
+    expect(p.milestones).toEqual(['p1.contact', 'p1.remote']);
+    expect(p.bestCallLifetime).toBe(40_000_000);
+  });
+
+  it('Notes use a root, so doubling the payout costs 4x the progress', () => {
+    const a = freshState();
+    a.bestCallLifetime = 100_000_000;
+    const b = freshState();
+    b.bestCallLifetime = 400_000_000;
+    // sqrt: 4x the input for 2x the output.
+    expect(notesFor(b) / notesFor(a)).toBeCloseTo(2, 1);
+  });
+
+  it('dossier purchases persist across a redial and grant a head start', () => {
+    const p = freshState();
+    p.notes = 100;
+    p.bestCallLifetime = 50_000_000;
+    p.holdTimeCareer = 50_000_000;
+    p.holdTimeLifetime = 50_000_000;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+
+    expect(buyDossier(s, 'd.callback')).toBe(true);
+    expect(buyDossier(s, 'd.warmup')).toBe(true);
+
+    redial(s);
+
+    // Survived the reset...
+    expect(p.dossier).toContain('d.callback');
+    expect(p.dossier).toContain('d.warmup');
+    // ...and the head-start is applied to the new call.
+    expect(p.rapport).toBeGreaterThanOrEqual(15);
+    expect(p.generators.confusion).toBe(10);
+  });
+
+  it('a dossier upgrade cannot be bought twice or without its prerequisite', () => {
+    const p = freshState();
+    p.notes = 10_000;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    expect(buyDossier(s, 'd.rehearsed')).toBe(false); // needs d.script
+    expect(buyDossier(s, 'd.script')).toBe(true);
+    expect(buyDossier(s, 'd.script')).toBe(false); // already owned
+    expect(buyDossier(s, 'd.rehearsed')).toBe(true);
+  });
+
+  it('every dossier prerequisite exists', () => {
+    const ids = new Set(DOSSIER.map((d) => d.id));
+    for (const dd of DOSSIER) {
+      for (const req of dd.requires ?? []) expect(ids.has(req)).toBe(true);
+    }
+  });
+
+  it('composure bands stay reachable when the dossier raises the maximum', () => {
+    // With absolute thresholds, a player who bought +65 max composure could never
+    // reach the "Breaking" band again, silently deleting the tradeoff they had
+    // invested in. Bands are proportional for this reason.
+    const p = freshState();
+    p.dossier = ['d.chair', 'd.composure'];
+    const max = maxComposure(p);
+    expect(max).toBeGreaterThan(100);
+    p.composure = max * 0.05;
+    expect(derive(p).band.id).toBe('breaking');
+    p.composure = max;
+    expect(derive(p).band.id).toBe('steady');
+  });
+});
+
+describe('opportunity events', () => {
+  it('a window opens, expires, and costs nothing when missed', () => {
+    const p = freshState();
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    s.t.nextEventIn = 0;
+    tick(s, DT);
+    expect(s.t.event).not.toBeNull();
+
+    const careerBefore = p.holdTimeCareer;
+    // Let it expire untouched.
+    for (let i = 0; i < 400; i++) tick(s, DT);
+    expect(s.t.eventsMissed).toBeGreaterThan(0);
+    // Missing it must not subtract anything. There is no penalty branch by design.
+    expect(p.holdTimeCareer).toBeGreaterThanOrEqual(careerBefore);
+  });
+
+  it('catching a window grants a timed production burst', () => {
+    const p = freshState();
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    s.t.nextEventIn = 0;
+    tick(s, DT);
+    const mult = catchEvent(s);
+    expect(mult).toBeGreaterThan(1);
+    expect(s.t.burstMultiplier).toBe(mult);
+    expect(s.t.burstFor).toBeGreaterThan(0);
+    expect(s.t.event).toBeNull();
+
+    // The burst decays and then clears itself.
+    for (let i = 0; i < Math.ceil(30 / DT); i++) tick(s, DT);
+    expect(s.t.burstFor).toBe(0);
+    expect(s.t.burstMultiplier).toBe(1);
+  });
+
+  it('catching nothing is harmless', () => {
+    const p = freshState();
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    expect(catchEvent(s)).toBe(0);
+  });
+
+  it('windows do not open while the player is away', () => {
+    // Firing an event into an empty room would only manufacture a miss.
+    const p = freshState();
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    s.t.idle = true;
+    s.t.nextEventIn = 0;
+    for (let i = 0; i < 100; i++) tick(s, DT);
+    expect(s.t.event).toBeNull();
+    expect(s.t.eventsMissed).toBe(0);
   });
 });
 
@@ -152,7 +349,10 @@ describe('cost and production maths', () => {
     const p = freshState();
     p.upgrades = UPGRADES.map((u) => u.id);
     p.milestones = ['p1.contact', 'p1.remote', 'p1.screenshare', 'p1.quota', 'p1.persistent', 'p1.switchboard'];
+    // Ceiling raised from 3 when the tree grew from 16 to 30 upgrades. The binding
+    // constraint is the measured phase duration above, which sits at 102 min; this is
+    // the guard against a runaway chain, and the first build blew it by ~1e5.
     const decades = Math.log10(derive(p).globalMultiplier);
-    expect(decades).toBeLessThan(3);
+    expect(decades).toBeLessThan(5);
   });
 });

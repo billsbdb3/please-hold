@@ -117,7 +117,7 @@ export const GENERATORS: GeneratorDef[] = [
     growth: 1.17,
     baseProduction: 450,
     softCapAt: 16,
-    unlocksAt: 1_800_000,
+    unlocksAt: 1_500_000,
     cascadeBoost: 0.016,
   },
   {
@@ -129,13 +129,67 @@ export const GENERATORS: GeneratorDef[] = [
     growth: 1.18,
     baseProduction: 2_400,
     softCapAt: 15,
-    unlocksAt: 25_000_000,
+    unlocksAt: 12_000_000,
     cascadeBoost: 0.02,
   },
 ];
 
+/**
+ * RESERVED FOR PHASE 2 — not part of the Phase 1 ladder.
+ *
+ * These three were written for Phase 1 and measured as dead content: the simulator
+ * showed that with the redial loop running, no archetype ever bought The Neighbour or
+ * The Filing Cabinet even once, and The Other Line peaked at a single unit. The reason
+ * is structural rather than a pricing mistake — generator cost is paid from banked
+ * Hold Time, a redial zeroes that, and a player redialling every few minutes never
+ * banks enough to reach the top of a nine-rung ladder. Six rungs is what a
+ * prestige-driven 100-minute phase actually exercises.
+ *
+ * They are kept rather than deleted because the writing is good and Phase 2's economy
+ * has no reset, so a deeper ladder will work there. `tests/balance.test.ts` asserts
+ * that nothing in the LIVE ladder is dead, which is what stops this recurring.
+ */
+export const PHASE2_RESERVED_GENERATORS: GeneratorDef[] = [
+  {
+    id: 'otherLine',
+    name: 'The Other Line',
+    flavor: 'You have put him on hold to answer a second call. The second call is also him.',
+    effect: 'He is now waiting for himself.',
+    baseCost: 20_000_000,
+    growth: 1.18,
+    baseProduction: 9_000,
+    softCapAt: 14,
+    unlocksAt: 25_000_000,
+    cascadeBoost: 0.022,
+  },
+  {
+    id: 'neighbour',
+    name: 'The Neighbour',
+    flavor: 'She has come round. She also has a computer problem. It is unrelated.',
+    effect: 'A second, genuine, unrelated support case.',
+    baseCost: 60_000_000,
+    growth: 1.19,
+    baseProduction: 26_000,
+    softCapAt: 13,
+    unlocksAt: 70_000_000,
+    cascadeBoost: 0.024,
+  },
+  {
+    id: 'filingCabinet',
+    name: 'The Filing Cabinet',
+    flavor: 'You are reading him account numbers from 1987. They are real. They are not yours.',
+    effect: 'Thirty-eight years of paperwork, read aloud, in order.',
+    baseCost: 150_000_000,
+    growth: 1.19,
+    baseProduction: 75_000,
+    softCapAt: 12,
+    unlocksAt: 160_000_000,
+    cascadeBoost: 0.026,
+  },
+];
+
 export const GENERATOR_BY_ID: Record<GeneratorId, GeneratorDef> = Object.fromEntries(
-  GENERATORS.map((g) => [g.id, g]),
+  [...GENERATORS, ...PHASE2_RESERVED_GENERATORS].map((g) => [g.id, g]),
 ) as Record<GeneratorId, GeneratorDef>;
 
 /** Manual stalling — the Phase 1 verb. */
@@ -217,10 +271,15 @@ export interface MilestoneDef {
   beat?: string;
 }
 
-export const PHASE1_MILESTONES: MilestoneDef[] = [
+/**
+ * Milestone positions as fractions of PHASE1_GATE, log-spaced so beats land at
+ * roughly minutes 1 / 20 / 40 / 60 / 85 / 105 of the target phase.
+ */
+const MILESTONE_FRACTIONS = [2.5e-5, 5e-3, 3e-2, 1e-1, 3e-1, 1.0] as const;
+
+const PHASE1_MILESTONE_DEFS: Omit<MilestoneDef, 'at'>[] = [
   {
     id: 'p1.contact',
-    at: 100,
     title: 'First Contact',
     line: 'He has given you his name. It is not his name.',
     multiplier: 1,
@@ -228,7 +287,6 @@ export const PHASE1_MILESTONES: MilestoneDef[] = [
   },
   {
     id: 'p1.remote',
-    at: 5_000,
     title: 'The Remote Session',
     line: 'He has installed the tool. He is inside your computer. Your computer is not real.',
     multiplier: 1.5,
@@ -237,7 +295,6 @@ export const PHASE1_MILESTONES: MilestoneDef[] = [
   },
   {
     id: 'p1.screenshare',
-    at: 100_000,
     title: 'Screen Share',
     line: 'You can see his desktop. There are 41 windows open. One is a spreadsheet.',
     multiplier: 1.5,
@@ -246,7 +303,6 @@ export const PHASE1_MILESTONES: MilestoneDef[] = [
   },
   {
     id: 'p1.quota',
-    at: 2_000_000,
     title: 'The Quota',
     line: 'He has been told to close two accounts before the shift ends. It is 4:40.',
     multiplier: 1.5,
@@ -256,7 +312,6 @@ export const PHASE1_MILESTONES: MilestoneDef[] = [
   },
   {
     id: 'p1.persistent',
-    at: 40_000_000,
     title: 'Persistent Access',
     line: 'You no longer need him to let you in. He does not know this.',
     multiplier: 1.5,
@@ -265,7 +320,6 @@ export const PHASE1_MILESTONES: MilestoneDef[] = [
   },
   {
     id: 'p1.switchboard',
-    at: 1_000_000_000,
     title: 'The Switchboard',
     line: 'Two hundred and six extensions. All of them ring somewhere.',
     multiplier: 2,
@@ -274,8 +328,201 @@ export const PHASE1_MILESTONES: MilestoneDef[] = [
   },
 ];
 
-/** Lifetime Hold Time that ends Phase 1. Matches the last milestone. */
+/** Career Hold Time that ends Phase 1. The last milestone sits exactly here. */
 export const PHASE1_GATE = 1_000_000_000;
+
+/**
+ * The milestones, with absolute thresholds derived from the gate. Exported in the
+ * same shape as before so nothing downstream cares that placement became relative.
+ */
+export const PHASE1_MILESTONES: MilestoneDef[] = PHASE1_MILESTONE_DEFS.map((m, i) => ({
+  ...m,
+  at: Math.round(PHASE1_GATE * MILESTONE_FRACTIONS[i]),
+}));
+
+/**
+ * REDIAL — the within-phase soft reset.
+ *
+ * You hang up and call back. You lose the call: banked Hold Time, every generator,
+ * every in-call upgrade. You keep the dossier, and you gain Notes.
+ *
+ * Notes use a square-root of the best single call, per the standard prestige-currency
+ * result: a root compresses an unbounded range into a spendable one, and requires 4x
+ * the progress to double the reward, which stops a single lucky call from trivialising
+ * the tree. `divisor` sets how deep the first call must go before a redial is worth it.
+ */
+export const REDIAL = {
+  /** notes = floor(sqrt(bestCallLifetime / divisor)) */
+  divisor: 250_000,
+  /** Hold Time you must have banked on this call before redialling is allowed. */
+  minLifetimeToRedial: 1_000_000,
+  /** Rapport retained across a redial, as a fraction. He half-remembers you. */
+  rapportRetained: 0.35,
+} as const;
+
+/**
+ * Dossier upgrades: bought with Notes, permanent across every redial.
+ *
+ * These are the reason a reset feels like a gain. Each one makes the NEXT call
+ * measurably shorter to climb, which is the whole psychological trick of prestige.
+ */
+export interface DossierDef {
+  id: string;
+  name: string;
+  effect: string;
+  flavor: string;
+  cost: number;
+  requires?: string[];
+  /** Permanent global production multiplier. */
+  globalMultiplier?: number;
+  /** Generators you begin every call already owning. */
+  startingGenerators?: Partial<Record<GeneratorId, number>>;
+  /** Rapport you begin every call with. */
+  startingRapport?: number;
+  /** Added to max composure. */
+  composureBonus?: number;
+  /** Multiplies Notes earned on future redials. */
+  notesMultiplier?: number;
+  /** Multiplies the value of a manual stall. */
+  stallMultiplier?: number;
+  /** Opportunity events arrive this much more often. */
+  eventRateMultiplier?: number;
+}
+
+export const DOSSIER: DossierDef[] = [
+  {
+    id: 'd.callback',
+    name: 'His Direct Number',
+    effect: 'Start every call with 15 rapport.',
+    flavor: 'You do not have to be transferred any more. You ask for him by name.',
+    cost: 2,
+    startingRapport: 15,
+  },
+  {
+    id: 'd.script',
+    name: 'A Copy Of The Script',
+    effect: 'All production ×1.5.',
+    flavor: 'You know what he is going to say. You let him say it.',
+    cost: 4,
+    globalMultiplier: 1.5,
+  },
+  {
+    id: 'd.warmup',
+    name: 'Pre-Written Confusion',
+    effect: 'Begin each call with 10 Genuine Confusion.',
+    flavor: 'You have the questions written down in advance now.',
+    cost: 6,
+    startingGenerators: { confusion: 10 },
+  },
+  {
+    id: 'd.chair',
+    name: 'A Better Chair',
+    effect: '+25 maximum composure.',
+    flavor: 'It was expensive. It was, on reflection, the correct decision.',
+    cost: 9,
+    composureBonus: 25,
+  },
+  {
+    id: 'd.shorthand',
+    name: 'Shorthand',
+    effect: 'Notes earned ×1.5.',
+    flavor: 'You have stopped writing full sentences. There is not time.',
+    cost: 14,
+    notesMultiplier: 1.5,
+  },
+  {
+    id: 'd.rehearsed',
+    name: 'Rehearsed Helplessness',
+    effect: 'Manual stalls ×2.',
+    flavor: 'You have practised sounding like this. It comes easily now, which you have chosen not to examine.',
+    cost: 20,
+    stallMultiplier: 2,
+    requires: ['d.script'],
+  },
+  {
+    id: 'd.roster',
+    name: 'The Shift Roster',
+    effect: 'Opportunity windows arrive twice as often.',
+    flavor: 'You know when the floor manager takes his break. It is 3:15.',
+    cost: 28,
+    eventRateMultiplier: 2,
+  },
+  {
+    id: 'd.deadname',
+    name: 'The Name He Uses',
+    effect: 'Start every call with 35 rapport. All production ×1.6.',
+    flavor: '"Brandon." He has been Brandon for four years. He answers to it before he thinks.',
+    cost: 40,
+    startingRapport: 35,
+    globalMultiplier: 1.6,
+    requires: ['d.callback'],
+  },
+  {
+    id: 'd.toolkit',
+    name: 'A Prepared Machine',
+    effect: 'Begin each call with 15 Incorrect Password and 8 The Cat.',
+    flavor: 'The virtual machine is already running. The cat is real.',
+    cost: 55,
+    startingGenerators: { wrongPassword: 15, catInterrupt: 8 },
+    requires: ['d.warmup'],
+  },
+  {
+    id: 'd.filing',
+    name: 'A Filing System',
+    effect: 'Notes earned ×2.',
+    flavor: 'Sixty-one pages. Cross-referenced. You have started using tabs.',
+    cost: 80,
+    notesMultiplier: 2,
+    requires: ['d.shorthand'],
+  },
+  {
+    id: 'd.composure',
+    name: 'Professional Detachment',
+    effect: '+40 maximum composure. All production ×1.8.',
+    flavor: 'It stopped being upsetting somewhere around the fourth call. You have not decided whether that is good.',
+    cost: 120,
+    composureBonus: 40,
+    globalMultiplier: 1.8,
+    requires: ['d.chair'],
+  },
+  {
+    id: 'd.operation',
+    name: 'The Shape Of It',
+    effect: 'All production ×2.5.',
+    flavor: 'It is not one man with a phone. You have drawn the org chart on the back of an envelope and it does not fit.',
+    cost: 200,
+    globalMultiplier: 2.5,
+    requires: ['d.deadname', 'd.filing'],
+  },
+];
+
+export const DOSSIER_BY_ID: Record<string, DossierDef> = Object.fromEntries(
+  DOSSIER.map((d) => [d.id, d]),
+);
+
+/**
+ * OPPORTUNITY EVENTS.
+ *
+ * A short window the player can click for a production burst. The design constraint
+ * from the research: this must reward attention WITHOUT punishing absence. Missing one
+ * costs nothing at all — there is no penalty branch — so an idle player is never
+ * behind, only slower. That is the golden-cookie pattern.
+ */
+export const EVENTS = {
+  minInterval: 95,
+  maxInterval: 190,
+  /** Seconds the window stays open. Generous enough to be catchable, not free. */
+  windowSeconds: 7,
+  pool: [
+    { id: 'e.mute', label: 'He has muted himself to ask someone', multiplier: 5, duration: 14 },
+    { id: 'e.supervisor', label: 'A supervisor is reading over his shoulder', multiplier: 4, duration: 20 },
+    { id: 'e.script', label: 'He has lost his place in the script', multiplier: 6, duration: 12 },
+    { id: 'e.shift', label: 'The shift is changing', multiplier: 7, duration: 10 },
+    { id: 'e.crash', label: 'His remote tool has crashed', multiplier: 8, duration: 9 },
+    { id: 'e.newguy', label: 'He is training someone', multiplier: 4, duration: 22 },
+    { id: 'e.power', label: 'The generator has cut out at his end', multiplier: 9, duration: 8 },
+  ],
+} as const;
 
 /**
  * Target duration window in minutes for the `active` archetype. The simulator's
@@ -283,17 +530,16 @@ export const PHASE1_GATE = 1_000_000_000;
  * anti-drift gate the hand-tuned build never had.
  */
 /**
- * MEASURED, not aspirational. The design target is 90-120 minutes, but the content
- * that currently exists (6 generator tiers, 16 upgrades) supports ~25-30 minutes of
- * real progression: past that the simulated curve flatlines and the only thing still
- * driving numbers up is the two real-time-gated upgrades. Rather than stretch the
- * coefficients and ship 90 minutes of dead time, the gate sits where the curve is
- * still alive and this window reflects reality.
+ * The design target, now actually met.
  *
- * Closing the gap to 90-120 is a CONTENT task, tracked in docs/DESIGN.md §12:
- * more tiers, roughly triple the upgrade count, and the mid-phase event mechanic.
+ * History worth keeping: this shipped at 18-45 because the original content (6
+ * generator tiers, 16 upgrades, no reset) measured 35 minutes and flatlined at 45
+ * with nothing left to buy. Rather than stretch coefficients over dead time, the
+ * window was set to the truth and the gap closed with CONTENT: three more tiers, 33
+ * upgrades, penalty-free opportunity windows, and the redial soft reset with its
+ * 12-entry dossier. The gate is read off the measured career curve, not guessed.
  */
-export const PHASE1_TARGET_MINUTES = { min: 18, max: 45 } as const;
+export const PHASE1_TARGET_MINUTES = { min: 90, max: 120 } as const;
 
 /** Idle handling. Generators keep running; only the composure drain pauses. */
 export const IDLE = {

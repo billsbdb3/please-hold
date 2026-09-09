@@ -13,13 +13,20 @@
   import { onMount } from 'svelte';
   import { frame, game, startGame, interacted } from './store.svelte';
   import { fmt, fmtRate, fmtDuration, fmtPct } from './engine/numbers';
-  import { stall, buyGenerator, buyUpgrade, availableUpgrades } from './engine/sim';
-  import { GENERATORS, PHASE1_GATE, COMPOSURE, RAPPORT } from './data/balance';
-  import { isUnlocked } from './engine/derive';
+  import {
+    stall, buyGenerator, buyUpgrade, availableUpgrades,
+    catchEvent, redial, canRedial, buyDossier, availableDossier,
+  } from './engine/sim';
+  import {
+    GENERATORS, PHASE1_GATE, COMPOSURE, RAPPORT, REDIAL, DOSSIER,
+  } from './data/balance';
+  import { isUnlocked, maxComposure } from './engine/derive';
   import type { GeneratorId } from './engine/types';
 
   let started = $state(false);
   let bulk = $state<BulkMode>(1);
+  let showDossier = $state(false);
+  let confirmRedial = $state(false);
 
   type BulkMode = 1 | 10 | 'max';
   const BULK_MODES: BulkMode[] = [1, 10, 'max'];
@@ -34,13 +41,30 @@
   const d = $derived.by(() => { void frame.n; return game.d; });
   const t = $derived.by(() => { void frame.n; return game.t; });
 
-  const composurePct = $derived(p.composure / COMPOSURE.max);
+  const cMax = $derived(maxComposure(p));
+  const composurePct = $derived(p.composure / cMax);
   const rapportPct = $derived(p.rapport / RAPPORT.max);
-  const gatePct = $derived(Math.min(1, p.holdTimeLifetime / PHASE1_GATE));
+  const gatePct = $derived(Math.min(1, p.holdTimeCareer / PHASE1_GATE));
 
   const unlockedGens = $derived(GENERATORS.filter((g) => isUnlocked(p, g.id)));
   const upgrades = $derived.by(() => { void frame.n; return availableUpgrades(game); });
+  const dossier = $derived.by(() => { void frame.n; return availableDossier(game); });
+  const redialReady = $derived.by(() => { void frame.n; return canRedial(game); });
   const logLines = $derived(t.log);
+
+  function onCatch() {
+    catchEvent(game);
+    interacted();
+  }
+
+  function onRedial() {
+    redial(game);
+    confirmRedial = false;
+    // The dossier is where the Notes go, so open it rather than making the player
+    // hunt for the reason the reset was worth it.
+    showDossier = true;
+    interacted();
+  }
 
   /**
    * The diegetic audio unlock. Browsers block autoplay until a real gesture, so
@@ -135,7 +159,33 @@
         </span>
         <div class="meter"><div class="meter-fill" style="width: {gatePct * 100}%"></div></div>
       </div>
+      {#if p.redials > 0 || p.notes > 0}
+        <div class="stat">
+          <span class="stat-label">Notes</span>
+          <span class="stat-value phosphor num">{fmt(p.notes)}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Calls</span>
+          <span class="stat-value num">{p.redials + 1}</span>
+        </div>
+      {/if}
     </header>
+
+    <!-- Opportunity window. Penalty-free: missing it costs nothing at all. -->
+    {#if t.event}
+      <button class="event-bar" onclick={onCatch}>
+        <span>{t.event.label}</span>
+        <span class="event-meta num">
+          ×{t.event.multiplier} · {t.event.expiresIn.toFixed(1)}s
+        </span>
+      </button>
+    {/if}
+    {#if t.burstFor > 0}
+      <div class="burst-bar">
+        <span>Production ×{t.burstMultiplier}</span>
+        <span class="num">{t.burstFor.toFixed(1)}s</span>
+      </div>
+    {/if}
 
     <div class="grid">
       <!-- ---------------------------------------------------------- left -->
@@ -202,6 +252,66 @@
               </p>
             {/if}
           </div>
+        </div>
+
+        <!-- ------------------------------------------------- redial / dossier -->
+        <div class="panel">
+          <div class="panel-title">
+            <span>The Dossier</span>
+            {#if p.notes > 0}<span class="phosphor num">{fmt(p.notes)} pages</span>{/if}
+          </div>
+          <div class="pad">
+            {#if !redialReady}
+              <p class="hint">
+                Hang up and call back once you have wasted {fmt(REDIAL.minLifetimeToRedial)}
+                seconds on a single call. You keep what you wrote down.
+              </p>
+            {:else if confirmRedial}
+              <p class="warn-text">
+                You lose this call: every tactic, every approach, the {fmt(p.holdTime)} seconds
+                you are holding. You keep the dossier and {fmt(d.notesOnRedial)} new pages.
+              </p>
+              <div class="btn-row">
+                <button class="btn-danger" onclick={onRedial}>Hang up</button>
+                <button onclick={() => (confirmRedial = false)}>Stay on the line</button>
+              </div>
+            {:else}
+              <button class="btn-wide" onclick={() => (confirmRedial = true)}>
+                Hang up and call back — {fmt(d.notesOnRedial)} pages
+              </button>
+            {/if}
+
+            {#if d.dossierMultiplier > 1}
+              <p class="tradeoff">Permanent production ×{d.dossierMultiplier.toFixed(2)}</p>
+            {/if}
+
+            {#if p.dossier.length > 0 || p.notes > 0}
+              <button class="link" onclick={() => (showDossier = !showDossier)}>
+                {showDossier ? 'Close' : 'Open'} the file ({p.dossier.length}/{DOSSIER.length})
+              </button>
+            {/if}
+          </div>
+
+          {#if showDossier}
+            <div class="scroll list dossier-list">
+              {#each dossier as dd (dd.id)}
+                <button
+                  class="row"
+                  onclick={() => { buyDossier(game, dd.id); interacted(); }}
+                  disabled={dd.cost > p.notes}
+                >
+                  <span class="row-main">
+                    <span class="row-name">{dd.name}</span>
+                    <span class="row-effect">{dd.effect}</span>
+                    <span class="row-flavor">{dd.flavor}</span>
+                  </span>
+                  <span class="row-side"><span class="cost num">{fmt(dd.cost)}p</span></span>
+                </button>
+              {:else}
+                <p class="locked">The file is complete. There is nothing left to write down.</p>
+              {/each}
+            </div>
+          {/if}
         </div>
       </section>
 
@@ -515,6 +625,90 @@
 
   .dim {
     color: var(--amber-deep);
+  }
+
+  /* --------------------------------------------------- opportunity windows */
+
+  /**
+   * The event bar. Deliberately loud relative to everything else on the screen,
+   * because it is the one element with a deadline — and deliberately never a modal,
+   * because missing it must cost nothing and interrupting play to say "you missed
+   * something" would be a punishment.
+   */
+  .event-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 0.7rem var(--pad);
+    background: var(--amber-deep);
+    border: 1px solid var(--amber);
+    color: var(--amber-text);
+    letter-spacing: 0.04em;
+    animation: event-pulse 1s ease-in-out infinite;
+  }
+  .event-meta {
+    color: var(--amber);
+  }
+  @keyframes event-pulse {
+    0%, 100% { background: var(--amber-deep); }
+    50% { background: #8f6220; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .event-bar { animation: none; }
+  }
+
+  .burst-bar {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.4rem var(--pad);
+    border: 1px solid var(--green);
+    color: var(--green);
+    font-size: 12px;
+  }
+
+  /* ---------------------------------------------------------- redial panel */
+
+  .btn-wide {
+    width: 100%;
+    text-align: center;
+  }
+  .btn-danger {
+    border-color: var(--red-dim);
+    color: var(--red);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: #2a1512;
+    border-color: var(--red);
+  }
+  .btn-row {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .btn-row button {
+    flex: 1;
+  }
+  .warn-text {
+    font-size: 11px;
+    color: var(--amber-text);
+    margin: 0 0 0.6rem;
+  }
+  .link {
+    background: none;
+    border: none;
+    padding: 0.4rem 0 0;
+    font-size: 11px;
+    color: var(--amber-dim);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .link:hover {
+    color: var(--amber);
+    background: none;
+  }
+  .dossier-list {
+    max-height: 34vh;
+    border-top: 1px solid var(--line);
   }
 
   .popup-layer {

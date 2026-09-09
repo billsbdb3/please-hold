@@ -55,6 +55,25 @@ const MIGRATIONS: Record<number, Migration> = {
    * visibly, rather than silently producing a broken game.
    */
   1: (data) => ({ ...data, version: 2, __discarded: true }),
+
+  /**
+   * v2 -> v3: the redial soft reset arrives. A v2 save is a valid first call that
+   * simply predates Notes, so it migrates cleanly: zero Notes, zero redials, an
+   * empty dossier, and `bestCallLifetime` seeded from the progress already made so
+   * the player's first redial pays out for the call they actually played.
+   */
+  2: (data) => ({
+    ...data,
+    version: 3,
+    notes: 0,
+    notesLifetime: 0,
+    redials: 0,
+    dossier: [],
+    bestCallLifetime: typeof data.holdTimeLifetime === 'number' ? data.holdTimeLifetime : 0,
+    // A v2 save had no notion of separate call/career totals; its single lifetime
+    // figure IS the career total, since it had never redialled.
+    holdTimeCareer: typeof data.holdTimeLifetime === 'number' ? data.holdTimeLifetime : 0,
+  }),
 };
 
 function migrate(raw: Record<string, unknown>): Persisted | null {
@@ -88,6 +107,7 @@ function migrate(raw: Record<string, unknown>): Persisted | null {
   if (!Array.isArray(merged.milestones)) merged.milestones = [];
   if (!Array.isArray(merged.roster)) merged.roster = [];
   if (!Array.isArray(merged.beatsSeen)) merged.beatsSeen = [];
+  if (!Array.isArray(merged.dossier)) merged.dossier = [];
 
   return sanitise(merged);
 }
@@ -102,10 +122,11 @@ function migrate(raw: Record<string, unknown>): Persisted | null {
  */
 function sanitise(p: Persisted): Persisted {
   const numericKeys: string[] = [
-    'holdTime', 'holdTimeLifetime', 'intel', 'intelLifetime',
+    'holdTime', 'holdTimeLifetime', 'holdTimeCareer', 'intel', 'intelLifetime',
     'evidence', 'evidenceLifetime', 'rapport', 'coverage', 'credibility',
     'composure', 'heat', 'warning', 'totalStalls', 'combo',
     'elapsed', 'activeElapsed',
+    'notes', 'notesLifetime', 'redials', 'bestCallLifetime',
   ];
   const bag = p as unknown as Record<string, unknown>;
   for (const k of numericKeys) {
