@@ -197,12 +197,18 @@
     /* Establishes the container-query context so the HUD and caption can size
        themselves from the tile's width rather than the viewport's. */
     container-type: inline-size;
-    position: relative;
-    width: 100%;
-    height: 100%;
+    /*
+     * Absolutely filling the cell, rather than width/height:100%. The percentage form
+     * depended on the cell having resolved a height, which under grid stretch it had
+     * not — so the frame could exceed its tile and its caption was painted over by the
+     * next row. inset:0 pins it to exactly the tile, whatever the tile turns out to be.
+     */
+    position: absolute;
+    inset: 0;
     background: #0b0906;
     overflow: hidden;
     border: 1px solid var(--line);
+    box-sizing: border-box;
     /* Contain paint so 9+ cameras cannot invalidate each other's layout. */
     contain: layout paint;
     /* Low-contrast, faintly monochrome CCTV wash sits over the SVG. */
