@@ -65,7 +65,7 @@
 >
   {#each cams as scene (scene.id)}
     <div class="cell">
-      <Cam {scene} {tick} compact />
+      <Cam {scene} {tick} />
     </div>
   {/each}
 </div>
