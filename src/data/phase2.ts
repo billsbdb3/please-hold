@@ -246,7 +246,7 @@ export const TRADECRAFT: TradecraftDef[] = [
   {
     id: 't.hours',
     name: 'Watching Out Of Hours',
-    effect: 'Heat ×0.75.',
+    effect: 'Suspicion rises 25% slower.',
     flavor: 'Nobody reviews the access logs at four in the morning. Nobody reviews them at all.',
     cost: 1_000,
     heatMultiplier: 0.75,
@@ -254,7 +254,7 @@ export const TRADECRAFT: TradecraftDef[] = [
   {
     id: 't.notes',
     name: 'Cross-Referencing',
-    effect: 'Identifying someone costs 30% less.',
+    effect: 'Corroborating costs 30% less.',
     flavor: 'The same man appears on three cameras and one payroll line. That is enough.',
     cost: 2_200,
     identifyDiscount: 0.3,
@@ -270,7 +270,7 @@ export const TRADECRAFT: TradecraftDef[] = [
   {
     id: 't.quiet',
     name: 'Quiet Sessions',
-    effect: 'Heat decays 60% faster.',
+    effect: 'Suspicion falls 60% faster.',
     flavor: 'You have learned when to close the laptop, which is not a thing you knew before.',
     cost: 9_000,
     decayMultiplier: 1.6,
@@ -297,7 +297,7 @@ export const TRADECRAFT: TradecraftDef[] = [
   {
     id: 't.insider',
     name: 'The IT Man Is Careless',
-    effect: 'Heat ×0.6. All intel ×1.5.',
+    effect: 'Suspicion rises 40% slower. All intel ×1.5.',
     flavor: 'He reuses one password across four systems. He also only comes in on Tuesdays.',
     cost: 65_000,
     heatMultiplier: 0.6,
