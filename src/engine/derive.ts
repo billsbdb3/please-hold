@@ -208,19 +208,32 @@ export function derive(p: Persisted): Derived {
 }
 
 /**
- * Notes banked by redialling now: floor(sqrt(this call / divisor)) × dossier bonus.
+ * Notes banked by redialling now — a CUMULATIVE grant.
  *
- * A square root rather than a linear cut, per the standard prestige result — it
- * compresses an unbounded currency into a spendable one and requires 4× the progress to
- * double the payout, so one exceptional call cannot trivialise the whole tree.
+ * `total owed = floor(sqrt(CAREER time wasted / divisor) × dossier bonus)`, and a redial pays
+ * `total owed − already granted`. This is Cookie Clicker's bookkeeping exactly: a root of a
+ * LIFETIME figure, granted cumulatively, so
  *
- * Keyed to THIS CALL so an immediate second redial pays nothing: you have not wasted any
- * new time, so there is nothing to bank.
+ * Career total rather than deepest-call, deliberately. Keying on best-call depth measured
+ * catastrophically: an idle player's single multi-hour call earned 1.04M Notes while an
+ * active player redialling often earned 152, because frequent redials keep any one call
+ * shallow. That inverts the whole incentive — it pays you for NOT playing. Career total
+ * rises with play regardless of how you slice it into calls, so
+ *
+ *   - a repeat redial with no new depth pays exactly 0, by construction;
+ *   - the only way to earn is to push a call DEEPER than any before it;
+ *   - no cooldown, floor or anti-spam guard is required anywhere.
+ *
+ * The square root still does its usual job of compressing an unbounded currency into a
+ * spendable one: four times the career for twice the pages.
+ *
+ * The dossier's Notes multiplier applies to the INCREMENT, never the running total, so
+ * buying it cannot retroactively re-pay everything you have already banked.
  */
 export function notesFor(p: Persisted, notesMultiplier = 1): number {
-  // THIS call's depth, not the best ever. See REDIAL in balance.ts for why.
-  const depth = p.holdTimeLifetime;
-  if (depth < REDIAL.minLifetimeToRedial) return 0;
+  // Career total: every second wasted across every call, which never resets.
+  const career = p.holdTimeCareer;
+  if (Math.max(p.bestCallLifetime, p.holdTimeLifetime) < REDIAL.minLifetimeToRedial) return 0;
   if (notesMultiplier === 1) {
     // Resolve the dossier's own Notes bonus when the caller has not passed it in.
     for (const id of p.dossier) {
@@ -228,7 +241,13 @@ export function notesFor(p: Persisted, notesMultiplier = 1): number {
       if (dd?.notesMultiplier) notesMultiplier *= dd.notesMultiplier;
     }
   }
-  return Math.floor(Math.sqrt(depth / REDIAL.divisor) * notesMultiplier);
+  // The ratchet tracks UNMULTIPLIED progress, and the dossier's Notes bonus applies only to
+  // the INCREMENT. Multiplying the cumulative total instead pays a retroactive lump on all
+  // past progress the moment the bonus is bought - measured as a casual player earning
+  // 76,000 Notes against an active player's 152, purely from owning a x2.
+  const baseOwed = Math.floor(Math.sqrt(career / REDIAL.divisor));
+  const newGround = Math.max(0, baseOwed - p.redialNotesGranted);
+  return Math.floor(newGround * notesMultiplier);
 }
 
 /** Max composure including permanent dossier bonuses. */

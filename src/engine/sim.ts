@@ -13,9 +13,10 @@ import {
 } from './derive';
 import {
   COMPOSURE, RAPPORT, STALL, IDLE,
-  PHASE1_MILESTONES, PHASE1_GATE, GENERATOR_BY_ID, GENERATORS,
+  PHASE1_MILESTONES, GENERATOR_BY_ID, GENERATORS,
   EVENTS, DOSSIER, DOSSIER_BY_ID, REDIAL,
   RAGE, BOIL_OVER_LINES, PERSONAS, PERSONA_BY_ID, PERSONA_SWITCH_COST,
+  SLIPS, PHASE1_COMPLETION, ENDGAME_THRESHOLD,
 } from '../data/balance';
 import { GENERATOR_IDS } from './state';
 import { UPGRADES_BY_ID, isAvailable, UPGRADES } from '../data/upgrades';
@@ -83,9 +84,7 @@ export function tick(s: GameState, dt: number): void {
   }
 
   // --- Rage ---
-  if (!s.t.idle) {
-    p.rage = Math.min(RAGE.max, p.rage + RAGE.perSecond * s.d.persona.rageMultiplier * dt);
-  }
+  p.rage = Math.min(RAGE.max, p.rage + RAGE.perSecond * s.d.persona.rageMultiplier * dt);
   // Decays only once he has had a moment of quiet, and never while you are away: a man
   // left on hold does not calm down, he stews. This also keeps the boil-over reachable for
   // a low-attention player, who otherwise never saw the payoff at all.
@@ -157,9 +156,26 @@ function boilOver(s: GameState): void {
   p.notes += RAGE.boilOverNotes;
   p.notesLifetime += RAGE.boilOverNotes;
 
-  // Deterministic pick so the simulator and the browser agree.
-  const line = BOIL_OVER_LINES[p.boilOvers % BOIL_OVER_LINES.length];
-  pushLog(s, line, 'beat');
+  // Each boil-over discloses the NEXT thing on the list, so the payoff escalates and is
+  // permanent: a name, a shift, a supervisor, a floor. Once every slip is spent, fall back
+  // to the generic shouting lines so the mechanic still reads.
+  const slipIndex = p.roster.length;
+  if (slipIndex < SLIPS.length) {
+    const slip = SLIPS[slipIndex];
+    p.roster.push({
+      id: `slip.${slipIndex}`,
+      handle: slip.entry,
+      realName: null,
+      role: slip.role,
+      // Honest from the start, surfaced later: see docs/DESIGN.md twist 2.
+      recruitedByFalseAd: slipIndex % 3 === 1,
+      freed: false,
+    });
+    pushLog(s, slip.line, 'beat');
+    pushLog(s, `Written down: ${slip.entry}`, 'intel');
+  } else {
+    pushLog(s, BOIL_OVER_LINES[p.boilOvers % BOIL_OVER_LINES.length], 'beat');
+  }
 
   // A burst, because a man shouting at you is not reading his script.
   s.t.burstMultiplier = RAGE.boilOverBurst;
@@ -188,6 +204,24 @@ export function switchPersona(s: GameState, id: string): boolean {
   s.d = derive(s.p);
   pushLog(s, `You are ${def.name} now.`, 'call');
   return true;
+}
+
+/** Whether every Phase 1 condition is met. See PHASE1_COMPLETION for why there are three. */
+export function phase1Complete(p: GameState['p']): boolean {
+  return (
+    p.holdTimeCareer >= PHASE1_COMPLETION.careerHoldTime &&
+    p.rapport >= PHASE1_COMPLETION.rapport &&
+    p.roster.length >= PHASE1_COMPLETION.rosterEntries
+  );
+}
+
+/** Per-condition progress, 0..1 each, for the UI to show what is still outstanding. */
+export function phase1Progress(p: GameState['p']) {
+  return {
+    time: Math.min(1, p.holdTimeCareer / PHASE1_COMPLETION.careerHoldTime),
+    trust: Math.min(1, p.rapport / PHASE1_COMPLETION.rapport),
+    slips: Math.min(1, p.roster.length / PHASE1_COMPLETION.rosterEntries),
+  };
 }
 
 function hasGrant(p: GameState['p'], grant: string): boolean {
@@ -266,9 +300,10 @@ export function catchEvent(s: GameState): number {
 
 /** Whether hanging up and calling back is currently allowed. */
 export function canRedial(s: GameState): boolean {
-  // THIS call's depth. Gating on the all-time best kept the button lit forever once any
-  // call had passed the threshold, which is what made the payout farmable.
-  return s.p.holdTimeLifetime >= REDIAL.minLifetimeToRedial;
+  // Eligible once any call has gone deep enough. It is safe to key this on the best-ever
+  // figure now that the PAYOUT is cumulative: the button may be lit, but pressing it
+  // without new depth grants nothing, so there is nothing to farm.
+  return Math.max(s.p.bestCallLifetime, s.p.holdTimeLifetime) >= REDIAL.minLifetimeToRedial;
 }
 
 /**
@@ -287,6 +322,9 @@ export function redial(s: GameState): number {
   const gained = s.d.notesOnRedial;
   p.notes += gained;
   p.notesLifetime += gained;
+  // Advance the ratchet to the UNMULTIPLIED base, so this progress is never paid for twice
+  // and the dossier's Notes bonus cannot inflate what counts as already-granted.
+  p.redialNotesGranted = Math.floor(Math.sqrt(p.holdTimeCareer / REDIAL.divisor));
   p.redials++;
 
   // Wipe the call itself.
@@ -369,7 +407,18 @@ function checkMilestones(s: GameState): void {
     }
   }
 
-  if (p.holdTimeCareer >= PHASE1_GATE && p.phase === 1) {
+  // The endgame announces itself before it arrives, so the spike is foreshadowed rather
+  // than a bar silently filling.
+  if (
+    !s.t.endgameAnnounced &&
+    p.phase === 1 &&
+    p.holdTimeCareer >= PHASE1_COMPLETION.careerHoldTime * ENDGAME_THRESHOLD
+  ) {
+    s.t.endgameAnnounced = true;
+    pushLog(s, 'He is not keeping up with you any more. He has stopped pretending to read.', 'beat');
+  }
+
+  if (phase1Complete(p) && p.phase === 1) {
     // Phase transition is a UI event, not an automatic state change — the player
     // chooses to proceed, because the point of no return should be pressed.
     s.t.phaseGateReached = true;

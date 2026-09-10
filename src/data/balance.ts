@@ -424,6 +424,54 @@ export const BOIL_OVER_LINES: string[] = [
   'Someone off-microphone has told him to keep his voice down.',
 ];
 
+/**
+ * What he lets slip when he loses it.
+ *
+ * Escalating, and each one is a PERMANENT addition to the roster. This is the fix for a
+ * mechanic a player described as "I've gotten the temper to trigger 4x. does that boost
+ * anything?" — it granted +1 Note and a burst, both invisible against payouts of 6+. Now
+ * each boil-over puts a named person or a fact on a board you keep, which makes rage the
+ * thing you actively farm, and builds the org chart Phase 2 is made of.
+ *
+ * The register stays administrative. The funniest thing a furious man on a scam floor
+ * discloses is not a threat, it is paperwork.
+ */
+export interface SlipDef {
+  /** What appears on the roster. */
+  entry: string;
+  /** The transcript line. */
+  line: string;
+  /** Roles map onto the real org chart: dialer, closer, manager, IT, owner. */
+  role: 'dialer' | 'closer' | 'verifier' | 'manager' | 'it' | 'owner';
+}
+
+export const SLIPS: SlipDef[] = [
+  { entry: 'A first name — "Brandon"', role: 'dialer',
+    line: 'He has told you his name is Brandon. It is the third name he has used today.' },
+  { entry: 'The shift pattern — 09:00 to 18:30', role: 'dialer',
+    line: 'He has complained about his hours. You now know his hours.' },
+  { entry: 'A supervisor — "Sir Andrew"', role: 'manager',
+    line: 'He is shouting for someone called Sir Andrew. Sir Andrew does not come.' },
+  { entry: 'The floor — second, above a pharmacy', role: 'dialer',
+    line: 'He has told you which floor he is on, and what is downstairs.' },
+  { entry: 'The daily quota — 4 closes', role: 'manager',
+    line: 'He has told you his quota. He is two behind. It is 4:40.' },
+  { entry: 'A colleague — "Ravi, the one with the headset"', role: 'closer',
+    line: 'He has told a colleague to shut up. He used the colleague\'s name.' },
+  { entry: 'The dialler software — a licence expiring Thursday', role: 'it',
+    line: 'He is complaining that the system logged him out again. It does this on Thursdays.' },
+  { entry: 'The verifier — takes the card details, sits by the window', role: 'verifier',
+    line: 'He has passed you to someone whose only job is to read the numbers back.' },
+  { entry: 'The building — a business park, unit 12', role: 'manager',
+    line: 'He has described the car park. At length. He is not thinking clearly.' },
+  { entry: 'The IT man — comes in on Tuesdays', role: 'it',
+    line: 'He says the person who fixes this only comes in on Tuesdays.' },
+  { entry: 'The owner — referred to only as "the boss"', role: 'owner',
+    line: 'He has mentioned the boss. He lowered his voice to do it.' },
+  { entry: 'The other floor — a second room, forty seats', role: 'owner',
+    line: 'He has let slip that this is not the only room.' },
+];
+
 export const RAPPORT = {
   /** Gained per manual stall, modulated by composure band. */
   perStall: 0.06,
@@ -509,6 +557,40 @@ const PHASE1_MILESTONE_DEFS: Omit<MilestoneDef, 'at'>[] = [
 
 /** Career Hold Time that ends Phase 1. The last milestone sits exactly here. */
 export const PHASE1_GATE = 100_000_000;
+
+/**
+ * PHASE 1 COMPLETION — three conditions, not one number.
+ *
+ * It used to be `holdTimeCareer >= PHASE1_GATE` alone, and a player finished in 53 minutes
+ * against a 95-minute design because career total is precisely the quantity a snowball
+ * inflates fastest. Their words: "the access bar just rose very quickly and it was done."
+ *
+ * So completion now requires all three tracks to have delivered:
+ *   - TIME on the line (career Hold Time) — that you have done the work
+ *   - his TRUST (rapport) — you cannot get persistent access from a man who doubts you.
+ *     This also gives rapport a purpose above 88, where it previously went inert and the
+ *     top 12 points of the bar were decoration.
+ *   - what he has LET SLIP (roster entries from boil-overs) — that you know who they are
+ *
+ * A runaway production spike can satisfy the first on its own. It can do nothing about the
+ * other two, which is the point.
+ */
+export const PHASE1_COMPLETION = {
+  careerHoldTime: PHASE1_GATE,
+  /** Out of RAPPORT.max. High, deliberately: this is the resource that cannot be bought. */
+  rapport: 92,
+  /** Distinct things he has let slip. There are 12 available. */
+  rosterEntries: 8,
+} as const;
+
+/**
+ * Fraction of the run-up after which the endgame announces itself.
+ *
+ * The spike stays — it is the genre's reward — but it should be FORESHADOWED. Crossing this
+ * shifts the transcript's register and surfaces the final stretch, so the ending arrives as
+ * an event rather than a bar quietly reaching 100%.
+ */
+export const ENDGAME_THRESHOLD = 0.62;
 
 /**
  * The milestones, with absolute thresholds derived from the gate. Exported in the
@@ -628,7 +710,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Copy Of The Script',
     effect: 'All production ×1.5.',
     flavor: 'You know what he is going to say. You let him say it.',
-    cost: 5,
+    cost: 2,
     globalMultiplier: 1.5,
   },
   {
@@ -636,7 +718,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Pre-Written Confusion',
     effect: 'Begin each call with 10 Genuine Confusion.',
     flavor: 'You have the questions written down in advance now.',
-    cost: 7,
+    cost: 3,
     startingGenerators: { confusion: 10 },
   },
   {
@@ -644,7 +726,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Better Chair',
     effect: '+25 maximum composure.',
     flavor: 'It was expensive. It was, on reflection, the correct decision.',
-    cost: 10,
+    cost: 4,
     composureBonus: 25,
   },
   {
@@ -652,7 +734,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Shorthand',
     effect: 'Notes earned ×1.5.',
     flavor: 'You have stopped writing full sentences. There is not time.',
-    cost: 16,
+    cost: 6,
     notesMultiplier: 1.5,
   },
   {
@@ -660,7 +742,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Rehearsed Helplessness',
     effect: 'Manual stalls ×2.',
     flavor: 'You have practised sounding like this. It comes easily now, which you have chosen not to examine.',
-    cost: 23,
+    cost: 8,
     stallMultiplier: 2,
     requires: ['d.script'],
   },
@@ -669,7 +751,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'The Shift Roster',
     effect: 'Opportunity windows arrive twice as often.',
     flavor: 'You know when the floor manager takes his break. It is 3:15.',
-    cost: 32,
+    cost: 11,
     eventRateMultiplier: 2,
   },
   {
@@ -677,7 +759,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'The Routine',
     effect: 'Re-buys your cheapest tactic on its own, every few seconds.',
     flavor: 'You no longer decide to do any of this. You have a way of doing it.',
-    cost: 34,
+    cost: 12,
     autoBuy: true,
     requires: ['d.rehearsed'],
   },
@@ -686,7 +768,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'The Name He Uses',
     effect: 'Start every call with 35 rapport. All production ×1.6.',
     flavor: '"Brandon." He has been Brandon for four years. He answers to it before he thinks.',
-    cost: 46,
+    cost: 17,
     startingRapport: 35,
     globalMultiplier: 1.6,
     requires: ['d.callback'],
@@ -696,7 +778,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Prepared Machine',
     effect: 'Begin each call with 15 Incorrect Password and 8 The Cat.',
     flavor: 'The virtual machine is already running. The cat is real.',
-    cost: 63,
+    cost: 23,
     startingGenerators: { wrongPassword: 15, catInterrupt: 8 },
     requires: ['d.warmup'],
   },
@@ -705,7 +787,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Filing System',
     effect: 'Notes earned ×2.',
     flavor: 'Sixty-one pages. Cross-referenced. You have started using tabs.',
-    cost: 92,
+    cost: 33,
     notesMultiplier: 2,
     requires: ['d.shorthand'],
   },
@@ -714,7 +796,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Professional Detachment',
     effect: '+40 maximum composure. All production ×1.8.',
     flavor: 'It stopped being upsetting somewhere around the fourth call. You have not decided whether that is good.',
-    cost: 138,
+    cost: 50,
     composureBonus: 40,
     globalMultiplier: 1.8,
     requires: ['d.chair'],
@@ -724,7 +806,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'The Shape Of It',
     effect: 'All production ×2.5.',
     flavor: 'It is not one man with a phone. You have drawn the org chart on the back of an envelope and it does not fit.',
-    cost: 230,
+    cost: 83,
     globalMultiplier: 2.5,
     requires: ['d.deadname', 'd.filing'],
   },

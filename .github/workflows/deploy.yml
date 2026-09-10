@@ -23,7 +23,8 @@ on:
   # `if`). Without this a PR merges with zero checks and a break only surfaces
   # afterwards, as a failed deploy on master — which is the worst time to find out.
   pull_request:
-    branches: [master]
+    # Deliberately unscoped: a PR into a feature branch must be checked too. Scoping this to
+    # master left stacked PRs with zero checks, which defeats the point of the gate.
     paths-ignore:
       - '**.md'
       - 'docs/**'

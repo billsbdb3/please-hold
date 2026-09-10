@@ -86,6 +86,18 @@ const MIGRATIONS: Record<number, Migration> = {
     persona: 'doris',
     boilOvers: 0,
   }),
+
+  /**
+   * v4 -> v5: the Notes payout became cumulative. Seed the ratchet from what the player has
+   * already been paid by redials so they are not immediately re-granted their whole history;
+   * notesLifetime is the closest honest figure available, and erring toward "already paid"
+   * is the safe direction.
+   */
+  4: (data) => ({
+    ...data,
+    version: 5,
+    redialNotesGranted: typeof data.notesLifetime === 'number' ? data.notesLifetime : 0,
+  }),
 };
 
 function migrate(raw: Record<string, unknown>): Persisted | null {
@@ -139,7 +151,7 @@ function sanitise(p: Persisted): Persisted {
     'composure', 'heat', 'warning', 'totalStalls', 'combo',
     'elapsed', 'activeElapsed',
     'notes', 'notesLifetime', 'redials', 'bestCallLifetime',
-    'rage', 'boilOvers',
+    'rage', 'boilOvers', 'redialNotesGranted',
   ];
   const bag = p as unknown as Record<string, unknown>;
   for (const k of numericKeys) {
