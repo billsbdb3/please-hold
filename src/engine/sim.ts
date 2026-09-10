@@ -15,6 +15,7 @@ import {
   COMPOSURE, RAPPORT, STALL, IDLE,
   PHASE1_MILESTONES, PHASE1_GATE, GENERATOR_BY_ID, GENERATORS,
   EVENTS, DOSSIER, DOSSIER_BY_ID, REDIAL,
+  RAGE, BOIL_OVER_LINES, PERSONAS, PERSONA_BY_ID, PERSONA_SWITCH_COST,
 } from '../data/balance';
 import { GENERATOR_IDS } from './state';
 import { UPGRADES_BY_ID, isAvailable, UPGRADES } from '../data/upgrades';
@@ -81,6 +82,18 @@ export function tick(s: GameState, dt: number): void {
     p.composure = Math.max(0, Math.min(cMax, p.composure + net * dt));
   }
 
+  // --- Rage ---
+  if (!s.t.idle) {
+    p.rage = Math.min(RAGE.max, p.rage + RAGE.perSecond * s.d.persona.rageMultiplier * dt);
+  }
+  // Decays only once he has had a moment of quiet, and never while you are away: a man
+  // left on hold does not calm down, he stews. This also keeps the boil-over reachable for
+  // a low-attention player, who otherwise never saw the payoff at all.
+  if (!s.t.idle && s.t.sinceStall > RAGE.decayGraceSeconds) {
+    p.rage = Math.max(0, p.rage - RAGE.decayPerSecond * dt);
+  }
+  if (p.rage >= RAGE.max) boilOver(s);
+
   // --- Rapport ---
   // Passive gain only while genuinely holding it together. Falling apart does not
   // build trust, which is the tradeoff the composure bands exist to express.
@@ -128,6 +141,53 @@ function autoBuyCheapest(s: GameState): void {
     if (cost <= s.p.holdTime && cost < bestCost) { bestCost = cost; best = g.id; }
   }
   if (best) buyGenerator(s, best, 1);
+}
+
+/**
+ * He loses his temper.
+ *
+ * The payoff of the rage track, and the moment Phase 1 starts feeding Phase 2: a furious
+ * man is a careless one, so something usable slips out — a name, a floor, a supervisor —
+ * which is banked as a dossier page. Rage drops but not to zero, so the next one is work.
+ */
+function boilOver(s: GameState): void {
+  const p = s.p;
+  p.rage = RAGE.resetTo;
+  p.boilOvers++;
+  p.notes += RAGE.boilOverNotes;
+  p.notesLifetime += RAGE.boilOverNotes;
+
+  // Deterministic pick so the simulator and the browser agree.
+  const line = BOIL_OVER_LINES[p.boilOvers % BOIL_OVER_LINES.length];
+  pushLog(s, line, 'beat');
+
+  // A burst, because a man shouting at you is not reading his script.
+  s.t.burstMultiplier = RAGE.boilOverBurst;
+  s.t.burstFor = Math.max(s.t.burstFor, RAGE.boilOverBurstSeconds);
+}
+
+/** Voices currently available, by career progress. */
+export function availablePersonas(s: GameState) {
+  return PERSONAS.filter((x) => s.p.holdTimeCareer >= x.unlocksAt);
+}
+
+/**
+ * Change voice. Costs composure, because dropping one character and finding another
+ * mid-call is work — which is what stops the player free-swapping to whichever persona
+ * happens to be optimal second by second.
+ */
+export function switchPersona(s: GameState, id: string): boolean {
+  const def = PERSONA_BY_ID[id];
+  if (!def) return false;
+  if (s.p.persona === id) return false;
+  if (s.p.holdTimeCareer < def.unlocksAt) return false;
+  if (s.p.composure <= PERSONA_SWITCH_COST) return false;
+
+  s.p.persona = id;
+  s.p.composure = Math.max(0, s.p.composure - PERSONA_SWITCH_COST);
+  s.d = derive(s.p);
+  pushLog(s, `You are ${def.name} now.`, 'call');
+  return true;
 }
 
 function hasGrant(p: GameState['p'], grant: string): boolean {
@@ -239,6 +299,8 @@ export function redial(s: GameState): number {
 
   // He half-remembers you. Some rapport survives.
   p.rapport = Math.floor(p.rapport * REDIAL.rapportRetained);
+  // Rage mostly carries: a different person answers, but the floor has heard about you.
+  p.rage = p.rage * RAGE.carriedAcrossRedial;
 
   applyDossierStart(s);
 
@@ -362,6 +424,9 @@ export function stall(s: GameState, nowMs: number): number {
     RAPPORT.max,
     p.rapport + RAPPORT.perStall * s.d.band.rapportMultiplier * s.d.rapportMultiplier,
   );
+
+  // Playing dumb in character is what winds him up.
+  p.rage = Math.min(RAGE.max, p.rage + s.d.ragePerStall);
 
   s.t.sinceStall = 0;
   touch(s, nowMs);

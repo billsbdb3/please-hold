@@ -17,9 +17,11 @@
     stall, buyGenerator, buyUpgrade, availableUpgrades,
     catchEvent, redial, canRedial, buyDossier, availableDossier,
     takeBreath, canTakeBreath, breathCost,
+    switchPersona, availablePersonas,
   } from './engine/sim';
   import {
     GENERATORS, PHASE1_GATE, COMPOSURE, RAPPORT, REDIAL, DOSSIER,
+    RAGE, PERSONA_SWITCH_COST,
   } from './data/balance';
   import { isUnlocked, maxComposure } from './engine/derive';
   import { snapshot } from './engine/snapshot';
@@ -58,6 +60,13 @@
   const redialReady = $derived.by(() => { void frame.n; return canRedial(game); });
   const breathReady = $derived.by(() => { void frame.n; return canTakeBreath(game); });
   const breathPrice = $derived.by(() => { void frame.n; return breathCost(game); });
+  const personas = $derived.by(() => { void frame.n; return availablePersonas(game); });
+  const ragePct = $derived(p.rage / RAGE.max);
+
+  function onPersona(id: string) {
+    switchPersona(game, id);
+    interacted();
+  }
 
   function onCatch() {
     catchEvent(game);
@@ -256,6 +265,24 @@
             {/if}
 
             <div class="meter-row">
+              <span class="meter-label">
+                His Temper
+                <span class="dim">+{d.ragePerStall.toFixed(2)}/stall</span>
+              </span>
+              <div class="meter">
+                <div
+                  class="meter-fill rage {ragePct > 0.85 ? 'boiling' : ''}"
+                  style="width: {ragePct * 100}%"
+                ></div>
+              </div>
+              <span class="num dim">{p.rage.toFixed(0)}</span>
+            </div>
+            <p class="hint">
+              At the top he loses it — and says something he shouldn't.
+              {#if p.boilOvers > 0}<span class="phosphor"> {p.boilOvers} so far.</span>{/if}
+            </p>
+
+            <div class="meter-row">
               <span class="meter-label">Rapport</span>
               <div class="meter">
                 <div class="meter-fill" style="width: {rapportPct * 100}%"></div>
@@ -289,6 +316,33 @@
             <p class="hint">
               Puts him on hold and restores {fmtPct(COMPOSURE.breath.restoreFraction)} composure.
             </p>
+          </div>
+        </div>
+
+        <!-- ------------------------------------------------------ voice changer -->
+        <div class="panel">
+          <div class="panel-title">
+            <span>Voice Changer</span>
+            <span class="dim">−{PERSONA_SWITCH_COST} composure to switch</span>
+          </div>
+          <div class="scroll list persona-list">
+            {#each personas as v (v.id)}
+              <button
+                class="row persona {p.persona === v.id ? 'active' : ''}"
+                onclick={() => onPersona(v.id)}
+                disabled={p.persona === v.id || p.composure <= PERSONA_SWITCH_COST}
+              >
+                <span class="row-main">
+                  <span class="row-name">{v.name}</span>
+                  <span class="row-flavor">{v.flavor}</span>
+                  <span class="persona-stats">
+                    stall ×{v.stallMultiplier} · temper ×{v.rageMultiplier} ·
+                    rapport ×{v.rapportMultiplier} · strain ×{v.drainMultiplier}
+                  </span>
+                </span>
+                {#if p.persona === v.id}<span class="row-side phosphor">live</span>{/if}
+              </button>
+            {/each}
           </div>
         </div>
 
@@ -694,6 +748,26 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .event-bar { animation: none; }
+  }
+
+  .meter-fill.rage {
+    background: var(--red-dim);
+  }
+  .meter-fill.rage.boiling {
+    background: var(--red);
+  }
+
+  .persona-list {
+    max-height: 30vh;
+  }
+  .row.persona.active {
+    background: #17140d;
+    border-left: 2px solid var(--amber);
+  }
+  .persona-stats {
+    font-size: 10px;
+    color: var(--amber-deep);
+    font-variant-numeric: tabular-nums;
   }
 
   .drop-bar {

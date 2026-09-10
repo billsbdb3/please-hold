@@ -16,6 +16,7 @@ import type { DossierDef } from '../data/balance';
 import {
   GENERATORS, GENERATOR_BY_ID, SOFT_CAP_EXPONENT, CASCADE_CAP,
   STALL, COMPOSURE, PHASE1_MILESTONES, DOSSIER_BY_ID, REDIAL,
+  PERSONA_BY_ID, PERSONAS, RAGE,
 } from '../data/balance';
 import { UPGRADES_BY_ID } from '../data/upgrades';
 
@@ -146,6 +147,10 @@ export function derive(p: Persisted): Derived {
     hps += out;
   }
 
+  // --- The voice currently being done ---
+  // Fall back rather than throw: a save can name a persona this build does not have.
+  const persona = PERSONA_BY_ID[p.persona] ?? PERSONAS[0];
+
   // --- Composure band and its tradeoffs ---
   const band = bandFor(p.composure, maxComposure(p));
 
@@ -158,11 +163,11 @@ export function derive(p: Persisted): Derived {
     if (u?.stallFlat) stallBase += u.stallFlat;
     if (u?.stallMultiplier) stallBase *= u.stallMultiplier;
   }
-  stallBase *= dossierStallMultiplier;
+  stallBase *= dossierStallMultiplier * persona.stallMultiplier;
   const stallValue = stallBase * p.combo * band.stallMultiplier;
 
   // --- Rapport multiplier ---
-  let rapportMultiplier = 1;
+  let rapportMultiplier = persona.rapportMultiplier;
   for (const id of p.upgrades) {
     const u = UPGRADES_BY_ID[id];
     if (u?.rapportMultiplier) rapportMultiplier *= u.rapportMultiplier;
@@ -177,8 +182,13 @@ export function derive(p: Persisted): Derived {
       const u = UPGRADES_BY_ID[id];
       if (u?.composureDrainMultiplier) composureDrain *= u.composureDrainMultiplier;
     }
+    composureDrain *= persona.drainMultiplier;
     composureDrain = Math.min(composureDrain, COMPOSURE.maxDrain);
   }
+  // An enraged scammer is an abusive one, so provoking him costs you something. This sits
+  // OUTSIDE the maxDrain clamp deliberately: rage is a choice, and its cost should be
+  // felt rather than absorbed by a ceiling tuned for ordinary fatigue.
+  composureDrain += (p.rage / RAGE.max) * RAGE.drainAtMaxRage;
 
   return {
     hps,
@@ -187,6 +197,8 @@ export function derive(p: Persisted): Derived {
     generatorMultiplier,
     stallValue,
     rapportMultiplier,
+    ragePerStall: RAGE.perStall * persona.rageMultiplier,
+    persona,
     composureDrain,
     band,
     nextCost,

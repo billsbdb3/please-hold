@@ -14,7 +14,7 @@ import type { Persisted, GeneratorId } from './types';
  * reset (Notes + dossier) and three more generator tiers. Version 1 was the vanilla
  * v7 build, whose saves are deliberately discarded.
  */
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 export const GENERATOR_IDS: GeneratorId[] = [
   'confusion',
@@ -50,6 +50,11 @@ export function freshState(): Persisted {
 
     // You start composed. It does not last.
     composure: 100,
+    rage: 0,
+    // Doris is the voice you start with. She is the most believable and the least
+    // infuriating, which is the correct place to begin.
+    persona: 'doris',
+    boilOvers: 0,
     heat: 0,
     warning: 0,
 

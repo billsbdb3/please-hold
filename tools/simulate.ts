@@ -29,7 +29,7 @@ import { derive, costOf, maxAffordable, maxComposure } from '../src/engine/deriv
 import {
   tick, stall, buyGenerator, buyUpgrade, availableUpgrades,
   redial, canRedial, buyDossier, availableDossier, catchEvent,
-  takeBreath, canTakeBreath,
+  takeBreath, canTakeBreath, switchPersona, availablePersonas,
 } from '../src/engine/sim';
 import { DT } from '../src/engine/loop';
 import {
@@ -61,26 +61,32 @@ interface Policy {
    * cheaper game than anyone actually plays.
    */
   breathBelow: number;
+  /**
+   * How the player weights a voice: stall value versus how furious it makes him. An
+   * engaged player chases boil-overs; a casual one takes the persona that banks the most
+   * time and stops thinking about it.
+   */
+  rageWeight: number;
 }
 
 const POLICIES: Record<Archetype, Policy> = {
   idle: {
     stallsPerSecond: 0.1, shopEverySeconds: 120, attentionFraction: 0.2,
-    eventCatchRate: 0.05, redialGainThreshold: 1.5, breathBelow: 0.25,
+    eventCatchRate: 0.05, redialGainThreshold: 1.5, breathBelow: 0.25, rageWeight: 0.2,
   },
   casual: {
     stallsPerSecond: 0.7, shopEverySeconds: 30, attentionFraction: 0.6,
-    eventCatchRate: 0.35, redialGainThreshold: 0.75, breathBelow: 0.3,
+    eventCatchRate: 0.35, redialGainThreshold: 0.75, breathBelow: 0.3, rageWeight: 0.4,
   },
   active: {
     stallsPerSecond: 3.2, shopEverySeconds: 12, attentionFraction: 1.0,
-    eventCatchRate: 0.8, redialGainThreshold: 0.6, breathBelow: 0.35,
+    eventCatchRate: 0.8, redialGainThreshold: 0.6, breathBelow: 0.35, rageWeight: 1.0,
   },
   // The theoretical floor: perfect payback-ordered purchasing, max click rate,
   // never misses a window, redials the moment it is worth it.
   optimal: {
     stallsPerSecond: 8, shopEverySeconds: 4, attentionFraction: 1.0,
-    eventCatchRate: 1.0, redialGainThreshold: 0.35, breathBelow: 0.4,
+    eventCatchRate: 1.0, redialGainThreshold: 0.35, breathBelow: 0.4, rageWeight: 1.2,
   },
 };
 
@@ -111,6 +117,10 @@ export interface SimResult {
   dossierBought: number;
   eventsCaught: number;
   eventsMissed: number;
+  /** Times he lost his temper. */
+  boilOvers: number;
+  /** The voice in use at the end of the run. */
+  finalPersona: string;
   /** [minute, careerTotal, rate] samples, when requested. */
   samples: Array<[number, number, number]>;
   /** Longest stretch with no affordable purchase — the dead-time detector. */
@@ -182,6 +192,23 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
         // high requested rate is capped by it exactly as in a browser.
         virtualMs += 1;
       }
+    }
+
+    // --- Voice selection ---
+    // Re-evaluated on the shopping cadence rather than per tick: a player picks a
+    // character and stays in it for a while, because switching costs composure.
+    if (present && sinceShop === 0) {
+      const best = availablePersonas(s)
+        .map((x) => ({
+          x,
+          score:
+            x.stallMultiplier +
+            x.rageMultiplier * policy.rageWeight -
+            x.drainMultiplier * 1.5 +
+            x.rapportMultiplier * 0.4,
+        }))
+        .sort((a, b) => b.score - a.score)[0];
+      if (best && best.x.id !== p.persona) switchPersona(s, best.x.id);
     }
 
     // --- Composure management ---
@@ -275,6 +302,8 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
     dossierBought: p.dossier.length,
     eventsCaught: s.t.eventsCaught,
     eventsMissed: s.t.eventsMissed,
+    boilOvers: p.boilOvers,
+    finalPersona: p.persona,
     samples,
     longestStallMinutes: longestStallSeconds / 60,
   };
@@ -420,15 +449,15 @@ function main(): void {
     results.push(run(a, { verbose }));
   }
 
-  console.log('| Archetype | Gate | Redials | Notes | Dossier | Events | Max gap | Final rate |');
-  console.log('|---|---|---|---|---|---|---|---|');
+  console.log('| Archetype | Gate | Redials | Notes | Dossier | Events | Rages | Voice | Max gap |');
+  console.log('|---|---|---|---|---|---|---|---|---|');
   for (const r of results) {
     const gate = r.completed ? `${r.minutesToGate.toFixed(0)} min` : 'never';
     const events = `${r.eventsCaught}/${r.eventsCaught + r.eventsMissed}`;
     console.log(
       `| ${r.archetype} | ${gate} | ${r.redials} | ${fmt(r.notesLifetime)} | ` +
-      `${r.dossierBought}/${DOSSIER.length} | ${events} | ` +
-      `${r.longestStallMinutes.toFixed(1)}m | ${fmt(r.finalHps)}/s |`,
+      `${r.dossierBought}/${DOSSIER.length} | ${events} | ${r.boilOvers} | ` +
+      `${r.finalPersona} | ${r.longestStallMinutes.toFixed(1)}m |`,
     );
   }
 
