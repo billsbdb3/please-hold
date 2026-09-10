@@ -388,12 +388,45 @@ export function isAvailable(
   u: UpgradeDef,
   opts: { lifetime: number; rapport: number; activeTime: number; owned: Set<string> },
 ): boolean {
-  if (opts.owned.has(u.id)) return false;
-  // A locked-out branch: if anything we exclude is already owned, we are gone.
-  if (u.excludes?.some((id) => opts.owned.has(id))) return false;
-  if (u.requires?.some((id) => !opts.owned.has(id))) return false;
-  if (u.requiresLifetime && opts.lifetime < u.requiresLifetime) return false;
-  if (u.requiresRapport && opts.rapport < u.requiresRapport) return false;
-  if (u.requiresActiveTime && opts.activeTime < u.requiresActiveTime) return false;
-  return true;
+  return statusOf(u, opts) === 'available';
+}
+
+/**
+ * Why an upgrade is or is not offered.
+ *
+ * `isAvailable` collapsed every reason into `false`, and the UI only rendered available
+ * upgrades — so buying Be Difficult made Be Sympathetic silently VANISH. A player reported
+ * exactly that, and they were right to: a branch that disappears is not a choice you know
+ * you made. The UI needs to tell "you closed this off" apart from "not yet", so it can keep
+ * the road-not-taken on screen instead of deleting it.
+ */
+export type UpgradeStatus =
+  /** Purchasable now (cost is checked separately, by the caller). */
+  | 'available'
+  /** Already bought. */
+  | 'owned'
+  /** Permanently closed off, because a mutually exclusive sibling was taken. */
+  | 'excluded'
+  /** A prerequisite upgrade has not been bought. */
+  | 'needs-prereq'
+  /** Gated on lifetime Hold Time, Rapport, or real time at the keyboard. */
+  | 'locked';
+
+export function statusOf(
+  u: UpgradeDef,
+  opts: { lifetime: number; rapport: number; activeTime: number; owned: Set<string> },
+): UpgradeStatus {
+  if (opts.owned.has(u.id)) return 'owned';
+  if (u.excludes?.some((id) => opts.owned.has(id))) return 'excluded';
+  if (u.requires?.some((id) => !opts.owned.has(id))) return 'needs-prereq';
+  if (u.requiresLifetime && opts.lifetime < u.requiresLifetime) return 'locked';
+  if (u.requiresRapport && opts.rapport < u.requiresRapport) return 'locked';
+  if (u.requiresActiveTime && opts.activeTime < u.requiresActiveTime) return 'locked';
+  return 'available';
+}
+
+/** The sibling that closed this upgrade off, for the "not taken" label. */
+export function excludedBy(u: UpgradeDef, owned: Set<string>): UpgradeDef | undefined {
+  const id = u.excludes?.find((x) => owned.has(x));
+  return id ? UPGRADES_BY_ID[id] : undefined;
 }

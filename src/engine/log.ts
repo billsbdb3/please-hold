@@ -52,6 +52,7 @@ export function freshTransient(nowMs: number): GameState['t'] {
     callEndedFor: 0,
     breathCooldown: 0,
     phaseGateReached: false,
+    endgameAnnounced: false,
     returnedFromIdle: false,
     nextId: 1,
     event: null,

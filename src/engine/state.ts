@@ -14,7 +14,7 @@ import type { Persisted, GeneratorId } from './types';
  * reset (Notes + dossier) and three more generator tiers. Version 1 was the vanilla
  * v7 build, whose saves are deliberately discarded.
  */
-export const CURRENT_VERSION = 4;
+export const CURRENT_VERSION = 5;
 
 export const GENERATOR_IDS: GeneratorId[] = [
   'confusion',
@@ -74,6 +74,7 @@ export function freshState(): Persisted {
     redials: 0,
     dossier: [],
     bestCallLifetime: 0,
+    redialNotesGranted: 0,
 
     roster: [],
     beatsSeen: [],

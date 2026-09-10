@@ -30,6 +30,7 @@ import {
   tick, stall, buyGenerator, buyUpgrade, availableUpgrades,
   redial, canRedial, buyDossier, availableDossier, catchEvent,
   takeBreath, canTakeBreath, switchPersona, availablePersonas,
+  phase1Complete, phase1Progress,
 } from '../src/engine/sim';
 import { DT } from '../src/engine/loop';
 import {
@@ -38,7 +39,7 @@ import {
 import { UPGRADES } from '../src/data/upgrades';
 import { fmt, fmtDuration } from '../src/engine/numbers';
 
-export type Archetype = 'idle' | 'casual' | 'active' | 'optimal';
+export type Archetype = 'idle' | 'casual' | 'active' | 'optimal' | 'exploiter';
 
 interface Policy {
   /** Stalls per second the player attempts. */
@@ -67,26 +68,47 @@ interface Policy {
    * time and stops thinking about it.
    */
   rageWeight: number;
+  /**
+   * Redial the instant it is eligible, ignoring whether the payout is worthwhile.
+   *
+   * This models the DOMINANT STRATEGY, and it exists because its absence hid a real
+   * problem: every other policy waits for `gain >= notes * threshold`, which is what a
+   * reasonable player does — so the suite measured 95 minutes for a phase a human who
+   * found the spam line finished in 53. Notes pay sqrt(depth), and a square root is
+   * concave, so many shallow calls out-earn one deep call. A simulator that only models
+   * polite play cannot see that.
+   */
+  spamRedial: boolean;
 }
 
 const POLICIES: Record<Archetype, Policy> = {
   idle: {
     stallsPerSecond: 0.1, shopEverySeconds: 120, attentionFraction: 0.2,
-    eventCatchRate: 0.05, redialGainThreshold: 1.5, breathBelow: 0.25, rageWeight: 0.2,
+    eventCatchRate: 0.05, redialGainThreshold: 1.5, breathBelow: 0.25, rageWeight: 0.2, spamRedial: false,
   },
   casual: {
     stallsPerSecond: 0.7, shopEverySeconds: 30, attentionFraction: 0.6,
-    eventCatchRate: 0.35, redialGainThreshold: 0.75, breathBelow: 0.3, rageWeight: 0.4,
+    eventCatchRate: 0.35, redialGainThreshold: 0.75, breathBelow: 0.3, rageWeight: 0.4, spamRedial: false,
   },
   active: {
     stallsPerSecond: 3.2, shopEverySeconds: 12, attentionFraction: 1.0,
-    eventCatchRate: 0.8, redialGainThreshold: 0.6, breathBelow: 0.35, rageWeight: 1.0,
+    eventCatchRate: 0.8, redialGainThreshold: 0.6, breathBelow: 0.35, rageWeight: 1.0, spamRedial: false,
   },
   // The theoretical floor: perfect payback-ordered purchasing, max click rate,
   // never misses a window, redials the moment it is worth it.
   optimal: {
     stallsPerSecond: 8, shopEverySeconds: 4, attentionFraction: 1.0,
-    eventCatchRate: 1.0, redialGainThreshold: 0.35, breathBelow: 0.4, rageWeight: 1.2,
+    eventCatchRate: 1.0, redialGainThreshold: 0.35, breathBelow: 0.4, rageWeight: 1.2, spamRedial: false,
+  },
+  /**
+   * The adversarial archetype: plays hard AND redials the moment it is legal. This is the
+   * lower bound on how fast a determined player can finish, and the number that must stay
+   * inside the target window - not just the well-behaved one.
+   */
+  exploiter: {
+    stallsPerSecond: 8, shopEverySeconds: 4, attentionFraction: 1.0,
+    eventCatchRate: 1.0, redialGainThreshold: 0, breathBelow: 0.4, rageWeight: 1.2,
+    spamRedial: true,
   },
 };
 
@@ -119,6 +141,14 @@ export interface SimResult {
   eventsMissed: number;
   /** Times he lost his temper. */
   boilOvers: number;
+  /** Distinct things he let slip. */
+  rosterEntries: number;
+  /** Rapport at the end, against the 92 needed. */
+  finalRapport: number;
+  /** Minute the dossier was completed, or Infinity. Paces the prestige tree honestly. */
+  dossierCompleteMinute: number;
+  /** Which condition was satisfied LAST — the one actually setting phase length. */
+  bindingCondition: 'time' | 'trust' | 'slips' | 'none';
   /** The voice in use at the end of the run. */
   finalPersona: string;
   /** [minute, careerTotal, rate] samples, when requested. */
@@ -164,6 +194,8 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
   let presentSeconds = 0;
   let minutesToFirstRedial = Infinity;
   let careerAtFirstRedial = 0;
+  let dossierCompleteMinute = Infinity;
+  const metAt: Record<string, number> = {};
 
   const maxTicks = ((opts.maxMinutes ?? MAX_SIM_MINUTES) * 60) / DT;
 
@@ -237,7 +269,9 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
       const gain = s.d.notesOnRedial;
       // Never trade a whole call for a single page: require a payout that can
       // actually buy something, as well as being a real gain on what is held.
-      const worthIt = gain >= 2 && gain >= Math.max(2, p.notes * policy.redialGainThreshold);
+      const worthIt = policy.spamRedial
+        ? gain > 0
+        : gain >= 2 && gain >= Math.max(2, p.notes * policy.redialGainThreshold);
       if (worthIt) {
         if (p.redials === 0) {
           minutesToFirstRedial = virtualMs / 60000;
@@ -275,7 +309,17 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
       nextSample += sampleEvery;
     }
 
-    if (!completed && p.holdTimeCareer >= PHASE1_GATE) {
+    if (dossierCompleteMinute === Infinity && p.dossier.length >= DOSSIER.length) {
+      dossierCompleteMinute = virtualMs / 60000;
+    }
+    // Record when each condition is first satisfied, so the report can name which one is
+    // actually setting the phase's length rather than leaving it to be inferred.
+    const prog = phase1Progress(p);
+    if (prog.time >= 1 && metAt.time === undefined) metAt.time = virtualMs / 60000;
+    if (prog.trust >= 1 && metAt.trust === undefined) metAt.trust = virtualMs / 60000;
+    if (prog.slips >= 1 && metAt.slips === undefined) metAt.slips = virtualMs / 60000;
+
+    if (!completed && phase1Complete(p)) {
       completed = true;
       minutesToGate = virtualMs / 60000;
       if (!opts.runPastGate) break;
@@ -303,6 +347,14 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
     eventsCaught: s.t.eventsCaught,
     eventsMissed: s.t.eventsMissed,
     boilOvers: p.boilOvers,
+    rosterEntries: p.roster.length,
+    finalRapport: p.rapport,
+    dossierCompleteMinute,
+    bindingCondition: (() => {
+      const entries = Object.entries(metAt) as Array<['time' | 'trust' | 'slips', number]>;
+      if (entries.length < 3) return 'none';
+      return entries.sort((a, b) => b[1] - a[1])[0][0];
+    })(),
     finalPersona: p.persona,
     samples,
     longestStallMinutes: longestStallSeconds / 60,
@@ -436,7 +488,9 @@ function main(): void {
     return;
   }
 
-  const archetypes: Archetype[] = only ? [only] : ['optimal', 'active', 'casual', 'idle'];
+  const archetypes: Archetype[] = only
+    ? [only]
+    : ['exploiter', 'optimal', 'active', 'casual', 'idle'];
 
   console.log('\nPLEASE HOLD — Phase 1 balance simulation');
   console.log(`Target window for "active": ${PHASE1_TARGET_MINUTES.min}–${PHASE1_TARGET_MINUTES.max} min`);
@@ -449,15 +503,16 @@ function main(): void {
     results.push(run(a, { verbose }));
   }
 
-  console.log('| Archetype | Gate | Redials | Notes | Dossier | Events | Rages | Voice | Max gap |');
-  console.log('|---|---|---|---|---|---|---|---|---|');
+  console.log('| Archetype | Done | Binding | Redials | Dossier | Rages | Roster | Rapport |');
+  console.log('|---|---|---|---|---|---|---|---|');
   for (const r of results) {
     const gate = r.completed ? `${r.minutesToGate.toFixed(0)} min` : 'never';
-    const events = `${r.eventsCaught}/${r.eventsCaught + r.eventsMissed}`;
+    const dossier = r.dossierCompleteMinute === Infinity
+      ? `${r.dossierBought}/${DOSSIER.length}`
+      : `all @ ${r.dossierCompleteMinute.toFixed(0)}m`;
     console.log(
-      `| ${r.archetype} | ${gate} | ${r.redials} | ${fmt(r.notesLifetime)} | ` +
-      `${r.dossierBought}/${DOSSIER.length} | ${events} | ${r.boilOvers} | ` +
-      `${r.finalPersona} | ${r.longestStallMinutes.toFixed(1)}m |`,
+      `| ${r.archetype} | ${gate} | ${r.bindingCondition} | ${r.redials} | ` +
+      `${dossier} | ${r.boilOvers} | ${r.rosterEntries}/8 | ${r.finalRapport.toFixed(0)}/92 |`,
     );
   }
 

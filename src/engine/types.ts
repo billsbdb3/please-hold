@@ -126,6 +126,15 @@ export interface Persisted {
   dossier: DossierId[];
   /** Best lifetime Hold Time reached on any single call, for the Notes formula. */
   bestCallLifetime: number;
+  /**
+   * Notes already granted BY REDIALS (boil-over pages are not counted here).
+   *
+   * The ratchet that makes the payout cumulative. Without it the formula paid an absolute
+   * amount every time, so hanging up twice in a row paid twice for one call's progress -
+   * a player found that in about a minute, and the adversarial simulator archetype then
+   * farmed 268,000 Notes across 14,154 redials.
+   */
+  redialNotesGranted: number;
 
   // --- Click state ---
   totalStalls: number;
@@ -245,6 +254,8 @@ export interface Transient {
   breathCooldown: number;
   /** Set once the phase-1 gate is met. The player presses to proceed. */
   phaseGateReached: boolean;
+  /** Set once the endgame has announced itself, so it announces exactly once. */
+  endgameAnnounced: boolean;
   /** Set for one frame on return from idle, so the UI can offer a summary. */
   returnedFromIdle: boolean;
   /** Monotonic id source for log lines and popups. */

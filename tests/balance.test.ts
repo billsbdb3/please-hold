@@ -119,7 +119,9 @@ describe('phase 1 duration', () => {
     // farmable, which is exactly how the original became a Notes fountain. Instead the
     // threshold sits where the formula already pays properly, so the gate IS the reward.
     const p = freshState();
+    // Eligibility is per-call; the PAYOUT is a cumulative function of career total.
     p.holdTimeLifetime = REDIAL.minLifetimeToRedial;
+    p.holdTimeCareer = REDIAL.minLifetimeToRedial;
     expect(notesFor(p)).toBeGreaterThanOrEqual(3);
   });
 
@@ -129,26 +131,42 @@ describe('phase 1 duration', () => {
     // hanging up twice in a row paid twice for one call's progress.
     const p = freshState();
     p.holdTimeLifetime = 5_000_000;
+    p.holdTimeCareer = 5_000_000;
     p.holdTime = 5_000_000;
     const s: GameState = { p, d: derive(p), t: freshTransient(0) };
 
     const first = redial(s);
     expect(first).toBeGreaterThan(0);
 
-    // Immediately again, having wasted no new time.
+    // Immediately again, having wasted no new time. Eligibility stays lit (the best-ever
+    // call cleared the threshold), but the cumulative grant has nothing left to pay: career
+    // has not moved, so total-owed minus already-granted is zero. That is the whole design -
+    // no cooldown, no guard, it simply cannot pay twice for the same ground.
     s.d = derive(p);
-    expect(canRedial(s)).toBe(false);
+    expect(s.d.notesOnRedial).toBe(0);
     expect(redial(s)).toBe(0);
     expect(p.notes).toBe(first);
   });
 
-  it('the dossier is paced to complete near the end of the phase, not early', () => {
-    // At one point the tree cost 577 against ~1,957 Notes earned, so it finished around
-    // the one-third mark and the prestige currency stopped meaning anything.
-    const totalCost = DOSSIER.reduce((sum, d) => sum + d.cost, 0);
-    const earned = sim('active').notesLifetime;
-    expect(earned).toBeGreaterThan(totalCost * 0.8);
-    expect(earned).toBeLessThan(totalCost * 2.5);
+  it('the dossier is paced to complete, and not in the first third', () => {
+    /**
+     * This used to compare Notes earned against tree cost, which stopped being meaningful
+     * once the payout went cumulative: rapport became the binding condition, so career (and
+     * therefore Notes) overshoots while trust catches up. Measuring WHEN the tree completes
+     * is the honest question - it must finish, but not so early that the currency stops
+     * being a decision for the back half.
+     */
+    const r = sim('active');
+    expect(r.dossierCompleteMinute).toBeLessThan(r.minutesToGate);
+    expect(r.dossierCompleteMinute).toBeGreaterThan(r.minutesToGate * 0.25);
+  });
+
+  it('phase length is set by a snowball-proof condition', () => {
+    // The whole point of the three-condition gate. A player finished in 53 minutes against
+    // a 95-minute design because career Hold Time alone ended the phase, and career is
+    // exactly what a production spike inflates. Trust and slips accrue on their own clocks,
+    // so one of those must be the last condition met.
+    expect(['trust', 'slips']).toContain(sim('active').bindingCondition);
   });
 });
 
@@ -289,9 +307,11 @@ describe('redial (the soft reset)', () => {
   it('Notes use a root, so doubling the payout costs 4x the progress', () => {
     const a = freshState();
     a.holdTimeLifetime = 10_000_000;
+    a.holdTimeCareer = 10_000_000;
     const b = freshState();
-    b.holdTimeLifetime = 40_000_000;
-    // sqrt: 4x the depth for 2x the payout.
+    b.holdTimeLifetime = 10_000_000;
+    b.holdTimeCareer = 40_000_000;
+    // sqrt: 4x the career for 2x the payout.
     expect(notesFor(b) / notesFor(a)).toBeCloseTo(2, 1);
   });
 

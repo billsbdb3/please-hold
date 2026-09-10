@@ -17,15 +17,16 @@
   } from './store.svelte';
   import { fmt, fmtRate, fmtDuration, fmtPct } from './engine/numbers';
   import {
-    stall, buyGenerator, buyUpgrade, availableUpgrades,
+    stall, buyGenerator, buyUpgrade,
     catchEvent, redial, canRedial, buyDossier, availableDossier,
     takeBreath, canTakeBreath, breathCost,
-    switchPersona, availablePersonas,
+    switchPersona, availablePersonas, phase1Progress, phase1Complete,
   } from './engine/sim';
   import {
-    GENERATORS, PHASE1_GATE, COMPOSURE, RAPPORT, REDIAL, DOSSIER,
-    RAGE, PERSONA_SWITCH_COST,
+    GENERATORS, COMPOSURE, RAPPORT, REDIAL, DOSSIER,
+    RAGE, PERSONA_SWITCH_COST, PHASE1_COMPLETION,
   } from './data/balance';
+  import { UPGRADES, statusOf, excludedBy } from './data/upgrades';
   import { isUnlocked, maxComposure } from './engine/derive';
   import { snapshot } from './engine/snapshot';
   import type { GeneratorId } from './engine/types';
@@ -86,10 +87,42 @@
   const cMax = $derived(maxComposure(p));
   const composurePct = $derived(p.composure / cMax);
   const rapportPct = $derived(p.rapport / RAPPORT.max);
-  const gatePct = $derived(Math.min(1, p.holdTimeCareer / PHASE1_GATE));
+  const progress = $derived.by(() => { void frame.n; return phase1Progress(p); });
+  const complete = $derived.by(() => { void frame.n; return phase1Complete(p); });
+  /** Overall access is the WORST of the three conditions, not an average — you are only as
+   *  far along as your least-finished requirement, which is what makes the bar honest. */
+  const gatePct = $derived(Math.min(progress.time, progress.trust, progress.slips));
+
+  /**
+   * Every upgrade with its status, so the road-not-taken stays on screen. Filtering
+   * excluded ones out is what made Be Sympathetic silently vanish when a player bought Be
+   * Difficult.
+   */
+  const upgradeRows = $derived.by(() => {
+    void frame.n;
+    const owned = new Set(p.upgrades);
+    const opts = {
+      lifetime: p.holdTimeCareer, rapport: p.rapport, activeTime: p.activeElapsed, owned,
+    };
+    return UPGRADES
+      .map((u) => ({ u, status: statusOf(u, opts), closedBy: excludedBy(u, owned) }))
+      .filter((r) => r.status === 'available' || r.status === 'excluded');
+  });
+
+  /** Where production actually comes from. The answer to "what did I do". */
+  const breakdown = $derived.by(() => {
+    void frame.n;
+    const rows: Array<[string, number]> = [
+      ['upgrades + milestones', d.globalMultiplier / d.dossierMultiplier],
+      ['dossier (permanent)', d.dossierMultiplier],
+      ['voice', d.persona.stallMultiplier],
+      ['rhythm', p.combo],
+    ];
+    if (t.burstFor > 0) rows.push(['burst', t.burstMultiplier]);
+    return rows.filter(([, v]) => v > 1.001);
+  });
 
   const unlockedGens = $derived(GENERATORS.filter((g) => isUnlocked(p, g.id)));
-  const upgrades = $derived.by(() => { void frame.n; return availableUpgrades(game); });
   const dossier = $derived.by(() => { void frame.n; return availableDossier(game); });
   const redialReady = $derived.by(() => { void frame.n; return canRedial(game); });
   const breathReady = $derived.by(() => { void frame.n; return canTakeBreath(game); });
@@ -140,6 +173,20 @@
   // Popups are rendered outside Svelte's reactive graph on purpose: they are
   // ephemeral, there can be many per second, and none of them are game game.
   let popupLayer = $state<HTMLDivElement | null>(null);
+  let logEl = $state<HTMLDivElement | null>(null);
+
+  /**
+   * Keep the transcript pinned to the newest line — but only if the player is already at the
+   * bottom. Yanking someone away while they are reading back through what he said would be
+   * worse than not scrolling at all.
+   */
+  $effect(() => {
+    void logLines.length;
+    const el = logEl;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    if (atBottom) queueMicrotask(() => { el.scrollTop = el.scrollHeight; });
+  });
   function spawnPopup(e: MouseEvent, text: string) {
     if (!popupLayer) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -207,11 +254,19 @@
         <span class="stat-label">On The Line</span>
         <span class="stat-value num">{fmtDuration(p.elapsed)}</span>
       </div>
-      <div class="stat grow">
-        <span class="stat-label">
-          Access {fmtPct(gatePct)}
-        </span>
-        <div class="meter"><div class="meter-fill" style="width: {gatePct * 100}%"></div></div>
+      <div class="stat grow access">
+        <span class="stat-label">Access {fmtPct(gatePct)}</span>
+        <div class="access-conditions">
+          <span class="cond" class:met={progress.time >= 1} title="Career time wasted">
+            time <span class="num">{fmtPct(progress.time)}</span>
+          </span>
+          <span class="cond" class:met={progress.trust >= 1} title="He has to believe you">
+            trust <span class="num">{p.rapport.toFixed(0)}/{PHASE1_COMPLETION.rapport}</span>
+          </span>
+          <span class="cond" class:met={progress.slips >= 1} title="Things he has let slip">
+            slips <span class="num">{p.roster.length}/{PHASE1_COMPLETION.rosterEntries}</span>
+          </span>
+        </div>
       </div>
       {#if p.redials > 0 || p.notes > 0}
         <div class="stat">
@@ -488,28 +543,66 @@
         <div class="panel">
           <div class="panel-title"><span>Approach</span></div>
           <div class="scroll list upgrades">
-            {#each upgrades as u (u.id)}
-              <button
-                class="row"
-                onclick={() => { buyUpgrade(game, u.id); interacted(); }}
-                disabled={u.cost > p.holdTime}
-              >
-                <span class="row-main">
-                  <span class="row-name">{u.name}</span>
-                  <span class="row-effect">{u.effect}</span>
-                  <span class="row-flavor">{u.flavor}</span>
-                </span>
-                <span class="row-side"><span class="cost num">{fmt(u.cost)}</span></span>
-              </button>
+            {#each upgradeRows as row (row.u.id)}
+              {#if row.status === 'excluded'}
+                <!-- The road not taken. Kept on screen deliberately: this used to vanish
+                     the instant you bought its sibling, so a player never learned a choice
+                     had been made, only that something disappeared. -->
+                <div class="row closed">
+                  <span class="row-main">
+                    <span class="row-name">{row.u.name}</span>
+                    <span class="row-effect">{row.u.effect}</span>
+                    <span class="row-closed">
+                      not taken — you chose {row.closedBy?.name ?? 'the other approach'}
+                    </span>
+                  </span>
+                </div>
+              {:else}
+                <button
+                  class="row"
+                  onclick={() => { buyUpgrade(game, row.u.id); interacted(); }}
+                  disabled={row.u.cost > p.holdTime}
+                >
+                  <span class="row-main">
+                    <span class="row-name">
+                      {row.u.name}
+                      {#if row.u.excludes?.length}
+                        <span class="fork" title="Taking this closes off the alternative">
+                          — a choice
+                        </span>
+                      {/if}
+                    </span>
+                    <span class="row-effect">{row.u.effect}</span>
+                    <span class="row-flavor">{row.u.flavor}</span>
+                  </span>
+                  <span class="row-side"><span class="cost num">{fmt(row.u.cost)}</span></span>
+                </button>
+              {/if}
             {:else}
               <p class="locked">Nothing has occurred to you yet.</p>
             {/each}
           </div>
         </div>
 
+        {#if breakdown.length > 0}
+          <div class="panel">
+            <div class="panel-title">
+              <span>Why It Is {fmtRate(d.hps)}/s</span>
+            </div>
+            <div class="pad breakdown">
+              {#each breakdown as [label, value] (label)}
+                <div class="breakdown-row">
+                  <span>{label}</span>
+                  <span class="num phosphor">×{value < 10 ? value.toFixed(2) : fmt(value)}</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
         <div class="panel fill">
           <div class="panel-title"><span>Transcript</span></div>
-          <div class="scroll log">
+          <div class="scroll log" bind:this={logEl}>
             {#each logLines as line (line.id)}
               <p class="log-line {line.kind}">
                 {line.text}{#if line.repeat}<span class="dim"> ×{line.repeat}</span>{/if}
@@ -521,6 +614,33 @@
     </div>
 
     <div class="popup-layer" bind:this={popupLayer}></div>
+
+    {#if complete}
+      <div class="modal-scrim"></div>
+      <div class="ending panel" role="dialog" aria-label="Phase complete">
+        <div class="panel-title"><span>Two Hundred And Six Extensions</span></div>
+        <div class="pad ending-body">
+          <p>You have the switchboard.</p>
+          <p>
+            Every extension in the building rings somewhere, and you can now reach all of
+            them without asking anyone. He does not know this. He is still on the line,
+            explaining something about a refund.
+          </p>
+          <p class="ending-stat">
+            {fmtDuration(p.holdTimeCareer)} of their working time, across
+            {p.redials + 1} calls. {p.roster.length} things written down. He trusts you
+            completely, which is the part you will think about later.
+          </p>
+          <p class="hint">
+            Phase 2 — THE MAP — is not built yet. This is where it begins: the roster you
+            have, filled in.
+          </p>
+          <button class="btn-stall" onclick={() => (showSettings = false)}>
+            [ Stay on the line ]
+          </button>
+        </div>
+      </div>
+    {/if}
 
     {#if showSettings}
       <div
@@ -659,7 +779,13 @@
     flex-direction: column;
     gap: var(--pad);
     min-height: 0;
+    /* The column scrolls, so no combination of open panes can be cut off. */
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
   }
+  .col::-webkit-scrollbar { width: 8px; }
+  .col::-webkit-scrollbar-thumb { background: var(--line); }
   .panel.fill {
     flex: 1;
     min-height: 0;
@@ -721,9 +847,17 @@
     min-height: 0;
     flex: 1;
   }
-  .upgrades {
-    max-height: 42vh;
+  /* Panes size to their content; the column scrolls. Fixed viewport fractions were what
+     cut the dossier off at the bottom. */
+  .upgrades,
+  .persona-list,
+  .dossier-list {
+    max-height: none;
   }
+  .dossier-list {
+    border-top: 1px solid var(--line);
+  }
+
 
   .row {
     display: flex;
@@ -854,9 +988,7 @@
     background: var(--red);
   }
 
-  .persona-list {
-    max-height: 30vh;
-  }
+
   .row.persona.active {
     background: #17140d;
     border-left: 2px solid var(--amber);
@@ -931,6 +1063,80 @@
     align-self: flex-start;
   }
 
+  .access-conditions {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--amber-deep);
+  }
+  .cond {
+    display: flex;
+    gap: 0.25rem;
+    align-items: baseline;
+    border-bottom: 1px solid var(--line-hot);
+    padding-bottom: 1px;
+  }
+  .cond.met {
+    color: var(--green);
+    border-bottom-color: var(--green);
+  }
+
+  .row.closed {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .row.closed .row-name,
+  .row.closed .row-effect {
+    text-decoration: line-through;
+  }
+  .row-closed {
+    font-size: 10px;
+    color: var(--red-dim);
+    font-style: italic;
+  }
+  .fork {
+    font-size: 10px;
+    color: var(--amber-deep);
+    font-style: italic;
+  }
+
+  .breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 11px;
+  }
+  .breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    color: var(--amber-dim);
+  }
+
+  .ending {
+    position: fixed;
+    z-index: 101;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(92vw, 520px);
+    max-height: 86vh;
+  }
+  .ending-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    overflow-y: auto;
+  }
+  .ending-body p {
+    margin: 0;
+  }
+  .ending-stat {
+    color: var(--amber);
+    border-left: 2px solid var(--amber-deep);
+    padding-left: 0.7rem;
+  }
+
   .drop-bar {
     display: flex;
     justify-content: space-between;
@@ -993,10 +1199,7 @@
     color: var(--amber);
     background: none;
   }
-  .dossier-list {
-    max-height: 34vh;
-    border-top: 1px solid var(--line);
-  }
+
 
   .popup-layer {
     position: absolute;
