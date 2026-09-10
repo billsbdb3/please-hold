@@ -17,10 +17,13 @@ import {
 } from '../src/engine/derive';
 import { freshState } from '../src/engine/state';
 import { freshTransient } from '../src/engine/log';
-import { tick, redial, canRedial, buyDossier, catchEvent } from '../src/engine/sim';
+import {
+  tick, stall, redial, canRedial, buyDossier, catchEvent,
+  takeBreath, canTakeBreath,
+} from '../src/engine/sim';
 import { DT } from '../src/engine/loop';
 import {
-  GENERATORS, PHASE1_TARGET_MINUTES, PHASE1_GATE, DOSSIER, REDIAL,
+  GENERATORS, PHASE1_TARGET_MINUTES, PHASE1_GATE, DOSSIER, REDIAL, COMPOSURE,
 } from '../src/data/balance';
 import { UPGRADES } from '../src/data/upgrades';
 import type { GameState } from '../src/engine/types';
@@ -349,6 +352,135 @@ describe('The Routine (auto-buy)', () => {
     const s: GameState = { p, d: derive(p), t: freshTransient(0) };
     for (let i = 0; i < Math.ceil(60 / DT); i++) tick(s, DT);
     expect(p.holdTime).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('losing the call', () => {
+  /**
+   * THE SOFT-LOCK REGRESSION TEST.
+   *
+   * `loseTheCall` set a boolean `callEnded` that NOTHING ever cleared, while the Stall
+   * button was disabled on it. So the first time composure bottomed out, the game's only
+   * verb went dead permanently — and a redial did not help, because redial never touched
+   * the field either. The player was left with a greyed-out button and no way back.
+   *
+   * The field is now a countdown, which cannot get stuck on.
+   */
+  function driveToCallDrop(s: GameState): void {
+    // Long enough on the line that the drain is running, then bottom out composure.
+    s.p.activeElapsed = 3_000;
+    s.p.composure = 1;
+    for (let i = 0; i < Math.ceil((COMPOSURE.criticalGraceSeconds + 2) / DT); i++) {
+      tick(s, DT);
+    }
+  }
+
+  it('drops the call once composure stays critical past the grace period', () => {
+    const p = freshState();
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    driveToCallDrop(s);
+    expect(s.t.callEndedFor).toBeGreaterThan(0);
+  });
+
+  it('the player can still stall immediately after the call drops', () => {
+    const p = freshState();
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    driveToCallDrop(s);
+
+    const before = p.holdTimeCareer;
+    const gained = stall(s, 10_000);
+    expect(gained).toBeGreaterThan(0);
+    expect(p.holdTimeCareer).toBeGreaterThan(before);
+  });
+
+  it('the drop notice clears itself', () => {
+    const p = freshState();
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    driveToCallDrop(s);
+    expect(s.t.callEndedFor).toBeGreaterThan(0);
+
+    // Composure was restored by the drop, so this does not immediately re-trigger.
+    for (let i = 0; i < Math.ceil((COMPOSURE.dropNoticeSeconds + 1) / DT); i++) {
+      tick(s, DT);
+    }
+    expect(s.t.callEndedFor).toBe(0);
+  });
+
+  it('restores composure rather than leaving the player at zero', () => {
+    // Dropping the call into an unrecoverable state would just drop it again a second
+    // later, forever.
+    const p = freshState();
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    driveToCallDrop(s);
+    expect(s.p.composure).toBeGreaterThan(maxComposure(s.p) * 0.4);
+  });
+
+  it('keeps every upgrade, generator and the career total', () => {
+    const p = freshState();
+    p.generators.confusion = 20;
+    p.upgrades = ['u.notepad', 'u.landline'];
+    p.holdTimeCareer = 5_000_000;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    driveToCallDrop(s);
+
+    expect(p.generators.confusion).toBe(20);
+    expect(p.upgrades).toEqual(['u.notepad', 'u.landline']);
+    expect(p.holdTimeCareer).toBeGreaterThanOrEqual(5_000_000);
+  });
+});
+
+describe('taking a breath (the counter to composure drain)', () => {
+  it('spends Hold Time and restores composure', () => {
+    const p = freshState();
+    p.composure = 20;
+    p.holdTime = 10_000;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+
+    const before = p.holdTime;
+    expect(takeBreath(s)).toBe(true);
+    expect(p.composure).toBeGreaterThan(20);
+    expect(p.holdTime).toBeLessThan(before);
+  });
+
+  it('is refused when it cannot be afforded', () => {
+    const p = freshState();
+    p.composure = 20;
+    p.holdTime = 0;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    expect(canTakeBreath(s)).toBe(false);
+    expect(takeBreath(s)).toBe(false);
+  });
+
+  it('is refused at full composure, so it cannot be used to burn currency', () => {
+    const p = freshState();
+    p.holdTime = 10_000;
+    p.composure = maxComposure(p);
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    expect(canTakeBreath(s)).toBe(false);
+  });
+
+  it('cannot be spammed', () => {
+    const p = freshState();
+    p.composure = 10;
+    p.holdTime = 1_000_000;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    expect(takeBreath(s)).toBe(true);
+    expect(takeBreath(s)).toBe(false);
+
+    for (let i = 0; i < Math.ceil((COMPOSURE.breath.cooldownSeconds + 1) / DT); i++) {
+      tick(s, DT);
+    }
+    s.p.composure = 10;
+    expect(canTakeBreath(s)).toBe(true);
+  });
+
+  it('never pushes composure above the maximum', () => {
+    const p = freshState();
+    p.holdTime = 1_000_000;
+    p.composure = maxComposure(p) - 1;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    takeBreath(s);
+    expect(p.composure).toBeLessThanOrEqual(maxComposure(p));
   });
 });
 

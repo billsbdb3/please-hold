@@ -16,6 +16,7 @@
   import {
     stall, buyGenerator, buyUpgrade, availableUpgrades,
     catchEvent, redial, canRedial, buyDossier, availableDossier,
+    takeBreath, canTakeBreath, breathCost,
   } from './engine/sim';
   import {
     GENERATORS, PHASE1_GATE, COMPOSURE, RAPPORT, REDIAL, DOSSIER,
@@ -55,9 +56,16 @@
   const upgrades = $derived.by(() => { void frame.n; return availableUpgrades(game); });
   const dossier = $derived.by(() => { void frame.n; return availableDossier(game); });
   const redialReady = $derived.by(() => { void frame.n; return canRedial(game); });
+  const breathReady = $derived.by(() => { void frame.n; return canTakeBreath(game); });
+  const breathPrice = $derived.by(() => { void frame.n; return breathCost(game); });
 
   function onCatch() {
     catchEvent(game);
+    interacted();
+  }
+
+  function onBreath() {
+    takeBreath(game);
     interacted();
   }
 
@@ -183,6 +191,14 @@
         </span>
       </button>
     {/if}
+    <!-- The line went dead. A notice, not a dead end: composure is restored and play
+         continues immediately. -->
+    {#if t.callEndedFor > 0}
+      <div class="drop-bar">
+        <span>The line goes dead. You redial. A different voice answers.</span>
+        <span class="num">{t.callEndedFor.toFixed(0)}s</span>
+      </div>
+    {/if}
     {#if t.burstFor > 0}
       <div class="burst-bar">
         <span>Production ×{t.burstMultiplier}</span>
@@ -202,7 +218,6 @@
             <button
               class="btn-stall"
               onclick={onStall}
-              disabled={t.callEnded}
               aria-label="Stall. Waste the caller's time."
             >
               Stall
@@ -254,6 +269,26 @@
                 He is becoming suspicious. {(COMPOSURE.criticalGraceSeconds - t.criticalFor).toFixed(0)}s
               </p>
             {/if}
+
+            <!--
+              The active counter to composure drain. Without this the only way to recover
+              was to stop playing, which made the drain a countdown rather than a
+              decision.
+            -->
+            <button
+              class="btn-wide btn-breath"
+              onclick={onBreath}
+              disabled={!breathReady}
+            >
+              {#if t.breathCooldown > 0}
+                Catching your breath…
+              {:else}
+                Take a breath — {fmt(breathPrice)}
+              {/if}
+            </button>
+            <p class="hint">
+              Puts him on hold and restores {fmtPct(COMPOSURE.breath.restoreFraction)} composure.
+            </p>
           </div>
         </div>
 
@@ -659,6 +694,20 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .event-bar { animation: none; }
+  }
+
+  .drop-bar {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.55rem var(--pad);
+    border: 1px solid var(--red-dim);
+    background: #1a0f0d;
+    color: var(--red);
+    font-size: 12px;
+  }
+
+  .btn-breath {
+    margin-top: 0.6rem;
   }
 
   .burst-bar {

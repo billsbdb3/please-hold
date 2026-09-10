@@ -232,6 +232,26 @@ export const COMPOSURE = {
   criticalAt: 8,
   /** Seconds at critical before the scammer hangs up. */
   criticalGraceSeconds: 12,
+  /** Seconds the "line went dead" notice stays on screen after a dropped call. */
+  dropNoticeSeconds: 7,
+  /**
+   * Taking a breath: the active counter to composure drain.
+   *
+   * A threat with no counter-play is the "unwinnable" anti-pattern, and until this
+   * existed the only way to recover composure was to stop playing — which is a strange
+   * thing for a game to ask. Spending the currency you are trying to accumulate makes
+   * the composure economy an actual decision rather than a countdown.
+   */
+  breath: {
+    /** Fraction of MAX composure restored. */
+    restoreFraction: 0.4,
+    /** Floor on the cost, so it is never free at the start of a call. */
+    minCost: 8,
+    /** Cost also scales with production, so it stays meaningful late. */
+    ppsMultiplier: 1.5,
+    /** Cannot be spammed. */
+    cooldownSeconds: 4,
+  },
   bands: [
     { id: 'steady',   min: 70, label: 'Steady',   stallMultiplier: 1.0, rapportMultiplier: 1.0 },
     { id: 'strained', min: 40, label: 'Strained', stallMultiplier: 1.3, rapportMultiplier: 0.85 },
