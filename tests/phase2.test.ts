@@ -20,7 +20,7 @@ import { derive } from '../src/engine/derive';
 import { tick } from '../src/engine/sim';
 import {
   enterPhase2, assignAttention, clearAttention, unlockStream, buyAttention,
-  buyTradecraft, identifyNext, deriveP2, attentionPool,
+  buyTradecraft, corroborateNext, deriveP2, attentionPool,
 } from '../src/engine/phase2';
 import { DT } from '../src/engine/loop';
 import {
@@ -183,7 +183,7 @@ describe('coverage cannot be carried by one stream', () => {
     const s = atPhase2();
     // Max out one kind entirely and leave the rest at nothing.
     s.p.intelByKind.people = COVERAGE.need.people * 10;
-    s.p.identified = s.p.roster.map((r) => r.id);
+    s.p.corroborated = s.p.roster.map((r) => r.id);
     const d = deriveP2(s.p, {});
     expect(d.coverage.people).toBe(1);
     expect(d.progress).toBe(0);
@@ -192,13 +192,13 @@ describe('coverage cannot be carried by one stream', () => {
   it('completes only when every requirement is met', () => {
     const s = atPhase2();
     for (const k of INTEL_KINDS) s.p.intelByKind[k] = COVERAGE.need[k];
-    s.p.identified = s.p.roster.slice(0, COVERAGE.identified).map((r) => r.id);
+    s.p.corroborated = s.p.roster.slice(0, COVERAGE.corroborated).map((r) => r.id);
     expect(deriveP2(s.p, {}).progress).toBe(1);
   });
 
-  it('requires more identified people than phase 1 hands you for free', () => {
+  it('requires more corroborated people than phase 1 hands you for free', () => {
     // Requiring 10 when an attentive phase 1 arrives with 12 made the requirement inert.
-    expect(COVERAGE.identified).toBeGreaterThanOrEqual(12);
+    expect(COVERAGE.corroborated).toBeGreaterThanOrEqual(12);
   });
 });
 
@@ -233,10 +233,10 @@ describe('spending', () => {
   it('identifies people from the roster, and runs out when the roster does', () => {
     const s = atPhase2(2);
     s.p.intel = 1e9;
-    expect(identifyNext(s)).toBe(true);
-    expect(identifyNext(s)).toBe(true);
-    expect(identifyNext(s)).toBe(false);
-    expect(s.p.identified.length).toBe(2);
+    expect(corroborateNext(s)).toBe(true);
+    expect(corroborateNext(s)).toBe(true);
+    expect(corroborateNext(s)).toBe(false);
+    expect(s.p.corroborated.length).toBe(2);
   });
 });
 

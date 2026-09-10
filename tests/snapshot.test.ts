@@ -120,3 +120,48 @@ describe('snapshot content', () => {
     expect(s.t.event).not.toBeNull();
   });
 });
+
+/**
+ * Phase 2 broke this invariant a second time — its component read `game.p` directly and the
+ * whole console froze, showing a live camera wall beside an attention counter stuck on its
+ * first value. The general rule was already tested; what was missing was coverage of the
+ * COLLECTIONS a new phase adds, so the next phase cannot repeat it quietly.
+ */
+describe('phase 2 collections are copied, not shared', () => {
+  it('gives every phase 2 collection a fresh reference', () => {
+    const game = newGame();
+    const a = snapshot(game);
+    const b = snapshot(game);
+    expect(a.p.attention).not.toBe(b.p.attention);
+    expect(a.p.streams).not.toBe(b.p.streams);
+    expect(a.p.intelByKind).not.toBe(b.p.intelByKind);
+    expect(a.p.corroborated).not.toBe(b.p.corroborated);
+    expect(a.p.tradecraft).not.toBe(b.p.tradecraft);
+    expect(a.t.burnedUntil).not.toBe(b.t.burnedUntil);
+  });
+
+  it('does not alias the live state, so a later mutation cannot rewrite a taken snapshot', () => {
+    const game = newGame();
+    const before = snapshot(game);
+    game.p.attention.cctv = 4;
+    game.p.streams.push('ledger');
+    game.p.intelByKind.people = 99;
+    expect(before.p.attention.cctv).toBe(0);
+    expect(before.p.streams).not.toContain('ledger');
+    expect(before.p.intelByKind.people).toBe(0);
+  });
+
+  it('every persisted collection is covered here, so a new phase cannot add one quietly', () => {
+    // Enumerating the collections means adding an uncopied one to Persisted fails THIS test
+    // rather than showing up as a frozen panel weeks later.
+    const game = newGame();
+    const a = snapshot(game);
+    const b = snapshot(game);
+    const shared = Object.keys(a.p).filter((k) => {
+      const v = (a.p as Record<string, unknown>)[k];
+      return v !== null && typeof v === 'object'
+        && (a.p as Record<string, unknown>)[k] === (b.p as Record<string, unknown>)[k];
+    });
+    expect(shared).toEqual([]);
+  });
+});

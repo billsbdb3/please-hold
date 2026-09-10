@@ -189,7 +189,17 @@ export const COVERAGE = {
    * Roster entries whose real name must be resolved. An attentive Phase 1 arrives with 12,
    * so requiring 10 was trivially satisfied on arrival and the requirement did nothing.
    */
-  identified: 12,
+  /**
+   * How many of his slips must be CORROBORATED.
+   *
+   * Phase 1's roster is a list of things he said while he was losing his temper - a first
+   * name, a shift pattern, a licence that expires on Thursdays. It is not a list of people,
+   * and the first version of this treated it as one: the button read 'Identify The daily
+   * quota - 4 closes', which is not a sentence. Corroboration is what the roster actually
+   * supports and it is the better idea anyway - his word is not evidence until you have seen
+   * the thing he described.
+   */
+  corroborated: 12,
 } as const;
 
 /** Cost to put a real name to a roster entry. Rises as the easy ones run out. */

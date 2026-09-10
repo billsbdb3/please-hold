@@ -106,7 +106,7 @@ export interface Persisted {
   /** Intel banked per kind. Coverage needs all four, so one stream cannot finish the phase. */
   intelByKind: Record<IntelKind, number>;
   /** Roster ids whose real name has been resolved, which is what Coverage counts. */
-  identified: string[];
+  corroborated: string[];
   /** Phase 2 upgrade ids ("tradecraft"). */
   tradecraft: string[];
   /** Attention points bought with Intel, on top of the base pool. */
@@ -361,7 +361,7 @@ export interface Phase2DerivedLike {
   identifiedFraction: number;
   progress: number;
   nextAttentionCost: number | null;
-  identifyCost: number;
+  corroborateCost: number;
   burned: StreamId[];
 }
 
