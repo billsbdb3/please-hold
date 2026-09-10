@@ -26,6 +26,7 @@ import { DT } from '../src/engine/loop';
 import {
   STREAMS, STREAM_BY_ID, HEAT, COVERAGE, ATTENTION, INTEL_KINDS,
   PHASE2_TARGET_MINUTES, TRADECRAFT,
+  IDENTIFY,
 } from '../src/data/phase2';
 import { runPhase2 } from '../tools/simulate-phase2';
 import type { GameState } from '../src/engine/types';
@@ -321,5 +322,52 @@ describe('every coverage requirement has an early source', () => {
     s.p.intelByKind.money = 0;
     s.p.corroborated = s.p.roster.slice(0, COVERAGE.corroborated).map((r) => r.id);
     expect(deriveP2(s.p, {}).bindingLabel).toBe('money');
+  });
+});
+
+/**
+ * An upgrade must be buyable while the thing it modifies is still happening.
+ *
+ * Cross-Referencing discounts corroboration by 30% and cost 2,200. That is fine arithmetic -
+ * bought at once it saves 4,322 - but corroborating costs 220 x 1.28^n, so no single
+ * corroboration exceeds 2,200 until the ELEVENTH of twelve. Buying the cheapest thing on
+ * screen is the obvious play, so a playtester drip-spent through the entire roster and
+ * finished corroborating before he could afford the discount. The upgrade was never
+ * unreachable; it was permanently out-competed by the very thing it discounts.
+ *
+ * This is the third upgrade in this project to promise something it could not deliver, after
+ * two in Phase 1 priced above their own gate. So the property gets a test rather than another
+ * round of me checking by eye.
+ */
+describe('cost-reduction upgrades can actually repay themselves', () => {
+  const corrCost = (n: number) =>
+    Math.floor(IDENTIFY.costBase * Math.pow(IDENTIFY.costGrowth, n));
+
+  function remainingSpend(from: number): number {
+    let t = 0;
+    for (let i = from; i < COVERAGE.corroborated; i++) t += corrCost(i);
+    return t;
+  }
+
+  it('Cross-Referencing repays its cost from every purchase point', () => {
+    const xref = TRADECRAFT.find((t) => t.id === 't.notes')!;
+    for (let n = 0; n < COVERAGE.corroborated; n++) {
+      const saved = remainingSpend(n) * (xref.identifyDiscount ?? 0);
+      expect(saved, `buying it with ${COVERAGE.corroborated - n} slips left loses intel`)
+        .toBeGreaterThan(xref.cost);
+    }
+  });
+
+  it('prices it below a mid-run corroboration, so it can be banked while most remain', () => {
+    // The affordability half of the trap: if it costs more than the corroborations competing
+    // with it, a player spending as he goes never accumulates it.
+    const xref = TRADECRAFT.find((t) => t.id === 't.notes')!;
+    const half = Math.floor(COVERAGE.corroborated / 2);
+    expect(xref.cost).toBeLessThan(corrCost(half + 1));
+  });
+
+  it('leaves the total corroboration bill large enough for a discount to matter', () => {
+    const xref = TRADECRAFT.find((t) => t.id === 't.notes')!;
+    expect(remainingSpend(0) * (xref.identifyDiscount ?? 0)).toBeGreaterThan(xref.cost * 2);
   });
 });

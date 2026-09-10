@@ -258,7 +258,22 @@ export const TRADECRAFT: TradecraftDef[] = [
     name: 'Cross-Referencing',
     effect: 'Identifying someone costs 30% less.',
     flavor: 'The same man appears on three cameras and one payroll line. That is enough.',
-    cost: 2_200,
+    /**
+     * 2,200 made this unbuyable while it was still worth buying.
+     *
+     * The arithmetic alone is fine - bought immediately it saves 4,322 against a 2,200 outlay.
+     * The trap is the AFFORDABILITY CURVE. Corroborating costs 220 x 1.28^n, so no single
+     * corroboration exceeds 2,200 until the eleventh of twelve. Buying the cheapest thing on
+     * screen is the obvious play, so a player drips through ten corroborations for 8,486 and
+     * never has 2,200 spare; by the time he does, two slips remain and the discount saves
+     * 1,776 for 2,200. A playtester corroborated the entire roster before he could afford it,
+     * which is the only way this shows up - the upgrade was never unreachable, just always
+     * out-competed by the thing it discounts.
+     *
+     * At 800 it sits between the sixth and seventh corroboration, so it can actually be banked
+     * while nine remain, and it repays from any point up to the eleventh.
+     */
+    cost: 800,
     identifyDiscount: 0.3,
   },
   {
