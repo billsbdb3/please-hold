@@ -74,6 +74,18 @@ const MIGRATIONS: Record<number, Migration> = {
     // figure IS the career total, since it had never redialled.
     holdTimeCareer: typeof data.holdTimeLifetime === 'number' ? data.holdTimeLifetime : 0,
   }),
+
+  /**
+   * v3 -> v4: personas and rage. A v3 save is a valid call that simply had one voice and
+   * no rage, so it migrates cleanly onto the starting persona with rage at zero.
+   */
+  3: (data) => ({
+    ...data,
+    version: 4,
+    rage: 0,
+    persona: 'doris',
+    boilOvers: 0,
+  }),
 };
 
 function migrate(raw: Record<string, unknown>): Persisted | null {
@@ -127,6 +139,7 @@ function sanitise(p: Persisted): Persisted {
     'composure', 'heat', 'warning', 'totalStalls', 'combo',
     'elapsed', 'activeElapsed',
     'notes', 'notesLifetime', 'redials', 'bestCallLifetime',
+    'rage', 'boilOvers',
   ];
   const bag = p as unknown as Record<string, unknown>;
   for (const k of numericKeys) {
@@ -141,6 +154,10 @@ function sanitise(p: Persisted): Persisted {
   if (p.combo < 1) p.combo = 1;
   // Composure is a percentage; a save cannot claim 900.
   p.composure = Math.max(0, Math.min(100, p.composure));
+  p.rage = Math.max(0, Math.min(100, p.rage));
+  // An unknown persona id (a hand-edited save, or one written by a newer build) must not
+  // leave the player voiceless.
+  if (typeof p.persona !== 'string' || !p.persona) p.persona = 'doris';
   p.coverage = Math.max(0, Math.min(1, p.coverage));
   return p;
 }

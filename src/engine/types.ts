@@ -23,6 +23,8 @@
  * a multiplier to `Persisted`, you are about to reintroduce bug #1.
  */
 
+import type { PersonaDef } from '../data/balance';
+
 export type PhaseId = 1 | 2 | 3;
 
 /** Ids are string literals so a typo is a compile error rather than a dead upgrade. */
@@ -82,6 +84,17 @@ export interface Persisted {
   // --- Threat resources ---
   /** 0..100. Drains while in character. At zero, the call ends. */
   composure: number;
+  /**
+   * How furious he is, 0..100. The offensive counterpart to composure: composure is what
+   * you protect, rage is what you inflict. At maximum he loses his temper and something
+   * useful slips out.
+   */
+  rage: number;
+  /** Which voice you are currently doing. */
+  persona: string;
+  /** Total times he has lost his temper. A stat, and a Phase 2 roster feed. */
+  boilOvers: number;
+
   /** Phase 2 threat: their suspicion. */
   heat: number;
   /** Phase 3 threat: the operation is aware and reacting. */
@@ -167,8 +180,14 @@ export interface Derived {
   generatorMultiplier: Record<GeneratorId, number>;
   /** Value of a single manual stall, including combo. */
   stallValue: number;
-  /** Composure drain per second at the current moment. */
+  /** Multiplier on all rapport gain, from upgrades. */
+  rapportMultiplier: number;
+  /** Composure drain per second at the current moment, including the rage penalty. */
   composureDrain: number;
+  /** Rage gained per manual stall, after the persona multiplier. */
+  ragePerStall: number;
+  /** The persona currently active, resolved. */
+  persona: PersonaDef;
   /** Which composure band the player is in, and its tradeoffs. */
   band: ComposureBand;
   /** Cost of the next unit of each generator. */

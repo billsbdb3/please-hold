@@ -16,6 +16,7 @@ import type { DossierDef } from '../data/balance';
 import {
   GENERATORS, GENERATOR_BY_ID, SOFT_CAP_EXPONENT, CASCADE_CAP,
   STALL, COMPOSURE, PHASE1_MILESTONES, DOSSIER_BY_ID, REDIAL,
+  PERSONA_BY_ID, PERSONAS, RAGE,
 } from '../data/balance';
 import { UPGRADES_BY_ID } from '../data/upgrades';
 
@@ -146,6 +147,10 @@ export function derive(p: Persisted): Derived {
     hps += out;
   }
 
+  // --- The voice currently being done ---
+  // Fall back rather than throw: a save can name a persona this build does not have.
+  const persona = PERSONA_BY_ID[p.persona] ?? PERSONAS[0];
+
   // --- Composure band and its tradeoffs ---
   const band = bandFor(p.composure, maxComposure(p));
 
@@ -158,8 +163,15 @@ export function derive(p: Persisted): Derived {
     if (u?.stallFlat) stallBase += u.stallFlat;
     if (u?.stallMultiplier) stallBase *= u.stallMultiplier;
   }
-  stallBase *= dossierStallMultiplier;
+  stallBase *= dossierStallMultiplier * persona.stallMultiplier;
   const stallValue = stallBase * p.combo * band.stallMultiplier;
+
+  // --- Rapport multiplier ---
+  let rapportMultiplier = persona.rapportMultiplier;
+  for (const id of p.upgrades) {
+    const u = UPGRADES_BY_ID[id];
+    if (u?.rapportMultiplier) rapportMultiplier *= u.rapportMultiplier;
+  }
 
   // --- Composure drain ---
   let composureDrain = 0;
@@ -170,8 +182,13 @@ export function derive(p: Persisted): Derived {
       const u = UPGRADES_BY_ID[id];
       if (u?.composureDrainMultiplier) composureDrain *= u.composureDrainMultiplier;
     }
+    composureDrain *= persona.drainMultiplier;
     composureDrain = Math.min(composureDrain, COMPOSURE.maxDrain);
   }
+  // An enraged scammer is an abusive one, so provoking him costs you something. This sits
+  // OUTSIDE the maxDrain clamp deliberately: rage is a choice, and its cost should be
+  // felt rather than absorbed by a ceiling tuned for ordinary fatigue.
+  composureDrain += (p.rage / RAGE.max) * RAGE.drainAtMaxRage;
 
   return {
     hps,
@@ -179,6 +196,9 @@ export function derive(p: Persisted): Derived {
     globalMultiplier,
     generatorMultiplier,
     stallValue,
+    rapportMultiplier,
+    ragePerStall: RAGE.perStall * persona.rageMultiplier,
+    persona,
     composureDrain,
     band,
     nextCost,
@@ -188,15 +208,19 @@ export function derive(p: Persisted): Derived {
 }
 
 /**
- * Notes banked by redialling now: floor(sqrt(best call / divisor)) × dossier bonus.
+ * Notes banked by redialling now: floor(sqrt(this call / divisor)) × dossier bonus.
  *
  * A square root rather than a linear cut, per the standard prestige result — it
- * compresses an unbounded currency into a spendable one and requires 4× the progress
- * to double the payout, so one exceptional call cannot trivialise the whole tree.
+ * compresses an unbounded currency into a spendable one and requires 4× the progress to
+ * double the payout, so one exceptional call cannot trivialise the whole tree.
+ *
+ * Keyed to THIS CALL so an immediate second redial pays nothing: you have not wasted any
+ * new time, so there is nothing to bank.
  */
 export function notesFor(p: Persisted, notesMultiplier = 1): number {
-  const best = Math.max(p.bestCallLifetime, p.holdTimeLifetime);
-  if (best < REDIAL.minLifetimeToRedial) return 0;
+  // THIS call's depth, not the best ever. See REDIAL in balance.ts for why.
+  const depth = p.holdTimeLifetime;
+  if (depth < REDIAL.minLifetimeToRedial) return 0;
   if (notesMultiplier === 1) {
     // Resolve the dossier's own Notes bonus when the caller has not passed it in.
     for (const id of p.dossier) {
@@ -204,7 +228,7 @@ export function notesFor(p: Persisted, notesMultiplier = 1): number {
       if (dd?.notesMultiplier) notesMultiplier *= dd.notesMultiplier;
     }
   }
-  return Math.max(REDIAL.minNotes, Math.floor(Math.sqrt(best / REDIAL.divisor) * notesMultiplier));
+  return Math.floor(Math.sqrt(depth / REDIAL.divisor) * notesMultiplier);
 }
 
 /** Max composure including permanent dossier bonuses. */

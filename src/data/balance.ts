@@ -113,11 +113,11 @@ export const GENERATORS: GeneratorDef[] = [
     name: 'The iPad',
     flavor: 'You have suggested doing this on the iPad instead. He is considering it.',
     effect: 'Introduces a second device that also does not work.',
-    baseCost: 420_000,
+    baseCost: 260_000,
     growth: 1.17,
     baseProduction: 450,
     softCapAt: 16,
-    unlocksAt: 1_500_000,
+    unlocksAt: 900_000,
     cascadeBoost: 0.016,
   },
   {
@@ -125,11 +125,11 @@ export const GENERATORS: GeneratorDef[] = [
     name: 'Your Nephew',
     flavor: 'Your nephew is good with computers. Your nephew has questions of his own.',
     effect: 'A second voice. He must explain everything again, from the start.',
-    baseCost: 6_000_000,
+    baseCost: 900_000,
     growth: 1.18,
     baseProduction: 2_400,
     softCapAt: 15,
-    unlocksAt: 12_000_000,
+    unlocksAt: 3_000_000,
     cascadeBoost: 0.02,
   },
 ];
@@ -265,6 +265,165 @@ export const COMPOSURE = {
  * behaving like a plausible victim. This is the Paperclips "Trust" lesson: the real
  * bottleneck is permission, not currency.
  */
+/**
+ * PERSONAS — the voice changer.
+ *
+ * Scammer Payback's signature is not just stalling, it is stalling *as somebody*. He runs
+ * a voice changer and plays a rotating cast of characters, and the comedy — plus the rage —
+ * comes from which character he chooses to inflict on a given scammer.
+ *
+ * Mechanically each persona is a different point on a triangle:
+ *   - how much time you waste (stall value)
+ *   - how much he believes you (rapport)
+ *   - how furious he gets (rage)
+ *
+ * Nobody is best at everything, so switching is a tactical decision rather than an upgrade
+ * path. It costs composure, because dropping one voice and finding another mid-call is work.
+ */
+export interface PersonaDef {
+  id: string;
+  name: string;
+  /** The character, in one dry line. */
+  flavor: string;
+  stallMultiplier: number;
+  rapportMultiplier: number;
+  rageMultiplier: number;
+  /** Multiplies composure drain while this persona is active. */
+  drainMultiplier: number;
+  /** Career Hold Time before this voice is available. */
+  unlocksAt: number;
+}
+
+export const PERSONAS: PersonaDef[] = [
+  {
+    id: 'doris',
+    name: 'Doris',
+    flavor: 'Seventy-one. Genuinely bewildered. Keeps asking whether this will affect her television.',
+    stallMultiplier: 1.0,
+    rapportMultiplier: 1.4,
+    rageMultiplier: 0.7,
+    drainMultiplier: 1.0,
+    unlocksAt: 0,
+  },
+  {
+    id: 'nigel',
+    name: 'Nigel',
+    flavor: 'Would like to be transferred to somebody more senior. Has been transferred four times.',
+    stallMultiplier: 1.3,
+    rapportMultiplier: 0.9,
+    rageMultiplier: 1.5,
+    drainMultiplier: 1.1,
+    unlocksAt: 40_000,
+  },
+  {
+    id: 'teenager',
+    name: 'The Teenager',
+    flavor: 'Answers everything with "mm". Is not being difficult. This is simply the voice.',
+    stallMultiplier: 0.8,
+    rapportMultiplier: 0.6,
+    rageMultiplier: 2.2,
+    drainMultiplier: 0.9,
+    unlocksAt: 400_000,
+  },
+  {
+    id: 'pemberton',
+    name: 'Mr Pemberton',
+    flavor: 'Retired accountant. Requires everything in writing. Reads reference numbers back, digit by digit, twice.',
+    stallMultiplier: 2.0,
+    rapportMultiplier: 1.1,
+    rageMultiplier: 1.2,
+    drainMultiplier: 1.2,
+    unlocksAt: 2_500_000,
+  },
+  {
+    id: 'deborah',
+    name: 'Deborah, Accounts Payable',
+    flavor: 'Has asked for a purchase order number. Will not proceed without a purchase order number.',
+    stallMultiplier: 1.6,
+    rapportMultiplier: 0.55,
+    rageMultiplier: 2.6,
+    drainMultiplier: 1.45,
+    unlocksAt: 9_000_000,
+  },
+  {
+    id: 'sincere',
+    name: 'A Very Sincere Man',
+    flavor: 'Takes every word literally. Was asked to open a window and has opened a window.',
+    stallMultiplier: 1.7,
+    rapportMultiplier: 1.6,
+    rageMultiplier: 1.9,
+    drainMultiplier: 0.8,
+    unlocksAt: 25_000_000,
+  },
+];
+
+export const PERSONA_BY_ID: Record<string, PersonaDef> = Object.fromEntries(
+  PERSONAS.map((p) => [p.id, p]),
+);
+
+/** Composure cost of changing voice mid-call. */
+export const PERSONA_SWITCH_COST = 4;
+
+/**
+ * RAGE — the offensive resource, and the reason any of this is funny.
+ *
+ * Composure is what you protect; rage is what you inflict. Stalling in character builds it,
+ * and when it boils over he loses his temper — which is both the payoff and, because a
+ * furious man is a careless man, the moment something useful slips out: a real name, a
+ * floor, a supervisor. That is how Phase 1 begins feeding the roster Phase 2 is built on.
+ *
+ * The tradeoff is that an enraged scammer is abusive, so high rage RAISES composure drain.
+ * You cannot pin it at maximum and walk away.
+ */
+export const RAGE = {
+  max: 100,
+  /** Gained per manual stall, before the persona multiplier. */
+  perStall: 0.055,
+  /** Gained per second while the call is live. */
+  perSecond: 0.05,
+  /** Decays when you stop provoking him. */
+  decayPerSecond: 0.05,
+  /** Seconds after a stall before decay resumes. */
+  decayGraceSeconds: 6,
+  /** At maximum he loses it: a production burst. */
+  boilOverBurst: 3,
+  boilOverBurstSeconds: 10,
+  /** Rage left after a boil-over, so the next one takes real work. */
+  resetTo: 20,
+  /** Additional composure drain per second at full rage, scaling from zero. */
+  drainAtMaxRage: 0.9,
+  /** He says something he should not have. */
+  boilOverNotes: 1,
+  /**
+   * Fraction of rage carried across a redial.
+   *
+   * Zeroing it looked right — a different person answers — but it silently suppressed the
+   * entire mechanic for anyone who redialled often: a casual player reset every ~5.6
+   * minutes while needing ~8 to boil over, so they never once saw him lose his temper.
+   * Carrying most of it over is also the better fiction. Word gets round a call floor.
+   */
+  carriedAcrossRedial: 0.6,
+} as const;
+
+/**
+ * What he says when he loses it. Delivered flat, as transcript.
+ *
+ * The register is deliberately administrative: the funniest thing an enraged man on a scam
+ * floor says is not a threat, it is a complaint about process.
+ */
+export const BOIL_OVER_LINES: string[] = [
+  'He has told you his real name. He appears to regret it immediately.',
+  'He is shouting the name of his supervisor. You write it down.',
+  'He has told you which building he is in. He has told you which floor.',
+  'He says he has been doing this for six years. He says it the way a man describes a job.',
+  'He has called you something he will have to explain to his floor manager.',
+  'He has hung up on his own colleague by mistake. You can hear the colleague.',
+  'He has asked whether you think this is funny. You have not spoken for four minutes.',
+  'He is threatening to come to your house. He has the address wrong. It is a garden centre.',
+  'He has told you what his quota is. It is higher than last month.',
+  'Someone off-microphone has told him to keep his voice down.',
+];
+
 export const RAPPORT = {
   /** Gained per manual stall, modulated by composure band. */
   perStall: 0.06,
@@ -349,7 +508,7 @@ const PHASE1_MILESTONE_DEFS: Omit<MilestoneDef, 'at'>[] = [
 ];
 
 /** Career Hold Time that ends Phase 1. The last milestone sits exactly here. */
-export const PHASE1_GATE = 300_000_000;
+export const PHASE1_GATE = 100_000_000;
 
 /**
  * The milestones, with absolute thresholds derived from the gate. Exported in the
@@ -372,8 +531,25 @@ export const PHASE1_MILESTONES: MilestoneDef[] = PHASE1_MILESTONE_DEFS.map((m, i
  * the tree. `divisor` sets how deep the first call must go before a redial is worth it.
  */
 export const REDIAL = {
-  /** notes = max(1, floor(sqrt(bestCallLifetime / divisor))) */
-  divisor: 12_000,
+  /**
+   * notes = floor(sqrt(THIS CALL's depth / divisor))
+   *
+   * THIS-RUN basis, not best-ever. The original keyed off `bestCallLifetime`, a running
+   * max that never resets, and granted an ABSOLUTE payout each time rather than the
+   * difference — so hanging up twice in a row paid twice for the same progress. A
+   * playtester found it in about a minute.
+   *
+   * Two textbook fixes exist. Realm Grinder and Cookie Clicker keep a max/lifetime basis
+   * and grant `total_owed - total_already_granted` (Cookie Clicker's stored
+   * forfeited-cookies pool). Egg Inc, Clicker Heroes and Antimatter Dimensions instead
+   * score THIS RUN only, which self-zeroes with no ratchet field at all.
+   *
+   * This-run wins here because of cadence: this reset happens ~30 times per phase, and a
+   * max basis pays nothing on most of those unless each call beats the last, which is
+   * punishing at that frequency. Hammering the button now pays 0 because you have wasted
+   * no new time — no cooldown and no penalty needed.
+   */
+  divisor: 3_000,
   /**
    * Hold Time a single call must reach before redialling unlocks.
    *
@@ -389,12 +565,12 @@ export const REDIAL = {
    */
   minLifetimeToRedial: 120_000,
   /**
-   * An eligible redial always pays at least one page. Without this floor a player who
-   * redials at exactly the minimum earns sqrt(120_000/250_000) = 0 Notes, so the
-   * mechanic would unlock and then visibly do nothing, which is worse than it staying
-   * locked. The cheapest dossier entry costs exactly 1 for the same reason.
+   * NO minimum payout. A floor on a repeatable reset is always farmable — the previous
+   * `minNotes: 1` guaranteed every spam-click minted a page, turning a leak into a tap.
+   * The first reset feels rewarding instead because the ELIGIBILITY THRESHOLD is set
+   * where the formula already pays well: sqrt(120000/12000) is about 3 pages, so the gate
+   * is its own minimum reward.
    */
-  minNotes: 1,
   /** Rapport retained across a redial, as a fraction. He half-remembers you. */
   rapportRetained: 0.35,
 } as const;
@@ -452,7 +628,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Copy Of The Script',
     effect: 'All production ×1.5.',
     flavor: 'You know what he is going to say. You let him say it.',
-    cost: 14,
+    cost: 5,
     globalMultiplier: 1.5,
   },
   {
@@ -460,7 +636,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Pre-Written Confusion',
     effect: 'Begin each call with 10 Genuine Confusion.',
     flavor: 'You have the questions written down in advance now.',
-    cost: 20,
+    cost: 7,
     startingGenerators: { confusion: 10 },
   },
   {
@@ -468,7 +644,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Better Chair',
     effect: '+25 maximum composure.',
     flavor: 'It was expensive. It was, on reflection, the correct decision.',
-    cost: 30,
+    cost: 10,
     composureBonus: 25,
   },
   {
@@ -476,7 +652,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Shorthand',
     effect: 'Notes earned ×1.5.',
     flavor: 'You have stopped writing full sentences. There is not time.',
-    cost: 48,
+    cost: 16,
     notesMultiplier: 1.5,
   },
   {
@@ -484,7 +660,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Rehearsed Helplessness',
     effect: 'Manual stalls ×2.',
     flavor: 'You have practised sounding like this. It comes easily now, which you have chosen not to examine.',
-    cost: 68,
+    cost: 23,
     stallMultiplier: 2,
     requires: ['d.script'],
   },
@@ -493,7 +669,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'The Shift Roster',
     effect: 'Opportunity windows arrive twice as often.',
     flavor: 'You know when the floor manager takes his break. It is 3:15.',
-    cost: 95,
+    cost: 32,
     eventRateMultiplier: 2,
   },
   {
@@ -501,7 +677,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'The Routine',
     effect: 'Re-buys your cheapest tactic on its own, every few seconds.',
     flavor: 'You no longer decide to do any of this. You have a way of doing it.',
-    cost: 100,
+    cost: 34,
     autoBuy: true,
     requires: ['d.rehearsed'],
   },
@@ -510,7 +686,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'The Name He Uses',
     effect: 'Start every call with 35 rapport. All production ×1.6.',
     flavor: '"Brandon." He has been Brandon for four years. He answers to it before he thinks.',
-    cost: 136,
+    cost: 46,
     startingRapport: 35,
     globalMultiplier: 1.6,
     requires: ['d.callback'],
@@ -520,7 +696,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Prepared Machine',
     effect: 'Begin each call with 15 Incorrect Password and 8 The Cat.',
     flavor: 'The virtual machine is already running. The cat is real.',
-    cost: 187,
+    cost: 63,
     startingGenerators: { wrongPassword: 15, catInterrupt: 8 },
     requires: ['d.warmup'],
   },
@@ -529,7 +705,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'A Filing System',
     effect: 'Notes earned ×2.',
     flavor: 'Sixty-one pages. Cross-referenced. You have started using tabs.',
-    cost: 272,
+    cost: 92,
     notesMultiplier: 2,
     requires: ['d.shorthand'],
   },
@@ -538,7 +714,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'Professional Detachment',
     effect: '+40 maximum composure. All production ×1.8.',
     flavor: 'It stopped being upsetting somewhere around the fourth call. You have not decided whether that is good.',
-    cost: 408,
+    cost: 138,
     composureBonus: 40,
     globalMultiplier: 1.8,
     requires: ['d.chair'],
@@ -548,7 +724,7 @@ export const DOSSIER: DossierDef[] = [
     name: 'The Shape Of It',
     effect: 'All production ×2.5.',
     flavor: 'It is not one man with a phone. You have drawn the org chart on the back of an envelope and it does not fit.',
-    cost: 680,
+    cost: 230,
     globalMultiplier: 2.5,
     requires: ['d.deadname', 'd.filing'],
   },

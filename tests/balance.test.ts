@@ -19,11 +19,12 @@ import { freshState } from '../src/engine/state';
 import { freshTransient } from '../src/engine/log';
 import {
   tick, stall, redial, canRedial, buyDossier, catchEvent,
-  takeBreath, canTakeBreath,
+  takeBreath, canTakeBreath, switchPersona, availablePersonas,
 } from '../src/engine/sim';
 import { DT } from '../src/engine/loop';
 import {
   GENERATORS, PHASE1_TARGET_MINUTES, PHASE1_GATE, DOSSIER, REDIAL, COMPOSURE,
+  PERSONAS, PERSONA_SWITCH_COST, RAGE,
 } from '../src/data/balance';
 import { UPGRADES } from '../src/data/upgrades';
 import type { GameState } from '../src/engine/types';
@@ -113,12 +114,32 @@ describe('phase 1 duration', () => {
     expect(sim('casual').minutesToFirstRedial).toBeLessThan(25);
   });
 
-  it('an eligible redial always pays at least one page', () => {
-    // Unlocking a mechanic that then visibly does nothing is worse than leaving it
-    // locked, so the payout is floored.
+  it('the eligibility threshold is itself a worthwhile first payout', () => {
+    // There is deliberately NO minimum-payout floor: a floor on a repeatable reset is
+    // farmable, which is exactly how the original became a Notes fountain. Instead the
+    // threshold sits where the formula already pays properly, so the gate IS the reward.
     const p = freshState();
-    p.bestCallLifetime = REDIAL.minLifetimeToRedial;
-    expect(notesFor(p)).toBeGreaterThanOrEqual(1);
+    p.holdTimeLifetime = REDIAL.minLifetimeToRedial;
+    expect(notesFor(p)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('hammering the redial button pays nothing the second time', () => {
+    // THE EXPLOIT REGRESSION TEST. The payout used to key off bestCallLifetime, a running
+    // max that never resets, and granted an absolute amount rather than a difference - so
+    // hanging up twice in a row paid twice for one call's progress.
+    const p = freshState();
+    p.holdTimeLifetime = 5_000_000;
+    p.holdTime = 5_000_000;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+
+    const first = redial(s);
+    expect(first).toBeGreaterThan(0);
+
+    // Immediately again, having wasted no new time.
+    s.d = derive(p);
+    expect(canRedial(s)).toBe(false);
+    expect(redial(s)).toBe(0);
+    expect(p.notes).toBe(first);
   });
 
   it('the dossier is paced to complete near the end of the phase, not early', () => {
@@ -267,10 +288,10 @@ describe('redial (the soft reset)', () => {
 
   it('Notes use a root, so doubling the payout costs 4x the progress', () => {
     const a = freshState();
-    a.bestCallLifetime = 100_000_000;
+    a.holdTimeLifetime = 10_000_000;
     const b = freshState();
-    b.bestCallLifetime = 400_000_000;
-    // sqrt: 4x the input for 2x the output.
+    b.holdTimeLifetime = 40_000_000;
+    // sqrt: 4x the depth for 2x the payout.
     expect(notesFor(b) / notesFor(a)).toBeCloseTo(2, 1);
   });
 
@@ -484,6 +505,173 @@ describe('taking a breath (the counter to composure drain)', () => {
   });
 });
 
+describe('personas (the voice changer)', () => {
+  it('starts on Doris and offers only unlocked voices', () => {
+    const p = freshState();
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    expect(p.persona).toBe('doris');
+    expect(availablePersonas(s).map((x) => x.id)).toEqual(['doris']);
+
+    p.holdTimeCareer = 500_000;
+    expect(availablePersonas(s).map((x) => x.id)).toContain('teenager');
+  });
+
+  it('switching costs composure and applies the new multipliers', () => {
+    const p = freshState();
+    p.holdTimeCareer = 50_000_000;
+    p.generators.confusion = 10;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+
+    const composureBefore = p.composure;
+    const stallBefore = s.d.stallValue;
+    expect(switchPersona(s, 'pemberton')).toBe(true);
+
+    expect(p.persona).toBe('pemberton');
+    expect(p.composure).toBe(composureBefore - PERSONA_SWITCH_COST);
+    // Mr Pemberton reads reference numbers back digit by digit, so he wastes more time.
+    expect(s.d.stallValue).toBeGreaterThan(stallBefore);
+  });
+
+  it('refuses a locked voice, the current voice, and a switch you cannot afford', () => {
+    const p = freshState();
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    expect(switchPersona(s, 'sincere')).toBe(false); // locked
+    expect(switchPersona(s, 'doris')).toBe(false);   // already live
+    expect(switchPersona(s, 'nope')).toBe(false);    // not a voice
+
+    p.holdTimeCareer = 50_000_000;
+    p.composure = 1;
+    expect(switchPersona(s, 'pemberton')).toBe(false); // cannot pay
+  });
+
+  it('an unknown persona in a save does not leave the player voiceless', () => {
+    // A hand-edited save, or one written by a newer build, must not crash derivation.
+    const p = freshState();
+    p.persona = 'a-voice-that-does-not-exist';
+    expect(() => derive(p)).not.toThrow();
+    expect(derive(p).persona.id).toBe('doris');
+  });
+
+  it('no voice is dead on arrival', () => {
+    /**
+     * A voice is dead content if another voice that is available NO LATER beats it on every
+     * axis — then there is never a moment where picking it is right.
+     *
+     * The unlock comparison is the whole point. A late voice being strictly better than the
+     * starting one is ordinary progression (A Very Sincere Man does supersede Doris, at 25M
+     * career). A voice dominated by something you already had is a wasted slot.
+     */
+    for (const a of PERSONAS) {
+      const dominator = PERSONAS.find(
+        (b) =>
+          b.id !== a.id &&
+          b.unlocksAt <= a.unlocksAt &&
+          b.stallMultiplier >= a.stallMultiplier &&
+          b.rageMultiplier >= a.rageMultiplier &&
+          b.rapportMultiplier >= a.rapportMultiplier &&
+          b.drainMultiplier <= a.drainMultiplier,
+      );
+      expect(
+        dominator?.name,
+        `${a.name} is dominated on every axis by ${dominator?.name}, which unlocks no later`,
+      ).toBeUndefined();
+    }
+  });
+
+  it('every voice leads on something among the voices available when it unlocks', () => {
+    /**
+     * The positive form of the dominance test, and the comparison has to be against the
+     * voices you ACTUALLY HAVE at that point. A global "best at something" test is wrong:
+     * Nigel leads no axis across all six, but at 40K career he is the only alternative to
+     * Doris and beats her on both stall and temper, which is exactly his job.
+     */
+    for (const a of PERSONAS) {
+      const availableThen = PERSONAS.filter((b) => b.unlocksAt <= a.unlocksAt);
+      const leads =
+        a.stallMultiplier === Math.max(...availableThen.map((x) => x.stallMultiplier)) ||
+        a.rageMultiplier === Math.max(...availableThen.map((x) => x.rageMultiplier)) ||
+        a.rapportMultiplier === Math.max(...availableThen.map((x) => x.rapportMultiplier)) ||
+        a.drainMultiplier === Math.min(...availableThen.map((x) => x.drainMultiplier));
+      expect(leads, `${a.name} leads on no axis at the point it unlocks`).toBe(true);
+    }
+  });
+});
+
+describe('rage (his temper)', () => {
+  it('builds from stalling and is amplified by the voice', () => {
+    const quiet = freshState();
+    const loud = freshState();
+    loud.holdTimeCareer = 50_000_000;
+    loud.persona = 'deborah';
+
+    const q: GameState = { p: quiet, d: derive(quiet), t: freshTransient(0) };
+    const l: GameState = { p: loud, d: derive(loud), t: freshTransient(0) };
+
+    stall(q, 1000);
+    stall(l, 1000);
+    // Deborah wants a purchase order number. Doris is merely confused.
+    expect(loud.rage).toBeGreaterThan(quiet.rage);
+  });
+
+  it('boils over at maximum, granting a page, a burst and a transcript line', () => {
+    const p = freshState();
+    p.rage = RAGE.max;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    const logBefore = s.t.log.length;
+
+    tick(s, DT);
+
+    expect(p.boilOvers).toBe(1);
+    expect(p.notes).toBe(RAGE.boilOverNotes);
+    expect(p.rage).toBeCloseTo(RAGE.resetTo, 5);
+    expect(s.t.burstFor).toBeGreaterThan(0);
+    expect(s.t.log.length).toBeGreaterThan(logBefore);
+  });
+
+  it('raises composure drain, so you cannot pin it at maximum and walk away', () => {
+    const calm = freshState();
+    calm.activeElapsed = 3_000;
+    const furious = freshState();
+    furious.activeElapsed = 3_000;
+    furious.rage = RAGE.max;
+
+    expect(derive(furious).composureDrain).toBeGreaterThan(derive(calm).composureDrain);
+  });
+
+  it('does not decay while the player is away', () => {
+    // A man left on hold stews. This also keeps the boil-over reachable for a
+    // low-attention player, who otherwise never saw the payoff at all.
+    const p = freshState();
+    p.rage = 50;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    s.t.idle = true;
+    s.t.sinceStall = 999;
+    for (let i = 0; i < Math.ceil(30 / DT); i++) tick(s, DT);
+    expect(p.rage).toBeGreaterThanOrEqual(50);
+  });
+
+  it('mostly carries across a redial', () => {
+    // Zeroing it silently suppressed the whole mechanic for frequent redialers.
+    const p = freshState();
+    p.rage = 80;
+    p.holdTime = 5_000_000;
+    p.holdTimeLifetime = 5_000_000;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    redial(s);
+    expect(p.rage).toBeCloseTo(80 * RAGE.carriedAcrossRedial, 5);
+  });
+
+  it('never exceeds its maximum', () => {
+    const p = freshState();
+    p.holdTimeCareer = 50_000_000;
+    p.persona = 'deborah';
+    p.rage = RAGE.max - 0.01;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+    for (let i = 0; i < 50; i++) stall(s, 1000 + i * 200);
+    expect(p.rage).toBeLessThanOrEqual(RAGE.max);
+  });
+});
+
 describe('opportunity events', () => {
   it('a window opens, expires, and costs nothing when missed', () => {
     const p = freshState();
@@ -532,6 +720,47 @@ describe('opportunity events', () => {
     for (let i = 0; i < 100; i++) tick(s, DT);
     expect(s.t.event).toBeNull();
     expect(s.t.eventsMissed).toBe(0);
+  });
+});
+
+describe('upgrade labels tell the truth', () => {
+  /**
+   * Five upgrades shipped claiming multipliers their code did not apply (The Landline said
+   * x2 and granted x1.5), and one - u.sympathetic - advertised "Rapport gain x2" with no
+   * such field existing at all. The balance simulator reads the FIELDS and never the
+   * prose, so no numeric test could ever have caught it; a player reading a label against
+   * a counter did.
+   *
+   * This parses the human-readable effect string and asserts every factor it names is
+   * actually applied somewhere in the definition.
+   */
+  it('every factor named in an effect string is applied by its fields', () => {
+    const offenders: string[] = [];
+    for (const u of UPGRADES) {
+      const claimed = [...u.effect.matchAll(/[×x]\s*(\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]));
+      if (claimed.length === 0) continue;
+      const applied: number[] = [];
+      if (u.globalMultiplier) applied.push(u.globalMultiplier);
+      if (u.stallMultiplier) applied.push(u.stallMultiplier);
+      if (u.rapportMultiplier) applied.push(u.rapportMultiplier);
+      for (const v of Object.values(u.generatorMultipliers ?? {})) {
+        if (typeof v === 'number') applied.push(v);
+      }
+      for (const c of claimed) {
+        if (!applied.includes(c)) {
+          offenders.push(`${u.id}: effect claims x${c}, fields apply [${applied.join(', ')}]`);
+        }
+      }
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
+  });
+
+  it('a stated percentage drain reduction matches its multiplier', () => {
+    for (const u of UPGRADES) {
+      const m = u.effect.match(/drain\s*[-−]\s*(\d+)%/);
+      if (!m || !u.composureDrainMultiplier) continue;
+      expect(u.composureDrainMultiplier).toBeCloseTo(1 - Number(m[1]) / 100, 5);
+    }
   });
 });
 
