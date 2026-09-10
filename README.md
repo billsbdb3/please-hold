@@ -1,83 +1,169 @@
 # PLEASE HOLD
 
-An incremental game about being on hold, losing your mind, and accidentally ending the universe.
+An incremental game about wasting a scammer's time, and then his entire operation.
 
-## The Premise
+You are the one making the call. You are pretending to be someone who does not know
+what a browser is, because the longer he believes that, the longer he is not talking
+to somebody's grandmother.
 
-You need to dispute a charge on your statement. It's $1.47. It's the principle of the thing.
+Then it stops being about the phone call.
 
-You call Meridian Solutions Inc. You are placed on hold.
+---
 
-What follows is a journey across three phases of escalating absurdity — from clicking to survive, to raging at bureaucracy, to managing geological-scale entropy — all while the hold music plays and the dust accumulates.
+## Status
 
-## How to Play
+**Phase 1 — THE MARK: playable and complete.** ~100 minutes for an engaged player,
+measured rather than guessed.
 
-Open `index.html` in a browser. No build step, no dependencies, no server required.
+The loop: stall the caller to bank Hold Time, buy tactics that waste his time
+passively, catch opportunity windows when they open, and — once a call has run deep
+enough — **hang up and call back**. A redial costs you the call and pays you Notes,
+which buy permanent entries in a dossier that makes every future call shorter. Which
+is, more or less, the actual job.
 
-## Game Structure
+Phases 2 and 3 are designed but not built. See `docs/DESIGN.md`.
 
-**Phase 1: The Call** (~90-120 minutes)
-- Click [ ENDURE ] to generate Patience
-- Manage your Will to Live (it drains — the hold music is getting to you)
-- Buy Coping Mechanisms (generators) for passive Patience income
-- Purchase upgrades that multiply your generators
-- Advance through a 150-position queue toward the front of the line
-- Watch as dust particles accumulate and time perception decays
-- In-game time reaches ~10 years by Phase 1 end
-- 17 upgrades + 11 dust collectors to discover
+> The previous version of this game (a corporate hold-music idle game) is preserved
+> under `legacy/` for reference. Its saves are deliberately discarded rather than
+> migrated — its upgrade multipliers were corrupt by construction, and importing
+> them would import the corruption. See `docs/DESIGN.md` §1.
 
-**Phase 2: The Escalation** (coming soon)
-- Someone answers. They want to talk about your car's extended warranty.
-- Rage becomes a resource. Composure replaces Will to Live.
-- New mechanics. New absurdity. Dust goes global.
-
-**Phase 3: The Geological** (coming soon)
-- You are beyond clicking. You are a system now.
-- Resource allocation strategy. Balance competing forces.
-- Dust reaches cosmic scale. Time loses meaning.
-- The $1.47 gets resolved. Eventually.
-
-## Technical Details
-
-Vanilla JavaScript. No frameworks. No build tools. Just open the HTML file.
+## Running it
 
 ```
-please-hold/
-├── index.html          — shell, layout
-├── css/
-│   ├── main.css        — base styles
-│   ├── phase1.css      — phase 1 specific
-│   ├── phase2.css      — phase 2 specific
-│   └── phase3.css      — phase 3 specific
-├── js/
-│   ├── main.js         — game loop, state, coordination
-│   ├── phase1.js       — generators, upgrades, queue
-│   ├── phase2.js       — (placeholder)
-│   ├── phase3.js       — (placeholder)
-│   ├── dust.js         — dust system (collectors, accumulation, time factor)
-│   ├── ui.js           — DOM utilities, overlays, modals
-│   ├── flavor.js       — all flavor text pools
-│   ├── save.js         — localStorage auto-save
-│   └── numbers.js      — big number + dust unit formatting
-├── tools/
-│   └── simulate.js     — Node.js balance simulator
-└── README.md
+npm install
+npm run dev
 ```
 
-## Balance Simulator
-
-Tune game balance without manual playtesting:
+Then open the URL it prints. There is no server, no account, and no analytics. The
+save lives in your own browser's localStorage and nowhere else.
 
 ```
-node tools/simulate.js --player=active    # ~98 min, matches real player
-node tools/simulate.js --player=casual    # ~101 min
-node tools/simulate.js --player=idle      # cannot complete (by design)
+npm run build      # typecheck, then production bundle (~20 kB gzipped)
+npm run check      # svelte-check, strict TypeScript
+npm test           # 47 tests
+npm run sim        # headless balance simulation
 ```
 
-## Save System
+## The balance simulator
 
-Game auto-saves to localStorage every 30 seconds. Close the tab and come back later.
+Balance is engineered, not felt out. The simulator imports the *real* balance data
+and calls the *real* tick function, so it cannot drift from the game the way the
+previous version's two simulators both did.
 
-## Credits
+```
+npm run sim
+npm run sim -- --curve --archetype=active    # growth curve, minute by minute
+npm run sim -- --archetype=optimal --verbose # milestone-by-milestone timings
+```
 
-Built with dry humor and excessive research into incremental game design.
+Current measurements:
+
+| Archetype | Wall-clock | At the keyboard | First redial | Dossier | Longest gap |
+|---|---|---|---|---|---|
+| optimal | 54 min | 54 min | 3.7 min | 13/13 | 0.3 min |
+| active | 100 min | 99 min | 5.9 min | 12/13 | 0.6 min |
+| casual | 249 min | 173 min | 16.1 min | 12/13 | 8.5 min |
+| idle | 515 min | 108 min | 96.0 min | 9/13 | 40.0 min |
+
+Two duration columns, because they need different fixes: a casual player is away 40% of
+the time, so wall-clock overstates how long they actually spent playing.
+
+"Longest gap" is the dead-time detector: the longest stretch with nothing affordable
+to buy. An earlier build of this phase measured 35 minutes of play followed by an hour
+of flat curve, which is the most common way an incremental dies. It also reports any
+generator tier no archetype ever buys, and three tiers were moved out of Phase 1 on
+that evidence.
+
+`npm test` fails the build if the active archetype's duration leaves its target
+window. This is deliberate: the previous version was hand-tuned across seven
+revisions with no automated check, and its documentation ended up disagreeing with
+its code in 34 of 40 parameters.
+
+## Deploying
+
+The site is **built**, not served from the branch:
+`.github/workflows/deploy.yml` typechecks, runs the tests, builds, and publishes to
+Pages on every push to `master`. A failing test blocks the deploy, and that includes
+balance regressions — if a phase's measured duration leaves its target window, the site
+does not update.
+
+> [!IMPORTANT]
+> **One manual step, once.** This repo used to serve a no-build static game straight
+> from `master`/root. The root `index.html` is now a Vite entry that references
+> `/src/main.ts`, which only exists in dev — so if Pages stays on "Deploy from a
+> branch" the live site becomes a blank screen the moment this merges.
+>
+> Set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**.
+> A workflow cannot change that setting itself.
+
+Reproduce the exact production build locally, subpath and all:
+
+```
+npm run build:pages     # BASE_PATH=/please-hold/
+npm run preview:pages    # serves http://127.0.0.1:4173/please-hold/
+```
+
+That subpath is the thing worth testing. `base` must match the repo name or every asset
+404s in production while working perfectly in dev, which is the most common and most
+silent Pages failure there is.
+
+Existing players start fresh: the old game stored its save under `pleaseHold_save` and
+this one uses `pleasehold.save.*`, so a v7 save is never read at all. (The v1 branch in
+the migration chain is belt-and-braces for anything that does turn up wearing the new
+key.) This is the intended outcome either way — the old saves carried corrupt multipliers
+by construction, so importing them would import the corruption.
+
+## Architecture
+
+```
+src/
+  engine/
+    loop.ts      fixed-timestep loop, decoupled from rendering
+    types.ts     state shape — and the rule that keeps it correct
+    state.ts     the initial fact set
+    derive.ts    facts -> conclusions. Pure. Called every tick.
+    sim.ts       the simulation and the player actions
+    save.ts      versioned envelope, migration chain, A/B slots
+    numbers.ts   formatting, including notation-as-difficulty-signal
+    log.ts       the transcript, which is also the narration
+  data/
+    balance.ts   every tunable number: tiers, milestones, redial, dossier, events
+    upgrades.ts  the in-call upgrade graph (30 entries, gated 3 different ways)
+  store.svelte.ts  the one-way bridge from simulation to UI
+  App.svelte       the console
+tools/
+  simulate.ts   headless balance simulator
+tests/          save round-trip and balance regression gates
+docs/DESIGN.md  the design document. Start here.
+```
+
+**Two currencies that look alike and are not:** `holdTimeLifetime` is *this call* and
+is wiped by a redial; `holdTimeCareer` never resets. Tier unlocks and upgrade gates
+read the career total (discovery is permanent — you do not re-learn that your nephew
+exists), while affordability is paid from the current call. Getting this backwards made
+narrative milestones unreachable and stranded three generator tiers as dead content.
+
+**The one rule worth knowing before editing anything:** persisted state contains
+only *facts* — what you own, what you bought, how long it has been. Every multiplier
+is derived from those facts on every tick and is never stored. The previous version
+persisted its multipliers *and* re-applied them on load, so every reload doubled all
+twelve numeric upgrades until the save reached `Infinity` and then `NaN`. There is a
+test that fails if anyone reintroduces it.
+
+## Tech
+
+TypeScript, Svelte 5 (runes), Vite. No backend. Fine-grained reactivity because a
+20 Hz tick touching hundreds of values has to patch individual text nodes rather
+than re-render component trees.
+
+Accessibility: every flicker, scanline and particle is gated behind
+`prefers-reduced-motion`, the primary action is keyboard-operable, and phosphor text
+is held above WCAG AA on its panel background.
+
+## Content note
+
+The game is fiction. It contains no operational instructions for compromising
+systems, and the research behind it was scoped to exclude them. "You gain access" is
+a narrative state and a number. The domain research is journalistic — how these
+operations are structured, how the money moves, and what actually shuts one down.
