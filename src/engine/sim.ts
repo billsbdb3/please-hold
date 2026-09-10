@@ -21,12 +21,21 @@ import {
 import { GENERATOR_IDS } from './state';
 import { UPGRADES_BY_ID, isAvailable, UPGRADES } from '../data/upgrades';
 import { pushLog } from './log';
+import { tickPhase2 } from './phase2';
 
 /** Advance the whole game by `dt` seconds. Mutates in place, deliberately. */
 export function tick(s: GameState, dt: number): void {
   const p = s.p;
 
   p.elapsed += dt;
+
+  // Phase 2 REPLACES phase 1 rather than extending it. Stalling, composure, rage and the
+  // whole hold-time economy stop existing here - see docs/DESIGN.md section 3.
+  if (p.phase === 2) {
+    tickPhase2(s, dt);
+    return;
+  }
+
   s.t.sinceStall += dt;
 
   // Idle: the player has stopped interacting. Generators keep producing — an

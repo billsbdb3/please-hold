@@ -98,6 +98,23 @@ const MIGRATIONS: Record<number, Migration> = {
     version: 5,
     redialNotesGranted: typeof data.notesLifetime === 'number' ? data.notesLifetime : 0,
   }),
+
+  /**
+   * v5 -> v6: Phase 2 arrives. A v5 save is a Phase 1 game, so every Phase 2 field starts
+   * empty; the roster it already holds is what Phase 2 will consume.
+   */
+  5: (data) => ({
+    ...data,
+    version: 6,
+    attention: { cctv: 0, recordings: 0, switchboard: 0, crm: 0, whatsapp: 0, ledger: 0 },
+    streams: [],
+    intelByKind: { people: 0, structure: 0, money: 0, evidence: 0 },
+    identified: [],
+    tradecraft: [],
+    attentionBought: 0,
+    phase2Elapsed: 0,
+    burns: 0,
+  }),
 };
 
 function migrate(raw: Record<string, unknown>): Persisted | null {
@@ -132,6 +149,9 @@ function migrate(raw: Record<string, unknown>): Persisted | null {
   if (!Array.isArray(merged.roster)) merged.roster = [];
   if (!Array.isArray(merged.beatsSeen)) merged.beatsSeen = [];
   if (!Array.isArray(merged.dossier)) merged.dossier = [];
+  if (!Array.isArray(merged.streams)) merged.streams = [];
+  if (!Array.isArray(merged.identified)) merged.identified = [];
+  if (!Array.isArray(merged.tradecraft)) merged.tradecraft = [];
 
   return sanitise(merged);
 }
@@ -152,6 +172,7 @@ function sanitise(p: Persisted): Persisted {
     'elapsed', 'activeElapsed',
     'notes', 'notesLifetime', 'redials', 'bestCallLifetime',
     'rage', 'boilOvers', 'redialNotesGranted',
+    'attentionBought', 'phase2Elapsed', 'burns',
   ];
   const bag = p as unknown as Record<string, unknown>;
   for (const k of numericKeys) {
