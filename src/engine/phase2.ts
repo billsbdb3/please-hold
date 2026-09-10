@@ -22,6 +22,7 @@ import type { GameState, StreamId, IntelKind } from './types';
 import {
   STREAMS, STREAM_BY_ID, ATTENTION, HEAT, COVERAGE, IDENTIFY,
   TRADECRAFT, TRADECRAFT_BY_ID, INTEL_KINDS, PHASE2_MILESTONES,
+  INTEL_KIND_LABEL,
 } from '../data/phase2';
 import { pushLog } from './log';
 
@@ -46,6 +47,14 @@ export interface Phase2Derived {
   identifiedFraction: number;
   /** Overall progress: the WORST of the five requirements. */
   progress: number;
+  /**
+   * Which requirement is currently that worst one, by name.
+   *
+   * A minimum is the right gate and the wrong readout on its own. A player sitting at 0% for
+   * twenty-four minutes had no way to learn it was money holding him, still less that money
+   * had no source he could yet afford. A gate should say what it is waiting for.
+   */
+  bindingLabel: string;
   /** Cost of the next attention point, or null at the cap. */
   nextAttentionCost: number | null;
   /** Cost of identifying the next person. */
@@ -115,6 +124,14 @@ export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId
   }
   const identifiedFraction = Math.min(1, p.corroborated.length / COVERAGE.corroborated);
 
+  // The weakest requirement, by name, so the UI can always say what it is waiting for.
+  const parts: [string, number][] = [
+    ...INTEL_KINDS.map((k) => [INTEL_KIND_LABEL[k], coverage[k]] as [string, number]),
+    ['corroboration', identifiedFraction],
+  ];
+  parts.sort((a, b) => a[1] - b[1]);
+  const bindingLabel = parts[0][0].toLowerCase();
+
   return {
     pool,
     heatYieldMultiplier,
@@ -126,6 +143,7 @@ export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId
     identifiedFraction,
     // The worst requirement, so nothing can be carried by a single stream.
     progress: Math.min(identifiedFraction, ...INTEL_KINDS.map((k) => coverage[k])),
+    bindingLabel,
     nextAttentionCost:
       ATTENTION.base + p.attentionBought >= ATTENTION.max
         ? null

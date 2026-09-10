@@ -84,6 +84,9 @@
     <div class="stat grow">
       <span class="stat-label">
         Coverage {fmtPct(d.progress)}
+        <!-- Always name the requirement holding it. Coverage is a minimum, so the headline on
+             its own can read 0% while three of the five are going well. -->
+        <span class="binding">· held by {d.bindingLabel}</span>
         {#if p.burns > 0}<span class="dim">· {p.burns} burns</span>{/if}
       </span>
       <div class="meter">
@@ -227,7 +230,7 @@
         <div class="panel-title"><span>What You Have</span></div>
         <div class="pad">
           {#each INTEL_KINDS as k (k)}
-            <div class="meter-row">
+            <div class="meter-row" class:binding-row={d.bindingLabel === INTEL_KIND_LABEL[k].toLowerCase()}>
               <span class="meter-label">
                 {INTEL_KIND_LABEL[k]}
                 <span class="dim num">{fmt(p.intelByKind[k])}/{fmt(COVERAGE.need[k])}</span>
@@ -241,8 +244,22 @@
               </div>
             </div>
           {/each}
+          <div class="meter-row" class:binding-row={d.bindingLabel === 'corroboration'}>
+            <span class="meter-label">
+              Corroboration
+              <span class="dim num">{p.corroborated.length}/{COVERAGE.corroborated}</span>
+            </span>
+            <div class="meter">
+              <div
+                class="meter-fill"
+                class:done={d.identifiedFraction >= 1}
+                style="width: {d.identifiedFraction * 100}%"
+              ></div>
+            </div>
+          </div>
           <p class="hint">
-            Coverage is the worst of these, not the total. One good stream will not finish it.
+            Coverage is the worst of these five, not the total. One good stream will not finish
+            it, and the one holding you back is marked.
           </p>
         </div>
       </div>
@@ -452,6 +469,18 @@
     flex-direction: column;
   }
   .meter-fill.done { background: var(--green); }
+
+  .binding { color: var(--amber); }
+  /* The requirement actually holding coverage back, so the panel answers 'what now'. */
+  .binding-row .meter-label { color: var(--amber); }
+  .binding-row .meter-fill { background: var(--amber); }
+  .binding-row::after {
+    content: '←';
+    color: var(--amber);
+    font-size: 10px;
+    align-self: center;
+  }
+  .binding-row { grid-template-columns: 1fr 1.1fr auto; }
 
   .roster-list { max-height: none; }
   .roster-row {

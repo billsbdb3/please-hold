@@ -62,6 +62,18 @@ export interface P2Result {
   /** Which requirement finished last — the one setting the phase's length. */
   binding: string;
   peakHeat: number;
+  /**
+   * Minutes during which overall coverage read exactly zero.
+   *
+   * The metric that was missing. Coverage is a MINIMUM over five requirements, so a single
+   * kind with no available source pins the headline at 0% however well the rest is going -
+   * and money's only real source was a 22,000 unlock, so it did. Every run reported
+   * 'binding: money' and I read that as a balance detail; what it actually meant was that a
+   * player could bank three kinds for half an hour and be told he had achieved nothing.
+   */
+  minutesAtZero: number;
+  /** Minutes before the first coverage requirement produced anything at all, per kind. */
+  firstProgressAt: Record<IntelKind, number>;
 }
 
 const MAX_MINUTES = 600;
@@ -97,6 +109,8 @@ export function runPhase2(archetype: P2Archetype, verbose = false): P2Result {
   let ms = 0;
   let sinceReview = 0;
   let peakHeat = 0;
+  let minutesAtZero = 0;
+  const firstProgressAt: Record<string, number> = {};
   let completed = false;
   let minutes = Infinity;
   const metAt: Record<string, number> = {};
@@ -119,6 +133,12 @@ export function runPhase2(archetype: P2Archetype, verbose = false): P2Result {
 
     // Record when each requirement is first satisfied.
     const d = s.t.p2 ?? deriveP2(p, s.t.burnedUntil);
+
+    // How long the player is shown a flat zero, and when each kind first moves.
+    if (d.progress <= 0) minutesAtZero += DT / 60;
+    for (const k of INTEL_KINDS) {
+      if (p.intelByKind[k] > 0 && firstProgressAt[k] === undefined) firstProgressAt[k] = ms / 60000;
+    }
     for (const k of INTEL_KINDS) {
       if (d.coverage[k] >= 1 && metAt[k] === undefined) metAt[k] = ms / 60000;
     }
@@ -146,6 +166,8 @@ export function runPhase2(archetype: P2Archetype, verbose = false): P2Result {
     coverage: d.coverage,
     binding: entries.length === 5 ? entries.sort((a, b) => b[1] - a[1])[0][0] : 'incomplete',
     peakHeat,
+    minutesAtZero,
+    firstProgressAt: firstProgressAt as Record<IntelKind, number>,
   };
 }
 
@@ -268,13 +290,14 @@ function main(): void {
     return runPhase2(a, verbose);
   });
 
-  console.log('| Archetype | Done | Binding | Burns | Peak heat | Streams | Tradecraft | Attention | Identified |');
-  console.log('|---|---|---|---|---|---|---|---|---|');
+  console.log('| Archetype | Done | Binding | Burns | Peak heat | Streams | Tradecraft | Attention | Corroborated | 0% for | money from |');
+  console.log('|---|---|---|---|---|---|---|---|---|---|');
   for (const r of results) {
     console.log(
       `| ${r.archetype} | ${r.completed ? `${r.minutes.toFixed(0)} min` : 'never'} | ${r.binding} | ` +
       `${r.burns} | ${r.peakHeat.toFixed(0)} | ${r.streams}/${STREAMS.length} | ` +
-      `${r.tradecraft}/8 | ${r.attentionPool} | ${r.corroborated}/${COVERAGE.corroborated} |`,
+      `${r.tradecraft}/8 | ${r.attentionPool} | ${r.corroborated}/${COVERAGE.corroborated} | `
+      + `${r.minutesAtZero.toFixed(0)}m | ${(r.firstProgressAt.money ?? -1).toFixed(1)}m |`,
     );
   }
 

@@ -26,6 +26,7 @@ import { DT } from '../src/engine/loop';
 import {
   STREAMS, STREAM_BY_ID, HEAT, COVERAGE, ATTENTION, INTEL_KINDS,
   PHASE2_TARGET_MINUTES, TRADECRAFT,
+  IDENTIFY,
 } from '../src/data/phase2';
 import { runPhase2 } from '../tools/simulate-phase2';
 import type { GameState } from '../src/engine/types';
@@ -268,5 +269,105 @@ describe('phase 2 pacing', () => {
 
   it('is deterministic', () => {
     expect(runPhase2('active').minutes).toBeCloseTo(runPhase2('active').minutes, 10);
+  });
+});
+
+/**
+ * Every coverage requirement must be PRODUCIBLE EARLY.
+ *
+ * Money's only real source was a 22,000 unlock, so it began roughly 35 minutes after the
+ * other three kinds. Because coverage is a minimum, that pinned the headline at 0% for the
+ * whole of that stretch: a player 24 minutes in had banked people, structure and evidence and
+ * was told, accurately, that he had achieved nothing. He described it as slow as balls, which
+ * was the correct review.
+ *
+ * The simulator had been reporting `binding: money` in every single run since the first one.
+ * It was the right signal and I read it as a tuning detail rather than a supply gap, so these
+ * assert the structural property directly instead of relying on me to interpret a table.
+ */
+describe('every coverage requirement has an early source', () => {
+  it('gives each intel kind a source among the cheapest streams', () => {
+    const cheap = STREAMS.filter((s) => s.unlockCost <= 1_500);
+    for (const k of INTEL_KINDS) {
+      const sources = cheap.filter((s) => s.yields[k]);
+      expect(sources.length, `no cheap source of ${k}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('never leaves a kind gated behind a late unlock', () => {
+    // The specific shape of the bug: a kind whose cheapest source costs more than an early
+    // player can plausibly bank.
+    for (const k of INTEL_KINDS) {
+      const cheapest = Math.min(...STREAMS.filter((s) => s.yields[k]).map((s) => s.unlockCost));
+      expect(cheapest, `${k} is gated behind a ${cheapest} unlock`).toBeLessThanOrEqual(1_500);
+    }
+  });
+
+  it('does not show a flat zero for long', () => {
+    const r = runPhase2('active');
+    // Some zero is fine — the first intel takes a moment to arrive. Half an hour is not.
+    expect(r.minutesAtZero).toBeLessThan(8);
+  });
+
+  it('starts every kind moving within the first few minutes', () => {
+    const r = runPhase2('active');
+    for (const k of INTEL_KINDS) {
+      expect(r.firstProgressAt[k], `${k} produced nothing early`).toBeLessThan(10);
+    }
+  });
+
+  it('names the requirement that is holding coverage back', () => {
+    const s = atPhase2();
+    for (const k of INTEL_KINDS) s.p.intelByKind[k] = COVERAGE.need[k];
+    s.p.intelByKind.money = 0;
+    s.p.corroborated = s.p.roster.slice(0, COVERAGE.corroborated).map((r) => r.id);
+    expect(deriveP2(s.p, {}).bindingLabel).toBe('money');
+  });
+});
+
+/**
+ * An upgrade must be buyable while the thing it modifies is still happening.
+ *
+ * Cross-Referencing discounts corroboration by 30% and cost 2,200. That is fine arithmetic -
+ * bought at once it saves 4,322 - but corroborating costs 220 x 1.28^n, so no single
+ * corroboration exceeds 2,200 until the ELEVENTH of twelve. Buying the cheapest thing on
+ * screen is the obvious play, so a playtester drip-spent through the entire roster and
+ * finished corroborating before he could afford the discount. The upgrade was never
+ * unreachable; it was permanently out-competed by the very thing it discounts.
+ *
+ * This is the third upgrade in this project to promise something it could not deliver, after
+ * two in Phase 1 priced above their own gate. So the property gets a test rather than another
+ * round of me checking by eye.
+ */
+describe('cost-reduction upgrades can actually repay themselves', () => {
+  const corrCost = (n: number) =>
+    Math.floor(IDENTIFY.costBase * Math.pow(IDENTIFY.costGrowth, n));
+
+  function remainingSpend(from: number): number {
+    let t = 0;
+    for (let i = from; i < COVERAGE.corroborated; i++) t += corrCost(i);
+    return t;
+  }
+
+  it('Cross-Referencing repays its cost from every purchase point', () => {
+    const xref = TRADECRAFT.find((t) => t.id === 't.notes')!;
+    for (let n = 0; n < COVERAGE.corroborated; n++) {
+      const saved = remainingSpend(n) * (xref.identifyDiscount ?? 0);
+      expect(saved, `buying it with ${COVERAGE.corroborated - n} slips left loses intel`)
+        .toBeGreaterThan(xref.cost);
+    }
+  });
+
+  it('prices it below a mid-run corroboration, so it can be banked while most remain', () => {
+    // The affordability half of the trap: if it costs more than the corroborations competing
+    // with it, a player spending as he goes never accumulates it.
+    const xref = TRADECRAFT.find((t) => t.id === 't.notes')!;
+    const half = Math.floor(COVERAGE.corroborated / 2);
+    expect(xref.cost).toBeLessThan(corrCost(half + 1));
+  });
+
+  it('leaves the total corroboration bill large enough for a discount to matter', () => {
+    const xref = TRADECRAFT.find((t) => t.id === 't.notes')!;
+    expect(remainingSpend(0) * (xref.identifyDiscount ?? 0)).toBeGreaterThan(xref.cost * 2);
   });
 });
