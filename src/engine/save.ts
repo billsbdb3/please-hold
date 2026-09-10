@@ -109,7 +109,7 @@ const MIGRATIONS: Record<number, Migration> = {
     attention: { cctv: 0, recordings: 0, switchboard: 0, crm: 0, whatsapp: 0, ledger: 0 },
     streams: [],
     intelByKind: { people: 0, structure: 0, money: 0, evidence: 0 },
-    identified: [],
+    corroborated: [],
     tradecraft: [],
     attentionBought: 0,
     phase2Elapsed: 0,
@@ -150,7 +150,7 @@ function migrate(raw: Record<string, unknown>): Persisted | null {
   if (!Array.isArray(merged.beatsSeen)) merged.beatsSeen = [];
   if (!Array.isArray(merged.dossier)) merged.dossier = [];
   if (!Array.isArray(merged.streams)) merged.streams = [];
-  if (!Array.isArray(merged.identified)) merged.identified = [];
+  if (!Array.isArray(merged.corroborated)) merged.corroborated = [];
   if (!Array.isArray(merged.tradecraft)) merged.tradecraft = [];
 
   return sanitise(merged);

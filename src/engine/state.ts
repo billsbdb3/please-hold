@@ -44,7 +44,7 @@ export function freshState(): Persisted {
     attention: { cctv: 0, recordings: 0, switchboard: 0, crm: 0, whatsapp: 0, ledger: 0 },
     streams: [],
     intelByKind: { people: 0, structure: 0, money: 0, evidence: 0 },
-    identified: [],
+    corroborated: [],
     tradecraft: [],
     attentionBought: 0,
     phase2Elapsed: 0,

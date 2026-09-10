@@ -42,14 +42,14 @@ export interface Phase2Derived {
   heatRate: number;
   /** Coverage per kind, 0..1, and the overall minimum. */
   coverage: Record<IntelKind, number>;
-  /** Fraction of roster entries identified, 0..1. */
+  /** Fraction of roster entries corroborated, 0..1. */
   identifiedFraction: number;
   /** Overall progress: the WORST of the five requirements. */
   progress: number;
   /** Cost of the next attention point, or null at the cap. */
   nextAttentionCost: number | null;
   /** Cost of identifying the next person. */
-  identifyCost: number;
+  corroborateCost: number;
   /** Streams currently dark because they were burned. */
   burned: StreamId[];
 }
@@ -113,7 +113,7 @@ export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId
   for (const kind of INTEL_KINDS) {
     coverage[kind] = Math.min(1, p.intelByKind[kind] / COVERAGE.need[kind]);
   }
-  const identifiedFraction = Math.min(1, p.identified.length / COVERAGE.identified);
+  const identifiedFraction = Math.min(1, p.corroborated.length / COVERAGE.corroborated);
 
   return {
     pool,
@@ -130,8 +130,8 @@ export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId
       ATTENTION.base + p.attentionBought >= ATTENTION.max
         ? null
         : Math.floor(ATTENTION.costBase * Math.pow(ATTENTION.costGrowth, p.attentionBought)),
-    identifyCost: Math.floor(
-      IDENTIFY.costBase * Math.pow(IDENTIFY.costGrowth, p.identified.length) * (1 - m.identifyDiscount),
+    corroborateCost: Math.floor(
+      IDENTIFY.costBase * Math.pow(IDENTIFY.costGrowth, p.corroborated.length) * (1 - m.identifyDiscount),
     ),
     burned,
   };
@@ -297,23 +297,23 @@ export function availableTradecraft(s: GameState) {
  * Put a real name to someone on the roster.
  *
  * This is where Phase 1's boil-overs pay off: the roster was built by making him lose his
- * temper, and now each entry is a person to be identified. Coverage requires ten, so the
+ * temper, and now each entry is a person to be corroborated. Coverage requires ten, so the
  * work done in Phase 1 is load-bearing here rather than decorative.
  */
-export function identifyNext(s: GameState): boolean {
+export function corroborateNext(s: GameState): boolean {
   const p = s.p;
   const d = s.t.p2 ?? deriveP2(p, s.t.burnedUntil);
-  const target = p.roster.find((r) => !p.identified.includes(r.id));
+  const target = p.roster.find((r) => !p.corroborated.includes(r.id));
   if (!target) return false;
-  if (p.intel < d.identifyCost) return false;
+  if (p.intel < d.corroborateCost) return false;
 
-  p.intel -= d.identifyCost;
-  p.identified.push(target.id);
+  p.intel -= d.corroborateCost;
+  p.corroborated.push(target.id);
   // Spend from the kinds that identification draws on, so it competes with coverage.
   for (const kind of IDENTIFY.kinds) {
-    p.intelByKind[kind] = Math.max(0, p.intelByKind[kind] - d.identifyCost / IDENTIFY.kinds.length);
+    p.intelByKind[kind] = Math.max(0, p.intelByKind[kind] - d.corroborateCost / IDENTIFY.kinds.length);
   }
-  pushLog(s, `${target.handle} — identified.`, 'intel');
+  pushLog(s, `${target.handle} — corroborated.`, 'intel');
   s.t.p2 = deriveP2(p, s.t.burnedUntil);
   return true;
 }

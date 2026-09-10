@@ -19,7 +19,7 @@ import { derive } from '../src/engine/derive';
 import { tick } from '../src/engine/sim';
 import {
   enterPhase2, assignAttention, clearAttention, unlockStream,
-  buyAttention, buyTradecraft, availableTradecraft, identifyNext, deriveP2,
+  buyAttention, buyTradecraft, availableTradecraft, corroborateNext, deriveP2,
 } from '../src/engine/phase2';
 import { DT } from '../src/engine/loop';
 import {
@@ -54,7 +54,7 @@ export interface P2Result {
   completed: boolean;
   minutes: number;
   burns: number;
-  identified: number;
+  corroborated: number;
   streams: number;
   tradecraft: number;
   attentionPool: number;
@@ -122,7 +122,7 @@ export function runPhase2(archetype: P2Archetype, verbose = false): P2Result {
     for (const k of INTEL_KINDS) {
       if (d.coverage[k] >= 1 && metAt[k] === undefined) metAt[k] = ms / 60000;
     }
-    if (d.identifiedFraction >= 1 && metAt.identified === undefined) metAt.identified = ms / 60000;
+    if (d.identifiedFraction >= 1 && metAt.corroborated === undefined) metAt.corroborated = ms / 60000;
 
     if (!completed && d.progress >= 1) {
       completed = true;
@@ -139,7 +139,7 @@ export function runPhase2(archetype: P2Archetype, verbose = false): P2Result {
     completed,
     minutes,
     burns: p.burns,
-    identified: p.identified.length,
+    corroborated: p.corroborated.length,
     streams: p.streams.length,
     tradecraft: p.tradecraft.length,
     attentionPool: d.pool,
@@ -179,7 +179,7 @@ function spend(s: GameState, policy: P2Policy): void {
   // Identify people whenever affordable: it is a hard coverage requirement, so deferring it
   // only moves the bottleneck later.
   for (let guard = 0; guard < 5; guard++) {
-    if (!identifyNext(s)) break;
+    if (!corroborateNext(s)) break;
   }
 }
 
@@ -260,7 +260,7 @@ function main(): void {
   console.log(`Target for "active": ${PHASE2_TARGET_MINUTES.min}–${PHASE2_TARGET_MINUTES.max} min`);
   console.log(
     `Coverage needs: ${INTEL_KINDS.map((k) => `${k} ${fmt(COVERAGE.need[k])}`).join(' · ')} · ` +
-    `${COVERAGE.identified} identified\n`,
+    `${COVERAGE.corroborated} corroborated\n`,
   );
 
   const results = (['reckless', 'optimal', 'active', 'casual'] as P2Archetype[]).map((a) => {
@@ -274,7 +274,7 @@ function main(): void {
     console.log(
       `| ${r.archetype} | ${r.completed ? `${r.minutes.toFixed(0)} min` : 'never'} | ${r.binding} | ` +
       `${r.burns} | ${r.peakHeat.toFixed(0)} | ${r.streams}/${STREAMS.length} | ` +
-      `${r.tradecraft}/8 | ${r.attentionPool} | ${r.identified}/${COVERAGE.identified} |`,
+      `${r.tradecraft}/8 | ${r.attentionPool} | ${r.corroborated}/${COVERAGE.corroborated} |`,
     );
   }
 

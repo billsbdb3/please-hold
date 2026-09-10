@@ -12,10 +12,11 @@
    * attention at too many things — is the thing the screen is mostly made of.
    */
   import { frame, game, interacted } from './store.svelte';
+  import { snapshot } from './engine/snapshot';
   import { fmt, fmtRate, fmtPct, fmtDuration } from './engine/numbers';
   import {
     assignAttention, clearAttention, unlockStream, buyAttention,
-    buyTradecraft, availableTradecraft, identifyNext, deriveP2,
+    buyTradecraft, availableTradecraft, corroborateNext, deriveP2,
   } from './engine/phase2';
   import {
     STREAMS, HEAT, COVERAGE, INTEL_KINDS, INTEL_KIND_LABEL, TRADECRAFT,
@@ -30,15 +31,20 @@
    */
   const { onSettings }: { onSettings: () => void } = $props();
 
-  const p = $derived.by(() => { void frame.n; return game.p; });
-  const t = $derived.by(() => { void frame.n; return game.t; });
-  const d = $derived.by(() => { void frame.n; return t.p2 ?? deriveP2(game.p, game.t.burnedUntil); });
+  // Through snapshot(), never `game.p` directly — see the comment at the top of
+  // src/engine/snapshot.ts. Handing Svelte the same mutated object reference each frame
+  // freezes every bound value, which is exactly how this component shipped: a live camera
+  // wall beside an attention counter stuck on 0/3 and a rate stuck on 0/s.
+  const snap = $derived.by(() => { void frame.n; return snapshot(game); });
+  const p = $derived(snap.p);
+  const t = $derived(snap.t);
+  const d = $derived.by(() => { void frame.n; return snap.t.p2 ?? deriveP2(snap.p, snap.t.burnedUntil); });
 
   const heatPct = $derived(p.heat / HEAT.max);
   const tradecraft = $derived.by(() => { void frame.n; return availableTradecraft(game); });
   const lockedStreams = $derived(STREAMS.filter((s) => !p.streams.includes(s.id)));
   const openStreams = $derived(STREAMS.filter((s) => p.streams.includes(s.id)));
-  const unidentified = $derived(p.roster.filter((r) => !p.identified.includes(r.id)));
+  const uncorroborated = $derived(p.roster.filter((r) => !p.corroborated.includes(r.id)));
 
   /** Cameras the player is actually watching, so the wall reflects the allocation. */
   const cctvLive = $derived(
@@ -51,7 +57,9 @@
   }
 </script>
 
-<div class="p2" style="--heat: {heatPct}">
+<!-- The picture destabilises as they get suspicious. Same effect phase 1 uses for his temper,
+     driven here by the thing that threatens YOU. -->
+<div class="p2" class:glitching={heatPct > 0.55} style="--glitch: {heatPct.toFixed(2)}">
   <!-- ------------------------------------------------------------------ header -->
   <header class="statusbar panel">
     <div class="stat">
@@ -237,29 +245,34 @@
 
       <div class="panel">
         <div class="panel-title">
-          <span>The Roster</span>
-          <span class="num dim">{p.identified.length}/{COVERAGE.identified}</span>
+          <span>What He Let Slip</span>
+          <span class="num dim">{p.corroborated.length}/{COVERAGE.corroborated}</span>
         </div>
         <div class="pad">
           <p class="hint">
-            Everything here is something he let slip when he lost his temper. Putting a name to
-            each one is what turns it into a person.
+            Everything here is something he told you while he was angry. None of it is evidence
+            yet — it is only his word. Corroborating one means finding the thing he described
+            on a screen you control.
           </p>
-          {#if unidentified.length > 0}
+          {#if uncorroborated.length > 0}
             <button
               class="btn-wide"
-              onclick={() => { identifyNext(game); interacted(); }}
-              disabled={p.intel < d.identifyCost}
+              onclick={() => { corroborateNext(game); interacted(); }}
+              disabled={p.intel < d.corroborateCost}
             >
-              Identify {unidentified[0].handle} — {fmt(d.identifyCost)}
+              Corroborate the next one — {fmt(d.corroborateCost)}
             </button>
+            <p class="next-slip">{uncorroborated[0].handle}</p>
           {:else}
-            <p class="hint">Everyone you have is named. He will have to let slip somebody new.</p>
+            <p class="hint">
+              Everything he said has been checked against something you can see. He would have
+              to lose his temper again, and he is no longer on the line.
+            </p>
           {/if}
         </div>
         <div class="scroll list roster-list">
           {#each p.roster as r (r.id)}
-            <div class="roster-row" class:named={p.identified.includes(r.id)}>
+            <div class="roster-row" class:named={p.corroborated.includes(r.id)}>
               <span class="roster-handle">{r.handle}</span>
               <span class="roster-role dim">{r.role}</span>
             </div>
@@ -320,8 +333,12 @@
     gap: 2px;
     min-width: 0;
   }
-  .stat.grow { flex: 1; min-width: 150px; }
-  .heat-stat { min-width: 190px; }
+  .stat.grow {
+    flex: 0 1 240px;
+    min-width: 160px;
+    margin-left: auto;
+  }
+  .heat-stat { flex: 0 1 220px; min-width: 190px; }
   .stat-label {
     font-size: 9px;
     letter-spacing: 0.14em;
@@ -448,6 +465,14 @@
   .roster-row.named .roster-handle::before {
     content: '✓ ';
     color: var(--green);
+  }
+  /* The slip about to be checked, quoted rather than jammed into the button label - these
+     run to a dozen words and read as nonsense inside a verb. */
+  .next-slip {
+    margin: 0.4rem 0 0;
+    font-size: 11px;
+    color: var(--amber-dim);
+    font-style: italic;
   }
   .roster-role { text-transform: uppercase; font-size: 9px; letter-spacing: 0.1em; }
 

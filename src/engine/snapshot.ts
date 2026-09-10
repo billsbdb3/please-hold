@@ -61,11 +61,19 @@ export function snapshot(game: GameState): Snapshot {
       dossier: p.dossier.slice(),
       beatsSeen: p.beatsSeen.slice(),
       roster: p.roster.slice(),
+      // Phase 2's collections need the same treatment for the same reason. Phase 2 shipped
+      // with its component reading `game.p` directly and froze exactly as described above —
+      // a camera wall updating live next to an attention counter stuck on its first value.
+      attention: { ...p.attention },
+      streams: p.streams.slice(),
+      intelByKind: { ...p.intelByKind },
+      corroborated: p.corroborated.slice(),
+      tradecraft: p.tradecraft.slice(),
     },
     // Derived is rebuilt from scratch every tick, so a shallow copy is already a
     // point-in-time value; its nested records are never mutated after construction.
     d: { ...game.d },
-    t: { ...game.t, popups: game.t.popups.slice() },
+    t: { ...game.t, popups: game.t.popups.slice(), burnedUntil: { ...game.t.burnedUntil } },
     log: game.t.log.slice(),
   };
 }

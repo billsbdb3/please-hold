@@ -323,7 +323,11 @@
 {:else if p.phase === 2}
   <Phase2 onSettings={openSettings} />
 {:else}
-  <div class="console" style="--glitch: {p.heat > 0 ? 1 : 0}">
+  <div
+    class="console"
+    class:glitching={p.rage > RAGE.max * 0.55}
+    style="--glitch: {(p.rage / RAGE.max).toFixed(2)}"
+  >
     <!-- ------------------------------------------------------------ header -->
     <header class="statusbar panel">
       <div class="stat">
@@ -925,16 +929,6 @@
   }
   .col::-webkit-scrollbar { width: 8px; }
   .col::-webkit-scrollbar-thumb { background: var(--line); }
-  .panel.fill {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .pad {
-    padding: var(--pad);
-  }
   .handset-body {
     padding: var(--pad);
     display: flex;
@@ -947,44 +941,10 @@
     font-size: 12px;
     color: var(--amber-dim);
   }
-  .hint,
-  .locked {
-    font-size: 11px;
-    color: var(--amber-deep);
-    margin: 0;
-  }
-  .locked {
-    padding: var(--pad);
-  }
-
-  .meter-row {
-    display: grid;
-    grid-template-columns: 1fr 1.1fr auto;
-    gap: 0.6rem;
-    align-items: center;
-    margin-bottom: 0.5rem;
-  }
-  .meter-label {
-    font-size: 11px;
-    display: flex;
-    flex-direction: column;
-  }
   .tradeoff {
     font-size: 11px;
     color: var(--amber-dim);
     margin: -0.25rem 0 0.6rem;
-  }
-  .alarm {
-    color: var(--red);
-    font-size: 12px;
-    margin: 0.4rem 0 0;
-  }
-
-  .list {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    flex: 1;
   }
   /* Panes size to their content; the column scrolls. Fixed viewport fractions were what
      cut the dossier off at the bottom. */
@@ -995,59 +955,6 @@
   }
   .dossier-list {
     border-top: 1px solid var(--line);
-  }
-
-
-  .row {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.75rem;
-    text-align: left;
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid var(--line);
-    border-radius: 0;
-    padding: 0.6rem var(--pad);
-    align-items: flex-start;
-  }
-  .row:hover:not(:disabled) {
-    background: var(--panel-raised);
-  }
-  .row-main {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-  .row-name {
-    color: var(--amber);
-  }
-  .row-effect {
-    font-size: 11px;
-    color: var(--amber-dim);
-  }
-  .row-flavor {
-    font-size: 11px;
-    color: var(--amber-deep);
-    font-style: italic;
-  }
-  .row-side {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
-    white-space: nowrap;
-  }
-  .row-owned {
-    font-size: 15px;
-    color: var(--amber);
-  }
-  .cost {
-    font-size: 12px;
-    color: var(--amber-dim);
-  }
-  .row-out {
-    font-size: 10px;
   }
 
   .bulk {
@@ -1082,10 +989,6 @@
     color: var(--red);
   }
   .log-line.system {
-    color: var(--amber-deep);
-  }
-
-  .dim {
     color: var(--amber-deep);
   }
 
@@ -1148,13 +1051,6 @@
   .gear:hover {
     color: var(--amber);
     border-color: var(--line);
-  }
-
-  .modal-scrim {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    z-index: 100;
   }
   .settings {
     position: fixed;
@@ -1246,11 +1142,6 @@
   .row.closed .row-effect {
     text-decoration: line-through;
   }
-  .row-closed {
-    font-size: 10px;
-    color: var(--red-dim);
-    font-style: italic;
-  }
   .fork {
     font-size: 10px;
     color: var(--amber-deep);
@@ -1293,16 +1184,6 @@
     padding-left: 0.7rem;
   }
 
-  .drop-bar {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.55rem var(--pad);
-    border: 1px solid var(--red-dim);
-    background: #1a0f0d;
-    color: var(--red);
-    font-size: 12px;
-  }
-
   .btn-breath {
     margin-top: 0.6rem;
   }
@@ -1314,46 +1195,6 @@
     border: 1px solid var(--green);
     color: var(--green);
     font-size: 12px;
-  }
-
-  /* ---------------------------------------------------------- redial panel */
-
-  .btn-wide {
-    width: 100%;
-    text-align: center;
-  }
-  .btn-danger {
-    border-color: var(--red-dim);
-    color: var(--red);
-  }
-  .btn-danger:hover:not(:disabled) {
-    background: #2a1512;
-    border-color: var(--red);
-  }
-  .btn-row {
-    display: flex;
-    gap: 0.4rem;
-  }
-  .btn-row button {
-    flex: 1;
-  }
-  .warn-text {
-    font-size: 11px;
-    color: var(--amber-text);
-    margin: 0 0 0.6rem;
-  }
-  .link {
-    background: none;
-    border: none;
-    padding: 0.4rem 0 0;
-    font-size: 11px;
-    color: var(--amber-dim);
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-  .link:hover {
-    color: var(--amber);
-    background: none;
   }
 
 
@@ -1369,5 +1210,4 @@
       grid-template-columns: 1fr;
       overflow-y: auto;
     }
-  }
-</style>
+  }</style>
