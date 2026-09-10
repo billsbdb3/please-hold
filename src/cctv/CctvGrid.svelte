@@ -23,9 +23,18 @@
     intervalMs?: number;
     /** Optional subset of camera ids; defaults to all scenes. */
     only?: string[];
+    /**
+     * Minimum tile width in px. The grid fits as many columns of at least this
+     * width as the container allows, so this is effectively "how big is a monitor".
+     *
+     * It started at 200px, which packed nine tiny columns onto a desktop and read as
+     * a contact sheet rather than a wall of monitors. 420 gives three or four
+     * genuinely watchable tiles at normal desktop widths.
+     */
+    tileMin?: number;
   }
 
-  const { intervalMs = 3000, only }: Props = $props();
+  const { intervalMs = 3000, only, tileMin = 420 }: Props = $props();
 
   const cams = $derived(only ? SCENES.filter((s) => only.includes(s.id)) : SCENES);
 
@@ -48,7 +57,12 @@
   });
 </script>
 
-<div class="wall" role="group" aria-label="Surveillance monitors">
+<div
+  class="wall"
+  role="group"
+  aria-label="Surveillance monitors"
+  style="--tile-min: {tileMin}px"
+>
   {#each cams as scene (scene.id)}
     <div class="cell">
       <Cam {scene} {tick} compact />
@@ -62,10 +76,15 @@
     width: 100%;
     height: 100%;
     display: grid;
-    /* Responsive: as many ~220px columns as fit, sizing down to the container. */
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 6px;
-    padding: 6px;
+    /*
+     * As many columns of at least --tile-min as fit. The min(100%, …) is what keeps
+     * this safe on a narrow screen: without it a 420px minimum would overflow a
+     * 360px phone instead of collapsing to one column, so no media query is needed
+     * to handle small viewports.
+     */
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--tile-min, 420px)), 1fr));
+    gap: 8px;
+    padding: 8px;
     background: #050505;
     overflow: auto;
     align-content: start;
@@ -76,11 +95,5 @@
     aspect-ratio: 4 / 3;
     min-height: 0;
     background: #000;
-  }
-
-  @media (max-width: 560px) {
-    .wall {
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    }
   }
 </style>
