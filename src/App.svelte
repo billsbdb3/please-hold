@@ -29,6 +29,8 @@
   import { UPGRADES, statusOf, excludedBy } from './data/upgrades';
   import { isUnlocked, maxComposure } from './engine/derive';
   import { snapshot } from './engine/snapshot';
+  import Phase2 from './Phase2.svelte';
+  import { enterPhase2 } from './engine/phase2';
   import { audio } from './audio';
   import type { GeneratorId } from './engine/types';
 
@@ -36,6 +38,7 @@
   let bulk = $state<BulkMode>(1);
   let showSettings = $state(false);
   let confirmWipe = $state(false);
+  let confirmSkip = $state(false);
   let exportText = $state('');
   let importText = $state('');
   let importError = $state('');
@@ -160,6 +163,43 @@
     interacted();
   }
 
+  /**
+   * Cross into Phase 2. A point of no return, pressed deliberately by the player rather than
+   * triggered by a threshold — the design calls for the point of no return to be pressed.
+   */
+  function onEnterPhase2() {
+    enterPhase2(game);
+    interacted();
+  }
+
+  /**
+   * Development shortcut: cross into Phase 2 without finishing Phase 1.
+   *
+   * It exists because Phase 2 is otherwise ninety minutes away, which makes looking at it
+   * impractical while it is being built. It ADVANCES THE LIVE SAVE and cannot be undone, so
+   * it sits behind a confirm next to the export control — take a backup first if the current
+   * call matters.
+   */
+  function onSkipToPhase2() {
+    // Give the roster enough entries for Phase 2's requirements to be reachable, since those
+    // normally come from Phase 1 boil-overs.
+    while (game.p.roster.length < 12) {
+      const i = game.p.roster.length;
+      game.p.roster.push({
+        id: `dev.${i}`,
+        handle: `unnamed operator ${i + 1}`,
+        realName: null,
+        role: 'dialer',
+        recruitedByFalseAd: i % 3 === 1,
+        freed: false,
+      });
+    }
+    enterPhase2(game);
+    showSettings = false;
+    confirmSkip = false;
+    interacted();
+  }
+
   function onBreath() {
     takeBreath(game);
     interacted();
@@ -280,6 +320,8 @@
     </p>
     <button class="btn-stall" onclick={begin}>Pick up the handset</button>
   </main>
+{:else if p.phase === 2}
+  <Phase2 onSettings={openSettings} />
 {:else}
   <div class="console" style="--glitch: {p.heat > 0 ? 1 : 0}">
     <!-- ------------------------------------------------------------ header -->
@@ -678,104 +720,128 @@
             completely, which is the part you will think about later.
           </p>
           <p class="hint">
-            Phase 2 — THE MAP — is not built yet. This is where it begins: the roster you
-            have, filled in.
+            You will not be needing the handset. Everything after this happens quietly, and
+            none of it involves talking to him.
           </p>
-          <button class="btn-stall" onclick={() => (showSettings = false)}>
-            [ Stay on the line ]
+          <button class="btn-stall" onclick={onEnterPhase2}>
+            [ Hang up for the last time ]
           </button>
         </div>
       </div>
     {/if}
 
-    {#if showSettings}
-      <div
-        class="modal-scrim"
-        onclick={() => (showSettings = false)}
-        onkeydown={(e) => { if (e.key === 'Escape') showSettings = false; }}
-        role="button"
-        tabindex="-1"
-        aria-label="Close settings"
-      ></div>
-      <div class="settings panel" role="dialog" aria-label="Settings">
-        <div class="panel-title">
-          <span>Settings</span>
-          <button class="link" onclick={() => (showSettings = false)}>close</button>
-        </div>
-        <div class="pad settings-body">
-          <section>
-            <h3>Sound</h3>
-            <p class="hint">
-              Synthesised hold music and interface tones. Off by default. There is no
-              recording; there is nothing to download.
-            </p>
-            <div class="audio-row">
-              <button
-                class="link"
-                onclick={onToggleMute}
-                aria-pressed={!audioMuted}
-              >{audioMuted ? 'Sound off' : 'Sound on'}</button>
-              <label class="vol">
-                <span class="dim">Volume</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={audioMaster}
-                  oninput={onMasterVolume}
-                  aria-label="Master volume"
-                />
-              </label>
-            </div>
-          </section>
-
-          <section>
-            <h3>Your save</h3>
-            <p class="hint">
-              This game saves in your browser and nowhere else. Copy this string to keep a
-              backup or move it to another machine.
-            </p>
-            <textarea class="save-box" readonly rows="3" value={exportText}></textarea>
-            <button onclick={copyExport}>Copy save</button>
-          </section>
-
-          <section>
-            <h3>Load a save</h3>
-            <p class="hint">Paste a save string and load it. This replaces your current game.</p>
-            <textarea
-              class="save-box"
-              rows="3"
-              placeholder="Paste a save string…"
-              bind:value={importText}
-            ></textarea>
-            {#if importError}<p class="alarm">{importError}</p>{/if}
-            <button onclick={doImport} disabled={!importText.trim()}>Load save</button>
-          </section>
-
-          <section>
-            <h3>Start over</h3>
-            <p class="hint">
-              Deletes everything — the current call, every dossier page, every call you have
-              made. There is no undo.
-            </p>
-            {#if confirmWipe}
-              <p class="warn-text">This erases the entire dossier and cannot be undone.</p>
-              <div class="btn-row">
-                <button class="btn-danger" onclick={hardReset}>Erase everything</button>
-                <button onclick={() => (confirmWipe = false)}>Keep my save</button>
-              </div>
-            {:else}
-              <button class="btn-danger" onclick={() => (confirmWipe = true)}>
-                Delete save and start fresh
-              </button>
-            {/if}
-          </section>
-        </div>
-      </div>
-    {/if}
   </div>
+{/if}
 
+{#if started}
+      {#if showSettings}
+        <div
+          class="modal-scrim"
+          onclick={() => (showSettings = false)}
+          onkeydown={(e) => { if (e.key === 'Escape') showSettings = false; }}
+          role="button"
+          tabindex="-1"
+          aria-label="Close settings"
+        ></div>
+        <div class="settings panel" role="dialog" aria-label="Settings">
+          <div class="panel-title">
+            <span>Settings</span>
+            <button class="link" onclick={() => (showSettings = false)}>close</button>
+          </div>
+          <div class="pad settings-body">
+            <section>
+              <h3>Sound</h3>
+              <p class="hint">
+                Synthesised hold music and interface tones. Off by default. There is no
+                recording; there is nothing to download.
+              </p>
+              <div class="audio-row">
+                <button
+                  class="link"
+                  onclick={onToggleMute}
+                  aria-pressed={!audioMuted}
+                >{audioMuted ? 'Sound off' : 'Sound on'}</button>
+                <label class="vol">
+                  <span class="dim">Volume</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={audioMaster}
+                    oninput={onMasterVolume}
+                    aria-label="Master volume"
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section>
+              <h3>Your save</h3>
+              <p class="hint">
+                This game saves in your browser and nowhere else. Copy this string to keep a
+                backup or move it to another machine.
+              </p>
+              <textarea class="save-box" readonly rows="3" value={exportText}></textarea>
+              <button onclick={copyExport}>Copy save</button>
+            </section>
+
+            <section>
+              <h3>Load a save</h3>
+              <p class="hint">Paste a save string and load it. This replaces your current game.</p>
+              <textarea
+                class="save-box"
+                rows="3"
+                placeholder="Paste a save string…"
+                bind:value={importText}
+              ></textarea>
+              {#if importError}<p class="alarm">{importError}</p>{/if}
+              <button onclick={doImport} disabled={!importText.trim()}>Load save</button>
+            </section>
+
+            {#if p.phase === 1}
+              <section>
+                <h3>Development</h3>
+                <p class="hint">
+                  Phase 2 is otherwise ninety minutes away, which makes looking at it awkward
+                  while it is being built. This advances your current save and cannot be undone —
+                  copy the save above first if this call matters.
+                </p>
+                {#if confirmSkip}
+                  <p class="warn-text">
+                    This ends Phase 1 immediately and cannot be reversed.
+                  </p>
+                  <div class="btn-row">
+                    <button class="btn-danger" onclick={onSkipToPhase2}>Skip to Phase 2</button>
+                    <button onclick={() => (confirmSkip = false)}>Stay in Phase 1</button>
+                  </div>
+                {:else}
+                  <button onclick={() => (confirmSkip = true)}>Jump to Phase 2 (preview)</button>
+                {/if}
+              </section>
+            {/if}
+
+            <section>
+              <h3>Start over</h3>
+              <p class="hint">
+                Deletes everything — the current call, every dossier page, every call you have
+                made. There is no undo.
+              </p>
+              {#if confirmWipe}
+                <p class="warn-text">This erases the entire dossier and cannot be undone.</p>
+                <div class="btn-row">
+                  <button class="btn-danger" onclick={hardReset}>Erase everything</button>
+                  <button onclick={() => (confirmWipe = false)}>Keep my save</button>
+                </div>
+              {:else}
+                <button class="btn-danger" onclick={() => (confirmWipe = true)}>
+                  Delete save and start fresh
+                </button>
+              {/if}
+            </section>
+          </div>
+        </div>
+      {/if}
   <div class="crt-scanlines" aria-hidden="true"></div>
   <div class="crt-vignette" aria-hidden="true"></div>
 {/if}
