@@ -11,7 +11,10 @@
    * then reads the plain game object. One invalidation per animation frame.
    */
   import { onMount } from 'svelte';
-  import { frame, game, startGame, interacted } from './store.svelte';
+  import {
+    frame, game, startGame, interacted,
+    hardReset, exportCurrent, importFromString,
+  } from './store.svelte';
   import { fmt, fmtRate, fmtDuration, fmtPct } from './engine/numbers';
   import {
     stall, buyGenerator, buyUpgrade, availableUpgrades,
@@ -29,6 +32,37 @@
 
   let started = $state(false);
   let bulk = $state<BulkMode>(1);
+  let showSettings = $state(false);
+  let confirmWipe = $state(false);
+  let exportText = $state('');
+  let importText = $state('');
+  let importError = $state('');
+
+  function openSettings() {
+    // Snapshot the current save into the textbox when the drawer opens, so it is there to
+    // copy without a separate button press.
+    exportText = exportCurrent();
+    importText = '';
+    importError = '';
+    confirmWipe = false;
+    showSettings = true;
+  }
+
+  function doImport() {
+    if (!importText.trim()) return;
+    if (!importFromString(importText.trim())) {
+      importError = 'That is not a save. Nothing was changed.';
+    }
+    // On success the page reloads, so no further handling is needed.
+  }
+
+  async function copyExport() {
+    try {
+      await navigator.clipboard.writeText(exportText);
+    } catch {
+      // Clipboard can be blocked; the textarea is selectable as a fallback.
+    }
+  }
   let showDossier = $state(false);
   let confirmRedial = $state(false);
 
@@ -189,6 +223,9 @@
           <span class="stat-value num">{p.redials + 1}</span>
         </div>
       {/if}
+      <button class="gear" onclick={openSettings} aria-label="Settings" title="Settings">
+        ⚙
+      </button>
     </header>
 
     <!-- Opportunity window. Penalty-free: missing it costs nothing at all. -->
@@ -484,6 +521,66 @@
     </div>
 
     <div class="popup-layer" bind:this={popupLayer}></div>
+
+    {#if showSettings}
+      <div
+        class="modal-scrim"
+        onclick={() => (showSettings = false)}
+        onkeydown={(e) => { if (e.key === 'Escape') showSettings = false; }}
+        role="button"
+        tabindex="-1"
+        aria-label="Close settings"
+      ></div>
+      <div class="settings panel" role="dialog" aria-label="Settings">
+        <div class="panel-title">
+          <span>Settings</span>
+          <button class="link" onclick={() => (showSettings = false)}>close</button>
+        </div>
+        <div class="pad settings-body">
+          <section>
+            <h3>Your save</h3>
+            <p class="hint">
+              This game saves in your browser and nowhere else. Copy this string to keep a
+              backup or move it to another machine.
+            </p>
+            <textarea class="save-box" readonly rows="3" value={exportText}></textarea>
+            <button onclick={copyExport}>Copy save</button>
+          </section>
+
+          <section>
+            <h3>Load a save</h3>
+            <p class="hint">Paste a save string and load it. This replaces your current game.</p>
+            <textarea
+              class="save-box"
+              rows="3"
+              placeholder="Paste a save string…"
+              bind:value={importText}
+            ></textarea>
+            {#if importError}<p class="alarm">{importError}</p>{/if}
+            <button onclick={doImport} disabled={!importText.trim()}>Load save</button>
+          </section>
+
+          <section>
+            <h3>Start over</h3>
+            <p class="hint">
+              Deletes everything — the current call, every dossier page, every call you have
+              made. There is no undo.
+            </p>
+            {#if confirmWipe}
+              <p class="warn-text">This erases the entire dossier and cannot be undone.</p>
+              <div class="btn-row">
+                <button class="btn-danger" onclick={hardReset}>Erase everything</button>
+                <button onclick={() => (confirmWipe = false)}>Keep my save</button>
+              </div>
+            {:else}
+              <button class="btn-danger" onclick={() => (confirmWipe = true)}>
+                Delete save and start fresh
+              </button>
+            {/if}
+          </section>
+        </div>
+      </div>
+    {/if}
   </div>
 
   <div class="crt-scanlines" aria-hidden="true"></div>
@@ -768,6 +865,70 @@
     font-size: 10px;
     color: var(--amber-deep);
     font-variant-numeric: tabular-nums;
+  }
+
+  .gear {
+    padding: 0.2rem 0.5rem;
+    font-size: 15px;
+    line-height: 1;
+    border-color: transparent;
+    color: var(--amber-deep);
+  }
+  .gear:hover {
+    color: var(--amber);
+    border-color: var(--line);
+  }
+
+  .modal-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 100;
+  }
+  .settings {
+    position: fixed;
+    z-index: 101;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(92vw, 460px);
+    max-height: 86vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+  }
+  .settings-body {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+  }
+  .settings-body section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .settings-body h3 {
+    margin: 0;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--amber);
+  }
+  .save-box {
+    width: 100%;
+    resize: vertical;
+    background: #000;
+    color: var(--amber-text);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 0.5rem;
+    word-break: break-all;
+  }
+  .settings-body button {
+    align-self: flex-start;
   }
 
   .drop-bar {

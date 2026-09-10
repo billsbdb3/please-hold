@@ -179,5 +179,34 @@ describe('export / import', () => {
   it('returns null for text that is not a save', () => {
     expect(importSave('not a save')).toBeNull();
     expect(importSave('')).toBeNull();
+    expect(importSave('{not json at all')).toBeNull();
+  });
+
+  it('an exported string survives a full save/clear/import cycle', () => {
+    // This is what the Settings drawer's backup-and-restore does underneath.
+    const original = progressedState();
+    const blob = exportSave(original);
+
+    clear(); // simulate "start fresh"
+    expect(load().restored).toBe(false);
+
+    const restored = importSave(blob);
+    expect(restored).not.toBeNull();
+    expect(restored!.holdTimeLifetime).toBeCloseTo(original.holdTimeLifetime, 6);
+    expect(restored!.upgrades).toEqual(original.upgrades);
+    expect(restored!.generators).toEqual(original.generators);
+  });
+});
+
+describe('starting fresh', () => {
+  it('clearing every slot yields a brand-new game', () => {
+    save(progressedState());
+    expect(load().restored).toBe(true);
+    clear();
+    const r = load();
+    expect(r.restored).toBe(false);
+    expect(r.state.holdTimeLifetime).toBe(0);
+    expect(r.state.notes).toBe(0);
+    expect(r.state.redials).toBe(0);
   });
 });
