@@ -14,7 +14,7 @@ import type { Persisted, GeneratorId } from './types';
  * reset (Notes + dossier) and three more generator tiers. Version 1 was the vanilla
  * v7 build, whose saves are deliberately discarded.
  */
-export const CURRENT_VERSION = 5;
+export const CURRENT_VERSION = 6;
 
 export const GENERATOR_IDS: GeneratorId[] = [
   'confusion',
@@ -41,6 +41,14 @@ export function freshState(): Persisted {
     holdTimeCareer: 0,
     intel: 0,
     intelLifetime: 0,
+    attention: { cctv: 0, recordings: 0, switchboard: 0, crm: 0, whatsapp: 0, ledger: 0 },
+    streams: [],
+    intelByKind: { people: 0, structure: 0, money: 0, evidence: 0 },
+    identified: [],
+    tradecraft: [],
+    attentionBought: 0,
+    phase2Elapsed: 0,
+    burns: 0,
     evidence: 0,
     evidenceLifetime: 0,
 

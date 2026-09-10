@@ -25,6 +25,32 @@
 
 import type { PersonaDef } from '../data/balance';
 
+/**
+ * Phase 2 surveillance streams.
+ *
+ * The verb changes from STALL to ALLOCATE. Clicking is RETIRED — Phase 1's entire skill is
+ * taken away, per the Paperclips model (docs/DESIGN.md §3). Instead you have a finite pool
+ * of attention and more places to point it than you can cover, so every second is a choice
+ * about what you are willing to stop watching.
+ */
+export type StreamId =
+  | 'cctv'        // The camera bank. Cheap, slow, and where the people are.
+  | 'recordings'  // The call archive. Names and scripts.
+  | 'switchboard' // The PBX. Who calls whom, and when.
+  | 'crm'         // The dialler console. Lead lists and quotas.
+  | 'whatsapp'    // The group chats. Where they say the incriminating parts.
+  | 'ledger';     // The shared spreadsheet and the mule accounts. The money.
+
+/**
+ * What a stream yields. Coverage requires ALL FOUR, so no single stream can finish the
+ * phase — the allocation problem is the phase.
+ */
+export type IntelKind =
+  | 'people'    // Who works there.
+  | 'structure' // Who reports to whom, shifts, the floor.
+  | 'money'     // Where it goes.
+  | 'evidence'; // What would stand up: recordings, confessions, chains of custody.
+
 export type PhaseId = 1 | 2 | 3;
 
 /** Ids are string literals so a typo is a compile error rather than a dead upgrade. */
@@ -68,6 +94,27 @@ export interface Persisted {
   /** Phase 2 primary. */
   intel: number;
   intelLifetime: number;
+
+  // --- Phase 2: allocation ---
+  /**
+   * Attention assigned to each stream. The sum may not exceed the attention POOL, which is
+   * what makes this a decision rather than a shopping list.
+   */
+  attention: Record<StreamId, number>;
+  /** Streams unlocked so far. CCTV is free; the rest are bought with Intel. */
+  streams: StreamId[];
+  /** Intel banked per kind. Coverage needs all four, so one stream cannot finish the phase. */
+  intelByKind: Record<IntelKind, number>;
+  /** Roster ids whose real name has been resolved, which is what Coverage counts. */
+  identified: string[];
+  /** Phase 2 upgrade ids ("tradecraft"). */
+  tradecraft: string[];
+  /** Attention points bought with Intel, on top of the base pool. */
+  attentionBought: number;
+  /** Seconds spent in Phase 2, for its own pacing. */
+  phase2Elapsed: number;
+  /** Times they have noticed you and shut a stream down. */
+  burns: number;
 
   /** Phase 3 primary. */
   evidence: number;
@@ -261,6 +308,12 @@ export interface Transient {
   /** Monotonic id source for log lines and popups. */
   nextId: number;
 
+  // --- Phase 2 ---
+  /** Seconds left on each burned stream. Transient: a burn should not survive a reload. */
+  burnedUntil: Partial<Record<StreamId, number>>;
+  /** Last tick's Phase 2 derivation. Recomputed, never persisted. */
+  p2: Phase2DerivedLike | null;
+
   // --- Opportunity events ---
   /**
    * The active event, if any. A short window the player can catch for a burst.
@@ -291,6 +344,25 @@ export interface ActiveEvent {
   multiplier: number;
   /** Seconds the burst lasts. */
   duration: number;
+}
+
+/**
+ * Structural mirror of engine/phase2.ts's Phase2Derived. Declared here rather than imported
+ * to keep types.ts free of engine imports — the same reason Derived lives here at all.
+ */
+export interface Phase2DerivedLike {
+  pool: number;
+  heatYieldMultiplier: number;
+  assigned: number;
+  intelRate: Record<IntelKind, number>;
+  totalRate: number;
+  heatRate: number;
+  coverage: Record<IntelKind, number>;
+  identifiedFraction: number;
+  progress: number;
+  nextAttentionCost: number | null;
+  identifyCost: number;
+  burned: StreamId[];
 }
 
 export interface LogLine {

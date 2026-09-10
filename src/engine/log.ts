@@ -55,6 +55,8 @@ export function freshTransient(nowMs: number): GameState['t'] {
     endgameAnnounced: false,
     returnedFromIdle: false,
     nextId: 1,
+    burnedUntil: {},
+    p2: null,
     event: null,
     // First window is deliberately early so the mechanic teaches itself before the
     // player has settled into pure autopilot.
