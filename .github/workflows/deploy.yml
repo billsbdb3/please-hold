@@ -19,6 +19,15 @@ on:
       - '**.md'
       - 'docs/**'
       - 'legacy/**'
+  # Validate pull requests too. The build job runs; the deploy job does not (see its
+  # `if`). Without this a PR merges with zero checks and a break only surfaces
+  # afterwards, as a failed deploy on master — which is the worst time to find out.
+  pull_request:
+    branches: [master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'legacy/**'
   # Lets you deploy by hand from the Actions tab, including the first time.
   workflow_dispatch:
 
@@ -67,16 +76,24 @@ jobs:
       # Pages runs Jekyll over the artifact unless told otherwise, and Jekyll silently
       # drops files and directories whose names begin with an underscore.
       - name: Disable Jekyll
+        if: github.event_name != 'pull_request'
         run: touch dist/.nojekyll
 
+      # Pages plumbing is pointless on a pull request, which never publishes. The
+      # typecheck, tests and build above are what validate the PR.
       - uses: actions/configure-pages@v6
+        if: github.event_name != 'pull_request'
 
       - uses: actions/upload-pages-artifact@v5
+        if: github.event_name != 'pull_request'
         with:
           path: dist
 
   deploy:
     needs: build
+    # Only master publishes. On a pull request the build job above still runs, so the
+    # PR is validated, but nothing reaches the live site.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
