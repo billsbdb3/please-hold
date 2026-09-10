@@ -13,18 +13,19 @@
   import CctvGrid from './CctvGrid.svelte';
 
   /**
-   * Monitor size. The wall shipped with 200px tiles, which packed nine columns onto a
-   * desktop and read as a contact sheet rather than something you would watch. These
-   * presets are the sizes worth having: a full wall, a few large feeds, or two you are
-   * actually paying attention to.
+   * Monitor sizing. 'fit' computes the column count so every camera fits the box at the
+   * largest tile that will fit — the honest reading of "fit the page", and something a
+   * fixed pixel width cannot express at an arbitrary window size. The rest force a tile
+   * width and let the wall scroll.
    */
   const SIZES = [
-    { label: 'wall', px: 260 },
-    { label: 'large', px: 420 },
-    { label: 'focus', px: 620 },
+    { label: 'fit', value: 'fit' as const },
+    { label: 'wall', value: 260 },
+    { label: 'large', value: 420 },
+    { label: 'focus', value: 620 },
   ] as const;
 
-  let tileMin = $state<number>(420);
+  let sizing = $state<'fit' | number>('fit');
 </script>
 
 <div class="demo">
@@ -32,8 +33,8 @@
     <span class="phosphor">PLEASE HOLD</span>
     <span class="sub">SURVEILLANCE — 14 CAMERAS — DEV PREVIEW</span>
     <span class="sizes">
-      {#each SIZES as size (size.px)}
-        <button class:active={tileMin === size.px} onclick={() => (tileMin = size.px)}>
+      {#each SIZES as size (size.label)}
+        <button class:active={sizing === size.value} onclick={() => (sizing = size.value)}>
           {size.label}
         </button>
       {/each}
@@ -42,7 +43,7 @@
   </header>
 
   <main class="demo-body">
-    <CctvGrid {tileMin} />
+    <CctvGrid {sizing} />
   </main>
 
   <!-- Console chrome: the same CRT recipe the live game uses. -->
