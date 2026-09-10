@@ -270,3 +270,56 @@ describe('phase 2 pacing', () => {
     expect(runPhase2('active').minutes).toBeCloseTo(runPhase2('active').minutes, 10);
   });
 });
+
+/**
+ * Every coverage requirement must be PRODUCIBLE EARLY.
+ *
+ * Money's only real source was a 22,000 unlock, so it began roughly 35 minutes after the
+ * other three kinds. Because coverage is a minimum, that pinned the headline at 0% for the
+ * whole of that stretch: a player 24 minutes in had banked people, structure and evidence and
+ * was told, accurately, that he had achieved nothing. He described it as slow as balls, which
+ * was the correct review.
+ *
+ * The simulator had been reporting `binding: money` in every single run since the first one.
+ * It was the right signal and I read it as a tuning detail rather than a supply gap, so these
+ * assert the structural property directly instead of relying on me to interpret a table.
+ */
+describe('every coverage requirement has an early source', () => {
+  it('gives each intel kind a source among the cheapest streams', () => {
+    const cheap = STREAMS.filter((s) => s.unlockCost <= 1_500);
+    for (const k of INTEL_KINDS) {
+      const sources = cheap.filter((s) => s.yields[k]);
+      expect(sources.length, `no cheap source of ${k}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('never leaves a kind gated behind a late unlock', () => {
+    // The specific shape of the bug: a kind whose cheapest source costs more than an early
+    // player can plausibly bank.
+    for (const k of INTEL_KINDS) {
+      const cheapest = Math.min(...STREAMS.filter((s) => s.yields[k]).map((s) => s.unlockCost));
+      expect(cheapest, `${k} is gated behind a ${cheapest} unlock`).toBeLessThanOrEqual(1_500);
+    }
+  });
+
+  it('does not show a flat zero for long', () => {
+    const r = runPhase2('active');
+    // Some zero is fine — the first intel takes a moment to arrive. Half an hour is not.
+    expect(r.minutesAtZero).toBeLessThan(8);
+  });
+
+  it('starts every kind moving within the first few minutes', () => {
+    const r = runPhase2('active');
+    for (const k of INTEL_KINDS) {
+      expect(r.firstProgressAt[k], `${k} produced nothing early`).toBeLessThan(10);
+    }
+  });
+
+  it('names the requirement that is holding coverage back', () => {
+    const s = atPhase2();
+    for (const k of INTEL_KINDS) s.p.intelByKind[k] = COVERAGE.need[k];
+    s.p.intelByKind.money = 0;
+    s.p.corroborated = s.p.roster.slice(0, COVERAGE.corroborated).map((r) => r.id);
+    expect(deriveP2(s.p, {}).bindingLabel).toBe('money');
+  });
+});

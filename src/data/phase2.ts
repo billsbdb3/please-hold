@@ -58,7 +58,9 @@ export const STREAMS: StreamDef[] = [
     id: 'recordings',
     name: 'The Call Archive',
     flavor: 'Every call, kept for quality assurance. Theirs, not yours.',
-    yields: { people: 1.4, evidence: 0.7 },
+    // Card details, read back down the line and kept for quality assurance. This is the
+    // early money source the phase was missing.
+    yields: { people: 1.4, evidence: 0.7, money: 0.55 },
     heatPerAttention: 0.09,
     unlockCost: 300,
     maxAttention: 5,

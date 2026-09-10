@@ -360,6 +360,7 @@ export interface Phase2DerivedLike {
   coverage: Record<IntelKind, number>;
   identifiedFraction: number;
   progress: number;
+  bindingLabel: string;
   nextAttentionCost: number | null;
   corroborateCost: number;
   burned: StreamId[];
