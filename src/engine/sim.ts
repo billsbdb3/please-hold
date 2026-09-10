@@ -48,6 +48,11 @@ export function tick(s: GameState, dt: number): void {
     if (s.t.burstFor === 0) s.t.burstMultiplier = 1;
   }
 
+  // The dropped-call notice decays on its own. It used to be a boolean that was set
+  // and never cleared, which permanently disabled the Stall button.
+  if (s.t.callEndedFor > 0) s.t.callEndedFor = Math.max(0, s.t.callEndedFor - dt);
+  if (s.t.breathCooldown > 0) s.t.breathCooldown = Math.max(0, s.t.breathCooldown - dt);
+
   // --- Opportunity events ---
   updateEvents(s, dt);
 
@@ -323,7 +328,7 @@ function loseTheCall(s: GameState): void {
   p.composure = maxComposure(p) * 0.6;
   p.combo = 1;
   s.t.criticalFor = 0;
-  s.t.callEnded = true;
+  s.t.callEndedFor = COMPOSURE.dropNoticeSeconds;
   pushLog(s, 'The line goes dead. You redial. A different voice answers.', 'threat');
 }
 
@@ -359,6 +364,37 @@ export function stall(s: GameState, nowMs: number): number {
   s.t.sinceStall = 0;
   touch(s, nowMs);
   return gain;
+}
+
+/** Cost of taking a breath right now: a floor, scaled by current production. */
+export function breathCost(s: GameState): number {
+  return Math.max(COMPOSURE.breath.minCost, s.d.hps * COMPOSURE.breath.ppsMultiplier);
+}
+
+/** Whether the breath action is currently available. */
+export function canTakeBreath(s: GameState): boolean {
+  if (s.t.breathCooldown > 0) return false;
+  if (s.p.composure >= maxComposure(s.p)) return false;
+  return s.p.holdTime >= breathCost(s);
+}
+
+/**
+ * Spend banked Hold Time to recover composure — the active counter to the drain.
+ *
+ * In fiction: you put him on hold, and you sit for a moment. It costs you the thing you
+ * are trying to accumulate, which is the point; the decision is whether staying on this
+ * call is worth what it costs to stay calm on it.
+ */
+export function takeBreath(s: GameState): boolean {
+  if (!canTakeBreath(s)) return false;
+  const cost = breathCost(s);
+  const max = maxComposure(s.p);
+  s.p.holdTime -= cost;
+  s.p.composure = Math.min(max, s.p.composure + max * COMPOSURE.breath.restoreFraction);
+  s.t.breathCooldown = COMPOSURE.breath.cooldownSeconds;
+  s.t.criticalFor = 0;
+  pushLog(s, 'You ask him to hold. You sit with it for a moment.', 'system');
+  return true;
 }
 
 /** Buy `n` of a generator. Returns how many were actually bought. */

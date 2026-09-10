@@ -213,8 +213,17 @@ export interface Transient {
   lastStallAt: number;
   /** Seconds spent continuously at critical composure. Drives the countdown. */
   criticalFor: number;
-  /** Set for one frame when the scammer hangs up, so the UI can react. */
-  callEnded: boolean;
+  /**
+   * Seconds remaining on the "the line went dead" banner, 0 when none.
+   *
+   * This was a bare boolean that `loseTheCall` set to true and NOTHING ever set back
+   * to false — while the Stall button was disabled on it. So the first time composure
+   * bottomed out, the game's only verb went permanently dead and a redial did not help,
+   * because redial never touched this field either. A countdown cannot get stuck on.
+   */
+  callEndedFor: number;
+  /** Seconds until the breath action can be used again. */
+  breathCooldown: number;
   /** Set once the phase-1 gate is met. The player presses to proceed. */
   phaseGateReached: boolean;
   /** Set for one frame on return from idle, so the UI can offer a summary. */

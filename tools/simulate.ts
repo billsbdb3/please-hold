@@ -25,10 +25,11 @@
 import type { GameState, GeneratorId, ActiveEvent } from '../src/engine/types';
 import { freshState } from '../src/engine/state';
 import { freshTransient } from '../src/engine/log';
-import { derive, costOf, maxAffordable } from '../src/engine/derive';
+import { derive, costOf, maxAffordable, maxComposure } from '../src/engine/derive';
 import {
   tick, stall, buyGenerator, buyUpgrade, availableUpgrades,
   redial, canRedial, buyDossier, availableDossier, catchEvent,
+  takeBreath, canTakeBreath,
 } from '../src/engine/sim';
 import { DT } from '../src/engine/loop';
 import {
@@ -54,26 +55,32 @@ interface Policy {
    * what you hold, not on a fixed timer.
    */
   redialGainThreshold: number;
+  /**
+   * Take a breath below this fraction of max composure. Modelling this matters: the
+   * action spends the primary currency, so a simulator that never uses it measures a
+   * cheaper game than anyone actually plays.
+   */
+  breathBelow: number;
 }
 
 const POLICIES: Record<Archetype, Policy> = {
   idle: {
     stallsPerSecond: 0.1, shopEverySeconds: 120, attentionFraction: 0.2,
-    eventCatchRate: 0.05, redialGainThreshold: 1.5,
+    eventCatchRate: 0.05, redialGainThreshold: 1.5, breathBelow: 0.25,
   },
   casual: {
     stallsPerSecond: 0.7, shopEverySeconds: 30, attentionFraction: 0.6,
-    eventCatchRate: 0.35, redialGainThreshold: 0.75,
+    eventCatchRate: 0.35, redialGainThreshold: 0.75, breathBelow: 0.3,
   },
   active: {
     stallsPerSecond: 3.2, shopEverySeconds: 12, attentionFraction: 1.0,
-    eventCatchRate: 0.8, redialGainThreshold: 0.6,
+    eventCatchRate: 0.8, redialGainThreshold: 0.6, breathBelow: 0.35,
   },
   // The theoretical floor: perfect payback-ordered purchasing, max click rate,
   // never misses a window, redials the moment it is worth it.
   optimal: {
     stallsPerSecond: 8, shopEverySeconds: 4, attentionFraction: 1.0,
-    eventCatchRate: 1.0, redialGainThreshold: 0.35,
+    eventCatchRate: 1.0, redialGainThreshold: 0.35, breathBelow: 0.4,
   },
 };
 
@@ -175,6 +182,11 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
         // high requested rate is capped by it exactly as in a browser.
         virtualMs += 1;
       }
+    }
+
+    // --- Composure management ---
+    if (present && p.composure < maxComposure(p) * policy.breathBelow && canTakeBreath(s)) {
+      takeBreath(s);
     }
 
     // --- Opportunity windows: decide ONCE per window, on the tick it opens ---
