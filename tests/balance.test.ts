@@ -113,12 +113,32 @@ describe('phase 1 duration', () => {
     expect(sim('casual').minutesToFirstRedial).toBeLessThan(25);
   });
 
-  it('an eligible redial always pays at least one page', () => {
-    // Unlocking a mechanic that then visibly does nothing is worse than leaving it
-    // locked, so the payout is floored.
+  it('the eligibility threshold is itself a worthwhile first payout', () => {
+    // There is deliberately NO minimum-payout floor: a floor on a repeatable reset is
+    // farmable, which is exactly how the original became a Notes fountain. Instead the
+    // threshold sits where the formula already pays properly, so the gate IS the reward.
     const p = freshState();
-    p.bestCallLifetime = REDIAL.minLifetimeToRedial;
-    expect(notesFor(p)).toBeGreaterThanOrEqual(1);
+    p.holdTimeLifetime = REDIAL.minLifetimeToRedial;
+    expect(notesFor(p)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('hammering the redial button pays nothing the second time', () => {
+    // THE EXPLOIT REGRESSION TEST. The payout used to key off bestCallLifetime, a running
+    // max that never resets, and granted an absolute amount rather than a difference - so
+    // hanging up twice in a row paid twice for one call's progress.
+    const p = freshState();
+    p.holdTimeLifetime = 5_000_000;
+    p.holdTime = 5_000_000;
+    const s: GameState = { p, d: derive(p), t: freshTransient(0) };
+
+    const first = redial(s);
+    expect(first).toBeGreaterThan(0);
+
+    // Immediately again, having wasted no new time.
+    s.d = derive(p);
+    expect(canRedial(s)).toBe(false);
+    expect(redial(s)).toBe(0);
+    expect(p.notes).toBe(first);
   });
 
   it('the dossier is paced to complete near the end of the phase, not early', () => {
@@ -267,10 +287,10 @@ describe('redial (the soft reset)', () => {
 
   it('Notes use a root, so doubling the payout costs 4x the progress', () => {
     const a = freshState();
-    a.bestCallLifetime = 100_000_000;
+    a.holdTimeLifetime = 10_000_000;
     const b = freshState();
-    b.bestCallLifetime = 400_000_000;
-    // sqrt: 4x the input for 2x the output.
+    b.holdTimeLifetime = 40_000_000;
+    // sqrt: 4x the depth for 2x the payout.
     expect(notesFor(b) / notesFor(a)).toBeCloseTo(2, 1);
   });
 
@@ -532,6 +552,47 @@ describe('opportunity events', () => {
     for (let i = 0; i < 100; i++) tick(s, DT);
     expect(s.t.event).toBeNull();
     expect(s.t.eventsMissed).toBe(0);
+  });
+});
+
+describe('upgrade labels tell the truth', () => {
+  /**
+   * Five upgrades shipped claiming multipliers their code did not apply (The Landline said
+   * x2 and granted x1.5), and one - u.sympathetic - advertised "Rapport gain x2" with no
+   * such field existing at all. The balance simulator reads the FIELDS and never the
+   * prose, so no numeric test could ever have caught it; a player reading a label against
+   * a counter did.
+   *
+   * This parses the human-readable effect string and asserts every factor it names is
+   * actually applied somewhere in the definition.
+   */
+  it('every factor named in an effect string is applied by its fields', () => {
+    const offenders: string[] = [];
+    for (const u of UPGRADES) {
+      const claimed = [...u.effect.matchAll(/[×x]\s*(\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]));
+      if (claimed.length === 0) continue;
+      const applied: number[] = [];
+      if (u.globalMultiplier) applied.push(u.globalMultiplier);
+      if (u.stallMultiplier) applied.push(u.stallMultiplier);
+      if (u.rapportMultiplier) applied.push(u.rapportMultiplier);
+      for (const v of Object.values(u.generatorMultipliers ?? {})) {
+        if (typeof v === 'number') applied.push(v);
+      }
+      for (const c of claimed) {
+        if (!applied.includes(c)) {
+          offenders.push(`${u.id}: effect claims x${c}, fields apply [${applied.join(', ')}]`);
+        }
+      }
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
+  });
+
+  it('a stated percentage drain reduction matches its multiplier', () => {
+    for (const u of UPGRADES) {
+      const m = u.effect.match(/drain\s*[-−]\s*(\d+)%/);
+      if (!m || !u.composureDrainMultiplier) continue;
+      expect(u.composureDrainMultiplier).toBeCloseTo(1 - Number(m[1]) / 100, 5);
+    }
   });
 });
 

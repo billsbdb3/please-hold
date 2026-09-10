@@ -167,6 +167,8 @@ export interface Derived {
   generatorMultiplier: Record<GeneratorId, number>;
   /** Value of a single manual stall, including combo. */
   stallValue: number;
+  /** Multiplier on all rapport gain, from upgrades. */
+  rapportMultiplier: number;
   /** Composure drain per second at the current moment. */
   composureDrain: number;
   /** Which composure band the player is in, and its tradeoffs. */

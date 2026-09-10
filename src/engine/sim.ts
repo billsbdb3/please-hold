@@ -87,7 +87,7 @@ export function tick(s: GameState, dt: number): void {
   if (!s.t.idle && p.composure >= (COMPOSURE.bands[1].min / COMPOSURE.max) * cMax) {
     p.rapport = Math.min(
       RAPPORT.max,
-      p.rapport + RAPPORT.perSecond * s.d.band.rapportMultiplier * dt,
+      p.rapport + RAPPORT.perSecond * s.d.band.rapportMultiplier * s.d.rapportMultiplier * dt,
     );
   }
 
@@ -206,7 +206,9 @@ export function catchEvent(s: GameState): number {
 
 /** Whether hanging up and calling back is currently allowed. */
 export function canRedial(s: GameState): boolean {
-  return Math.max(s.p.bestCallLifetime, s.p.holdTimeLifetime) >= REDIAL.minLifetimeToRedial;
+  // THIS call's depth. Gating on the all-time best kept the button lit forever once any
+  // call had passed the threshold, which is what made the payout farmable.
+  return s.p.holdTimeLifetime >= REDIAL.minLifetimeToRedial;
 }
 
 /**
@@ -358,7 +360,7 @@ export function stall(s: GameState, nowMs: number): number {
 
   p.rapport = Math.min(
     RAPPORT.max,
-    p.rapport + RAPPORT.perStall * s.d.band.rapportMultiplier,
+    p.rapport + RAPPORT.perStall * s.d.band.rapportMultiplier * s.d.rapportMultiplier,
   );
 
   s.t.sinceStall = 0;

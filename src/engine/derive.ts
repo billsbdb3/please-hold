@@ -161,6 +161,13 @@ export function derive(p: Persisted): Derived {
   stallBase *= dossierStallMultiplier;
   const stallValue = stallBase * p.combo * band.stallMultiplier;
 
+  // --- Rapport multiplier ---
+  let rapportMultiplier = 1;
+  for (const id of p.upgrades) {
+    const u = UPGRADES_BY_ID[id];
+    if (u?.rapportMultiplier) rapportMultiplier *= u.rapportMultiplier;
+  }
+
   // --- Composure drain ---
   let composureDrain = 0;
   if (p.activeElapsed > COMPOSURE.drainStartsAt) {
@@ -179,6 +186,7 @@ export function derive(p: Persisted): Derived {
     globalMultiplier,
     generatorMultiplier,
     stallValue,
+    rapportMultiplier,
     composureDrain,
     band,
     nextCost,
@@ -188,15 +196,19 @@ export function derive(p: Persisted): Derived {
 }
 
 /**
- * Notes banked by redialling now: floor(sqrt(best call / divisor)) × dossier bonus.
+ * Notes banked by redialling now: floor(sqrt(this call / divisor)) × dossier bonus.
  *
  * A square root rather than a linear cut, per the standard prestige result — it
- * compresses an unbounded currency into a spendable one and requires 4× the progress
- * to double the payout, so one exceptional call cannot trivialise the whole tree.
+ * compresses an unbounded currency into a spendable one and requires 4× the progress to
+ * double the payout, so one exceptional call cannot trivialise the whole tree.
+ *
+ * Keyed to THIS CALL so an immediate second redial pays nothing: you have not wasted any
+ * new time, so there is nothing to bank.
  */
 export function notesFor(p: Persisted, notesMultiplier = 1): number {
-  const best = Math.max(p.bestCallLifetime, p.holdTimeLifetime);
-  if (best < REDIAL.minLifetimeToRedial) return 0;
+  // THIS call's depth, not the best ever. See REDIAL in balance.ts for why.
+  const depth = p.holdTimeLifetime;
+  if (depth < REDIAL.minLifetimeToRedial) return 0;
   if (notesMultiplier === 1) {
     // Resolve the dossier's own Notes bonus when the caller has not passed it in.
     for (const id of p.dossier) {
@@ -204,7 +216,7 @@ export function notesFor(p: Persisted, notesMultiplier = 1): number {
       if (dd?.notesMultiplier) notesMultiplier *= dd.notesMultiplier;
     }
   }
-  return Math.max(REDIAL.minNotes, Math.floor(Math.sqrt(best / REDIAL.divisor) * notesMultiplier));
+  return Math.floor(Math.sqrt(depth / REDIAL.divisor) * notesMultiplier);
 }
 
 /** Max composure including permanent dossier bonuses. */
