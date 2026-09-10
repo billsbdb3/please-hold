@@ -157,10 +157,12 @@ describe('phase 2 collections are copied, not shared', () => {
     const game = newGame();
     const a = snapshot(game);
     const b = snapshot(game);
-    const shared = Object.keys(a.p).filter((k) => {
-      const v = (a.p as Record<string, unknown>)[k];
-      return v !== null && typeof v === 'object'
-        && (a.p as Record<string, unknown>)[k] === (b.p as Record<string, unknown>)[k];
+    // Via `unknown`: Persisted has no index signature, so a direct cast is rejected.
+    const ap = a.p as unknown as Record<string, unknown>;
+    const bp = b.p as unknown as Record<string, unknown>;
+    const shared = Object.keys(ap).filter((k) => {
+      const v = ap[k];
+      return v !== null && typeof v === 'object' && ap[k] === bp[k];
     });
     expect(shared).toEqual([]);
   });
