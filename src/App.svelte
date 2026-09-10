@@ -21,6 +21,7 @@
     GENERATORS, PHASE1_GATE, COMPOSURE, RAPPORT, REDIAL, DOSSIER,
   } from './data/balance';
   import { isUnlocked, maxComposure } from './engine/derive';
+  import { snapshot } from './engine/snapshot';
   import type { GeneratorId } from './engine/types';
 
   let started = $state(false);
@@ -32,14 +33,18 @@
   const BULK_MODES: BulkMode[] = [1, 10, 'max'];
 
   /**
-   * `frame.n` is the single reactive dependency (see store.svelte.ts). Touching it
-   * inside each $derived.by is what schedules that value to recompute once per
-   * animation frame, while the values themselves are read from the plain,
-   * non-reactive game object.
+   * `frame.n` is the single reactive dependency (see store.svelte.ts), and every value
+   * below comes from a fresh SNAPSHOT rather than the live state object.
+   *
+   * Deriving the live object directly is what froze the whole UI once: `game.p` is
+   * mutated in place, so it is the same reference every frame, Svelte sees no change,
+   * and nothing re-evaluates. engine/snapshot.ts has the full account.
    */
-  const p = $derived.by(() => { void frame.n; return game.p; });
-  const d = $derived.by(() => { void frame.n; return game.d; });
-  const t = $derived.by(() => { void frame.n; return game.t; });
+  const snap = $derived.by(() => { void frame.n; return snapshot(game); });
+  const p = $derived(snap.p);
+  const d = $derived(snap.d);
+  const t = $derived(snap.t);
+  const logLines = $derived(snap.log);
 
   const cMax = $derived(maxComposure(p));
   const composurePct = $derived(p.composure / cMax);
@@ -50,7 +55,6 @@
   const upgrades = $derived.by(() => { void frame.n; return availableUpgrades(game); });
   const dossier = $derived.by(() => { void frame.n; return availableDossier(game); });
   const redialReady = $derived.by(() => { void frame.n; return canRedial(game); });
-  const logLines = $derived(t.log);
 
   function onCatch() {
     catchEvent(game);
@@ -118,7 +122,6 @@
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  const logEl = $derived(logLines);
 </script>
 
 {#if !started}
@@ -381,7 +384,7 @@
         <div class="panel fill">
           <div class="panel-title"><span>Transcript</span></div>
           <div class="scroll log">
-            {#each logEl as line (line.id)}
+            {#each logLines as line (line.id)}
               <p class="log-line {line.kind}">
                 {line.text}{#if line.repeat}<span class="dim"> ×{line.repeat}</span>{/if}
               </p>
