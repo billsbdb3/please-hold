@@ -26,7 +26,7 @@ import { GameLoop } from './engine/loop';
 import { freshTransient, pushLog } from './engine/log';
 import { derive } from './engine/derive';
 import { tick, updateIdle, applyOffline, touch } from './engine/sim';
-import { load, save, clear } from './engine/save';
+import { load, save, clear, exportSave, importSave } from './engine/save';
 import { SAVE } from './data/balance';
 import { fmt, fmtDuration } from './engine/numbers';
 
@@ -115,6 +115,29 @@ export function hardReset(): void {
   loop.stop();
   clear();
   location.reload();
+}
+
+/**
+ * Export the current save as a base64 string the player can keep somewhere. Saves first,
+ * so what they copy is the live state and not a 20-second-stale autosave.
+ */
+export function exportCurrent(): string {
+  save(game.p);
+  return exportSave(game.p);
+}
+
+/**
+ * Import a base64 save string. Returns false if it is not a save; on success it persists
+ * the imported state and reloads, so the whole game re-initialises from it cleanly rather
+ * than trying to swap state into a running loop.
+ */
+export function importFromString(text: string): boolean {
+  const imported = importSave(text);
+  if (!imported) return false;
+  loop.stop();
+  save(imported);
+  location.reload();
+  return true;
 }
 
 /** Save immediately — used on tab hide, so a closed laptop does not lose 20s. */
