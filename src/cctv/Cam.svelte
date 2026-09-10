@@ -23,10 +23,9 @@
     scene: Scene;
     tick: number;
     /** Larger frames get a slightly bigger HUD; purely cosmetic. */
-    compact?: boolean;
   }
 
-  const { scene, tick, compact = false }: Props = $props();
+  const { scene, tick }: Props = $props();
 
   // Deriving the shape list from (scene, tick) is the whole reactive surface.
   // Same tick -> same shapes (deterministic stepper in scenes.ts).
@@ -44,7 +43,7 @@
   const uid = `cam-${scene.id}-${sceneSeed(scene.id)}`;
 </script>
 
-<div class="cam" class:dead class:compact aria-label={`Camera ${scene.id}, ${scene.location}. ${scene.caption}`}>
+<div class="cam" class:dead aria-label={`Camera ${scene.id}, ${scene.location}. ${scene.caption}`}>
   {#if dead}
     <!-- Broken camera: no signal. Just the HUD over static. -->
     <div class="nosignal">
@@ -85,17 +84,27 @@
   <div class="scan" aria-hidden="true"></div>
 
   <!-- Burned-in HUD: camera id + location top-left, timestamp bottom-right. -->
+  <!-- Burned-in HUD: camera id + location top-left. -->
   <div class="hud hud-tl">CAM {scene.id} · {scene.location}</div>
-  <div class="hud hud-br">{stamp}</div>
   <div class="rec" aria-hidden="true">● REC</div>
   <!--
-    The caption, burned in along the bottom the way a real DVR overlays text.
+    The caption strip, burned in along the bottom the way a real DVR overlays text.
     It previously existed ONLY in the aria-label, which meant the entire joke — the
     flat administrative report that nothing is happening — was invisible to anyone
-    not using a screen reader. It is the content of this feature, so it is now on
-    screen. aria-hidden because the parent's aria-label already speaks it.
+    not using a screen reader. It is the content of this feature, so it is on screen.
+
+    The timestamp lives INSIDE this strip as a flex sibling rather than being
+    absolutely positioned above it. Positioning them independently meant offsetting
+    the timestamp by one line's height, which broke the moment a caption wrapped to
+    two lines — cameras 11 and 12 printed the timestamp straight through the text.
+    As a flex row they cannot overlap at any wrap length.
+
+    aria-hidden because the parent's aria-label already speaks the caption.
   -->
-  <div class="caption" aria-hidden="true">{scene.caption}</div>
+  <div class="caption" aria-hidden="true">
+    <span class="caption-text">{scene.caption}</span>
+    <span class="caption-stamp">{stamp}</span>
+  </div>
 </div>
 
 {#snippet shapeEl(s: Shape)}
@@ -244,8 +253,6 @@
   }
 
   .hud-tl { top: 4px; left: 5px; }
-  /* Sits above the caption strip rather than on top of it. */
-  .hud-br { bottom: calc(4px + 2.4cqw + 0.5em); right: 5px; }
 
   /**
    * The burned-in caption strip. This is where the humour actually lives, so it gets
@@ -257,15 +264,38 @@
     left: 0;
     right: 0;
     bottom: 0;
+    /* A flex row, so the timestamp can never land on top of the caption however many
+       lines the caption wraps to. This replaced an absolutely-positioned timestamp
+       offset by one line's height, which collided on every two-line caption. */
+    display: flex;
+    align-items: flex-end;
+    gap: 0.8em;
     padding: 0.45em 0.6em;
     font-family: var(--mono);
     font-size: clamp(7px, 2.4cqw, 15px);
     line-height: 1.35;
     color: #cbbe9c;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0));
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.55) 70%, rgba(0, 0, 0, 0));
     text-shadow: 0 0 2px #000;
     pointer-events: none;
     user-select: none;
+  }
+  .caption-text {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  /* Never wraps and never shrinks: a timestamp broken across two lines reads as a
+     rendering fault rather than as a DVR overlay. */
+  .caption-stamp {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    color: #a99a78;
+  }
+  /* On the smallest tiles the timestamp would squeeze the caption into a column of
+     two-word lines. Drop it and keep the words — a real DVR sheds overlays too, and the
+     camera id is still burned in top-left. */
+  @container (max-width: 300px) {
+    .caption-stamp { display: none; }
   }
 
   .rec {
