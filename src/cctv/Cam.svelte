@@ -88,6 +88,14 @@
   <div class="hud hud-tl">CAM {scene.id} · {scene.location}</div>
   <div class="hud hud-br">{stamp}</div>
   <div class="rec" aria-hidden="true">● REC</div>
+  <!--
+    The caption, burned in along the bottom the way a real DVR overlays text.
+    It previously existed ONLY in the aria-label, which meant the entire joke — the
+    flat administrative report that nothing is happening — was invisible to anyone
+    not using a screen reader. It is the content of this feature, so it is now on
+    screen. aria-hidden because the parent's aria-label already speaks it.
+  -->
+  <div class="caption" aria-hidden="true">{scene.caption}</div>
 </div>
 
 {#snippet shapeEl(s: Shape)}
@@ -177,6 +185,9 @@
 
 <style>
   .cam {
+    /* Establishes the container-query context so the HUD and caption can size
+       themselves from the tile's width rather than the viewport's. */
+    container-type: inline-size;
     position: relative;
     width: 100%;
     height: 100%;
@@ -222,17 +233,40 @@
   .hud {
     position: absolute;
     font-family: var(--mono);
-    font-size: 9px;
+    /* Scales with tile width (see container-type on .cam), clamped so it stays legible
+       on a small tile and never becomes a headline on a large one. */
+    font-size: clamp(7px, 2.1cqw, 13px);
     letter-spacing: 0.08em;
     color: #d8c9a0;
     text-shadow: 0 0 2px #000, 1px 1px 0 #000;
     pointer-events: none;
     user-select: none;
   }
-  .compact .hud { font-size: 7px; }
 
   .hud-tl { top: 4px; left: 5px; }
-  .hud-br { bottom: 4px; right: 5px; }
+  /* Sits above the caption strip rather than on top of it. */
+  .hud-br { bottom: calc(4px + 2.4cqw + 0.5em); right: 5px; }
+
+  /**
+   * The burned-in caption strip. This is where the humour actually lives, so it gets
+   * real space: a dark band along the bottom, monospaced, in the washed-out cream of a
+   * DVR overlay rather than the console's amber.
+   */
+  .caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 0.45em 0.6em;
+    font-family: var(--mono);
+    font-size: clamp(7px, 2.4cqw, 15px);
+    line-height: 1.35;
+    color: #cbbe9c;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0));
+    text-shadow: 0 0 2px #000;
+    pointer-events: none;
+    user-select: none;
+  }
 
   .rec {
     position: absolute;
@@ -246,7 +280,6 @@
     pointer-events: none;
     animation: rec-blink 2s steps(1) infinite;
   }
-  .compact .rec { font-size: 7px; }
 
   @keyframes rec-blink {
     0%, 50% { opacity: 1; }

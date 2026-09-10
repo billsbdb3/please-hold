@@ -11,17 +11,38 @@
    * operator console, per docs/DESIGN.md §8.
    */
   import CctvGrid from './CctvGrid.svelte';
+
+  /**
+   * Monitor size. The wall shipped with 200px tiles, which packed nine columns onto a
+   * desktop and read as a contact sheet rather than something you would watch. These
+   * presets are the sizes worth having: a full wall, a few large feeds, or two you are
+   * actually paying attention to.
+   */
+  const SIZES = [
+    { label: 'wall', px: 260 },
+    { label: 'large', px: 420 },
+    { label: 'focus', px: 620 },
+  ] as const;
+
+  let tileMin = $state<number>(420);
 </script>
 
 <div class="demo">
   <header class="demo-bar">
     <span class="phosphor">PLEASE HOLD</span>
     <span class="sub">SURVEILLANCE — 14 CAMERAS — DEV PREVIEW</span>
+    <span class="sizes">
+      {#each SIZES as size (size.px)}
+        <button class:active={tileMin === size.px} onclick={() => (tileMin = size.px)}>
+          {size.label}
+        </button>
+      {/each}
+    </span>
     <span class="note">nothing is happening on any of them</span>
   </header>
 
   <main class="demo-body">
-    <CctvGrid />
+    <CctvGrid {tileMin} />
   </main>
 
   <!-- Console chrome: the same CRT recipe the live game uses. -->
@@ -50,6 +71,22 @@
     flex: 0 0 auto;
   }
   .demo-bar .sub { color: var(--amber-deep); }
+  .demo-bar .sizes {
+    display: flex;
+    gap: 2px;
+    margin-left: 0.5rem;
+  }
+  .demo-bar .sizes button {
+    padding: 1px 8px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .demo-bar .sizes button.active {
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
   .demo-bar .note {
     margin-left: auto;
     color: var(--steel-dim);
