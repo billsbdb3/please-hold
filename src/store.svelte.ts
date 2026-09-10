@@ -29,6 +29,7 @@ import { tick, updateIdle, applyOffline, touch } from './engine/sim';
 import { load, save as saveToStorage, clear, exportSave, importSave } from './engine/save';
 import { SAVE } from './data/balance';
 import { fmt, fmtDuration } from './engine/numbers';
+import { audio } from './audio';
 
 /** UI refresh rate. The sim is unaffected by this. */
 const UI_HZ = 15;
@@ -124,6 +125,7 @@ export function startGame(): void {
 
 export function stopGame(): void {
   loop.stop();
+  audio.stopHoldMusic();
   persist(game.p);
 }
 
@@ -143,6 +145,7 @@ export function hardReset(): void {
   //     resurrect the save. Navigating to a fresh URL forces a real rebuild.
   persistenceDisabled = true;
   loop.stop();
+  audio.stopHoldMusic();
   clear();
   const url = new URL(location.href);
   url.hash = '';

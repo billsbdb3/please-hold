@@ -29,6 +29,7 @@
   import { UPGRADES, statusOf, excludedBy } from './data/upgrades';
   import { isUnlocked, maxComposure } from './engine/derive';
   import { snapshot } from './engine/snapshot';
+  import { audio } from './audio';
   import type { GeneratorId } from './engine/types';
 
   let started = $state(false);
@@ -39,6 +40,22 @@
   let importText = $state('');
   let importError = $state('');
 
+  // Audio controls, mirrored from the facade so the drawer's inputs are reactive. The
+  // facade owns the truth (and persistence); these are refreshed when the drawer opens.
+  let audioMuted = $state(audio.muted);
+  let audioMaster = $state(audio.getMasterVolume());
+
+  function onToggleMute() {
+    audioMuted = audio.toggleMuted();
+  }
+  function onMasterVolume(e: Event) {
+    const v = Number((e.currentTarget as HTMLInputElement).value);
+    audioMaster = v;
+    audio.setMasterVolume(v);
+    // Adjusting the slider while muted is a clear intent to hear it.
+    if (audioMuted && v > 0) { audio.setMuted(false); audioMuted = false; }
+  }
+
   function openSettings() {
     // Snapshot the current save into the textbox when the drawer opens, so it is there to
     // copy without a separate button press.
@@ -46,6 +63,8 @@
     importText = '';
     importError = '';
     confirmWipe = false;
+    audioMuted = audio.muted;
+    audioMaster = audio.getMasterVolume();
     showSettings = true;
   }
 
@@ -131,7 +150,8 @@
   const ragePct = $derived(p.rage / RAGE.max);
 
   function onPersona(id: string) {
-    switchPersona(game, id);
+    if (switchPersona(game, id)) audio.persona(id);
+    else audio.refused();
     interacted();
   }
 
@@ -161,12 +181,17 @@
    */
   function begin() {
     started = true;
+    // Diegetic audio unlock: the first real gesture creates the AudioContext, and the
+    // hold music starts with the call. Everything before this was a silent no-op.
+    audio.unlock();
     startGame();
+    audio.startHoldMusic();
   }
 
   function onStall(e: MouseEvent) {
     const gained = stall(game, Date.now());
     interacted();
+    audio.stall();
     if (gained > 0) spawnPopup(e, `+${fmt(gained)}`);
   }
 
@@ -187,6 +212,26 @@
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
     if (atBottom) queueMicrotask(() => { el.scrollTop = el.scrollHeight; });
   });
+
+  /**
+   * Milestones and boil-overs fire inside the simulation tick, not from a click handler, so
+   * they are detected here by diffing the counters the snapshot exposes. `started` gates
+   * the initial mount (a loaded save arrives with milestones already recorded, and we must
+   * not fanfare them on page load) and audio is a no-op until the handset gesture anyway.
+   */
+  let lastMilestones = $state<number | null>(null);
+  $effect(() => {
+    const n = p.milestones.length;
+    if (lastMilestones !== null && started && n > lastMilestones) audio.milestone();
+    lastMilestones = n;
+  });
+
+  let lastBoilOvers = $state<number | null>(null);
+  $effect(() => {
+    const n = p.boilOvers;
+    if (lastBoilOvers !== null && started && n > lastBoilOvers) audio.boilOver();
+    lastBoilOvers = n;
+  });
   function spawnPopup(e: MouseEvent, text: string) {
     if (!popupLayer) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -201,7 +246,8 @@
   }
 
   function buy(id: GeneratorId) {
-    buyGenerator(game, id, bulk);
+    const bought = buyGenerator(game, id, bulk);
+    audio[bought > 0 ? 'purchase' : 'refused']();
     interacted();
   }
 
@@ -481,7 +527,7 @@
               {#each dossier as dd (dd.id)}
                 <button
                   class="row"
-                  onclick={() => { buyDossier(game, dd.id); interacted(); }}
+                  onclick={() => { audio[buyDossier(game, dd.id) ? 'dossierTick' : 'refused'](); interacted(); }}
                   disabled={dd.cost > p.notes}
                 >
                   <span class="row-main">
@@ -560,7 +606,7 @@
               {:else}
                 <button
                   class="row"
-                  onclick={() => { buyUpgrade(game, row.u.id); interacted(); }}
+                  onclick={() => { audio[buyUpgrade(game, row.u.id) ? 'purchase' : 'refused'](); interacted(); }}
                   disabled={row.u.cost > p.holdTime}
                 >
                   <span class="row-main">
@@ -657,6 +703,33 @@
           <button class="link" onclick={() => (showSettings = false)}>close</button>
         </div>
         <div class="pad settings-body">
+          <section>
+            <h3>Sound</h3>
+            <p class="hint">
+              Synthesised hold music and interface tones. Off by default. There is no
+              recording; there is nothing to download.
+            </p>
+            <div class="audio-row">
+              <button
+                class="link"
+                onclick={onToggleMute}
+                aria-pressed={!audioMuted}
+              >{audioMuted ? 'Sound off' : 'Sound on'}</button>
+              <label class="vol">
+                <span class="dim">Volume</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={audioMaster}
+                  oninput={onMasterVolume}
+                  aria-label="Master volume"
+                />
+              </label>
+            </div>
+          </section>
+
           <section>
             <h3>Your save</h3>
             <p class="hint">
@@ -1046,6 +1119,23 @@
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--amber);
+  }
+  .audio-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .audio-row .vol {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 10rem;
+  }
+  .audio-row .vol input[type='range'] {
+    flex: 1;
+    accent-color: var(--amber);
   }
   .save-box {
     width: 100%;
