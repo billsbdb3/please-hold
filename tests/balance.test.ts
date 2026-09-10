@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { simulate } from '../tools/simulate';
+import { simulate, type Archetype, type SimResult } from '../tools/simulate';
 import {
   derive, costOf, costOfN, maxAffordable, effectiveOwned, notesFor, maxComposure,
 } from '../src/engine/derive';
@@ -25,9 +25,31 @@ import {
 import { UPGRADES } from '../src/data/upgrades';
 import type { GameState } from '../src/engine/types';
 
+/**
+ * Memoised simulation results.
+ *
+ * The suite asked for ~20 full phase simulations to answer questions about only four
+ * distinct runs, which made the balance file the slowest thing in CI (20.9s on a GitHub
+ * runner against 8.8s locally) and pushed the four-archetype dead-content test past
+ * vitest's default 5s timeout — a failure that had nothing to do with the assertion.
+ *
+ * Caching is sound precisely because `run()` is deterministic: no Math.random, no wall
+ * clock, fixed timestep. There is a test below that proves it, and that test
+ * deliberately calls the RAW `simulate` twice, because a memoised version of it would be
+ * vacuously true.
+ */
+const simCache = new Map<Archetype, SimResult>();
+function sim(a: Archetype): SimResult {
+  const hit = simCache.get(a);
+  if (hit) return hit;
+  const result = simulate(a);
+  simCache.set(a, result);
+  return result;
+}
+
 describe('phase 1 duration', () => {
   it('the active archetype finishes inside the target window', () => {
-    const r = simulate('active');
+    const r = sim('active');
     expect(r.completed).toBe(true);
     expect(r.minutesToGate).toBeGreaterThanOrEqual(PHASE1_TARGET_MINUTES.min);
     expect(r.minutesToGate).toBeLessThanOrEqual(PHASE1_TARGET_MINUTES.max);
@@ -39,9 +61,9 @@ describe('phase 1 duration', () => {
    * notice by playing.
    */
   it('more attention is never slower', () => {
-    const optimal = simulate('optimal');
-    const active = simulate('active');
-    const casual = simulate('casual');
+    const optimal = sim('optimal');
+    const active = sim('active');
+    const casual = sim('casual');
 
     expect(optimal.minutesToGate).toBeLessThanOrEqual(active.minutesToGate);
     expect(active.minutesToGate).toBeLessThanOrEqual(casual.minutesToGate);
@@ -49,7 +71,7 @@ describe('phase 1 duration', () => {
 
   it('a barely-attentive player still finishes eventually', () => {
     // An idle game that pays a low-attention player nothing is not an idle game.
-    const idle = simulate('idle');
+    const idle = sim('idle');
     expect(idle.completed).toBe(true);
   });
 
@@ -65,8 +87,8 @@ describe('phase 1 duration', () => {
    * casual player was not even at the keyboard.
    */
   it('casual play stays within a reasonable multiple of active play', () => {
-    const active = simulate('active');
-    const casual = simulate('casual');
+    const active = sim('active');
+    const casual = sim('casual');
 
     expect(casual.completed).toBe(true);
     // Felt duration: time actually spent at the keyboard.
@@ -84,8 +106,8 @@ describe('phase 1 duration', () => {
    * makes playing faster. "Prestige too late" is a named top-five killer of the genre.
    */
   it('the redial loop is reachable early by engaged and casual players alike', () => {
-    expect(simulate('active').minutesToFirstRedial).toBeLessThan(10);
-    expect(simulate('casual').minutesToFirstRedial).toBeLessThan(25);
+    expect(sim('active').minutesToFirstRedial).toBeLessThan(10);
+    expect(sim('casual').minutesToFirstRedial).toBeLessThan(25);
   });
 
   it('an eligible redial always pays at least one page', () => {
@@ -100,7 +122,7 @@ describe('phase 1 duration', () => {
     // At one point the tree cost 577 against ~1,957 Notes earned, so it finished around
     // the one-third mark and the prestige currency stopped meaning anything.
     const totalCost = DOSSIER.reduce((sum, d) => sum + d.cost, 0);
-    const earned = simulate('active').notesLifetime;
+    const earned = sim('active').notesLifetime;
     expect(earned).toBeGreaterThan(totalCost * 0.8);
     expect(earned).toBeLessThan(totalCost * 2.5);
   });
@@ -109,6 +131,8 @@ describe('phase 1 duration', () => {
 describe('phase 1 pacing across archetypes', () => {
   it('is deterministic — the same archetype twice gives the same answer', () => {
     // A balance tool that returns a different number each run cannot gate a build.
+    // Deliberately the RAW simulate, not the memoised `sim`: comparing a cached result
+    // against itself would pass without testing anything.
     const a = simulate('active');
     const b = simulate('active');
     expect(a.minutesToGate).toBeCloseTo(b.minutesToGate, 10);
@@ -118,7 +142,7 @@ describe('phase 1 pacing across archetypes', () => {
   it('does not leave the player permanently broken', () => {
     // Some time at zero composure is the intended cost of running hot. Most of the
     // phase spent there would mean the drain has outrun every counter.
-    const r = simulate('active');
+    const r = sim('active');
     expect(r.brokenMinutes).toBeLessThan(r.minutesToGate * 0.25);
   });
 });
@@ -170,7 +194,7 @@ describe('content reachability', () => {
   });
 
   it('the active player reaches most of the upgrade tree', () => {
-    const r = simulate('active');
+    const r = sim('active');
     expect(r.upgradesBought).toBeGreaterThanOrEqual(6);
   });
 
@@ -179,7 +203,7 @@ describe('content reachability', () => {
     // unit of: they were unlocked but permanently unaffordable, because generator cost
     // comes out of banked Hold Time and a redial zeroes it. They were moved to
     // PHASE2_RESERVED_GENERATORS. This test is what stops that shipping again.
-    const runs = (['optimal', 'active', 'casual', 'idle'] as const).map((a) => simulate(a));
+    const runs = (['optimal', 'active', 'casual', 'idle'] as const).map((a) => sim(a));
     for (const g of GENERATORS) {
       const peak = Math.max(...runs.map((r) => r.peakOwned[g.id] ?? 0));
       expect(peak, `${g.name} was never bought by any archetype`).toBeGreaterThan(0);
@@ -191,14 +215,14 @@ describe('content reachability', () => {
     // nothing affordable for the remaining hour, which the research names as the
     // single most common way an incremental dies. Five minutes is a generous ceiling
     // on the longest gap between purchases.
-    const r = simulate('active');
+    const r = sim('active');
     expect(r.longestStallMinutes).toBeLessThan(5);
   });
 });
 
 describe('redial (the soft reset)', () => {
   it('an active player redials repeatedly and fills the dossier', () => {
-    const r = simulate('active');
+    const r = sim('active');
     expect(r.redials).toBeGreaterThan(5);
     expect(r.dossierBought).toBeGreaterThan(6);
   });
