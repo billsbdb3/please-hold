@@ -379,6 +379,15 @@ button:focus-visible,
 .row:hover:not(:disabled) {
     background: var(--panel-raised);
   }
+/**
+ * A row you cannot afford yet must still be READABLE - it is the thing you are reading in
+ * order to plan. The global 0.35 for disabled buttons means 'not applicable', which is wrong
+ * here: --amber-deep flavour text at 35% over black came out near-invisible, so the whole
+ * tradecraft column looked switched off rather than merely unaffordable.
+ */
+.row:disabled {
+    opacity: 0.7;
+  }
 .row-main {
     display: flex;
     flex-direction: column;

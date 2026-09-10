@@ -96,7 +96,11 @@
     <div class="stat heat-stat">
       <span class="stat-label">
         Suspicion
+        <!-- Zero suspicion is a STATE, not a stuck meter. Early on you are watching two quiet
+             streams and it genuinely takes a while before anyone starts to notice; reporting
+             that as 'cooling' made a correct reading look like a bug. -->
         {#if d.heatRate > 0}<span class="rising">rising</span>
+        {:else if p.heat <= 0}<span class="dim">nobody has noticed</span>
         {:else}<span class="dim">cooling</span>{/if}
       </span>
       <div class="meter">
