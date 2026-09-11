@@ -415,12 +415,12 @@
     font-size: 9px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
   }
   .stat-value { font-size: 15px; }
   .stat-value.over { color: var(--red); }
   .rising { color: var(--red); }
-  .heat-note { font-size: 10px; color: var(--amber-deep); }
+  .heat-note { font-size: 10px; color: var(--ink-deep); }
 
   /* Three columns, with the wall taking the space it deserves as the centrepiece. */
   .p2-grid {
@@ -437,10 +437,10 @@
     min-height: 0;
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: var(--line) transparent;
+    scrollbar-color: var(--edge) transparent;
   }
   .col::-webkit-scrollbar { width: 8px; }
-  .col::-webkit-scrollbar-thumb { background: var(--line); }
+  .col::-webkit-scrollbar-thumb { background: var(--edge); }
   /* The wall must not scroll internally — it sizes itself to the box it is given. */
   .wall-col { overflow: hidden; }
 
@@ -455,24 +455,24 @@
     filter: grayscale(1);
   }
 
-  .hint-block { border-bottom: 1px solid var(--line); }
+  .hint-block { border-bottom: 1px solid var(--edge); }
 
   .gear {
     padding: 0.2rem 0.5rem;
     font-size: 15px;
     line-height: 1;
     border-color: transparent;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
     order: 99;
   }
-  .gear:hover { color: var(--amber); border-color: var(--line); }
+  .gear:hover { color: var(--ink); border-color: var(--edge); }
 
   .stream {
     display: flex;
     flex-direction: column;
     gap: 3px;
     padding: 0.6rem var(--pad);
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--edge);
   }
   .stream.dark { opacity: 0.4; }
   .stream-head {
@@ -491,17 +491,17 @@
     font-size: 14px;
     line-height: 1.4;
   }
-  .alloc { font-size: 14px; color: var(--amber); }
+  .alloc { font-size: 14px; color: var(--ink); }
 
   .stream-stats {
     display: flex;
     flex-wrap: wrap;
     gap: 0.6rem;
     font-size: 10px;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
     font-variant-numeric: tabular-nums;
   }
-  .yield { color: var(--amber-dim); }
+  .yield { color: var(--ink-dim); }
   .heat-cost { color: var(--red-dim); }
   .dark-note { color: var(--red); }
 
@@ -521,7 +521,7 @@
   }
   .meter-fill.done { background: var(--green); }
 
-  .binding { color: var(--amber); }
+  .binding { color: var(--ink); }
   .chain-on { color: var(--green); }
 
   .notice-bar {
@@ -529,22 +529,22 @@
     align-items: center;
     gap: 0.6rem;
     padding: 0.45rem var(--pad);
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--edge);
     font-size: 11px;
   }
   .notice-bar.quiet { opacity: 0.55; }
   .notice-line { flex: 1; min-width: 0; }
   .notice-claim { white-space: nowrap; }
-  .notice-clock { color: var(--amber-deep); }
+  .notice-clock { color: var(--ink-deep); }
 
-  .fresh { color: var(--amber-deep); }
+  .fresh { color: var(--ink-deep); }
   .fresh.stale { color: var(--red-dim); }
   /* The requirement actually holding coverage back, so the panel answers 'what now'. */
-  .binding-row .meter-label { color: var(--amber); }
-  .binding-row .meter-fill { background: var(--amber); }
+  .binding-row .meter-label { color: var(--ink); }
+  .binding-row .meter-fill { background: var(--ink); }
   .binding-row::after {
     content: '←';
-    color: var(--amber);
+    color: var(--ink);
     font-size: 10px;
     align-self: center;
   }
@@ -556,12 +556,12 @@
     justify-content: space-between;
     gap: 0.5rem;
     padding: 0.35rem var(--pad);
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--edge);
     font-size: 11px;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
   }
   .roster-row.named {
-    color: var(--amber-text);
+    color: var(--ink-text);
   }
   .roster-row.named .roster-handle::before {
     content: '✓ ';
@@ -572,7 +572,7 @@
   .next-slip {
     margin: 0.4rem 0 0;
     font-size: 11px;
-    color: var(--amber-dim);
+    color: var(--ink-dim);
     font-style: italic;
   }
   .roster-role { text-transform: uppercase; font-size: 9px; letter-spacing: 0.1em; }

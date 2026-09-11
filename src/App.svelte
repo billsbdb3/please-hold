@@ -167,6 +167,19 @@
    * Cross into Phase 2. A point of no return, pressed deliberately by the player rather than
    * triggered by a threshold — the design calls for the point of no return to be pressed.
    */
+  /**
+   * Bind the phase's visual identity to <body>.
+   *
+   * On the body rather than a wrapper because the settings drawer, the ending modal and the CRT
+   * overlays are SIBLINGS of the console, not children, and all of them have to re-skin with it.
+   * Everything downstream reads role tokens, so this one class is the whole switch.
+   */
+  $effect(() => {
+    const cls = p.phase === 2 ? 'phase-console' : 'phase-telephone';
+    document.body.classList.remove('phase-console', 'phase-telephone');
+    document.body.classList.add(cls);
+  });
+
   function onEnterPhase2() {
     enterPhase2(game);
     interacted();
@@ -867,10 +880,10 @@
   }
   .cold-open p {
     margin: 0;
-    color: var(--amber-text);
+    color: var(--ink-text);
   }
   .cold-open .fine {
-    color: var(--amber-deep);
+    color: var(--ink-deep);
     font-size: 12px;
   }
 
@@ -904,7 +917,7 @@
     font-size: 9px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
   }
   .stat-value {
     font-size: 15px;
@@ -925,10 +938,10 @@
     /* The column scrolls, so no combination of open panes can be cut off. */
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: var(--line) transparent;
+    scrollbar-color: var(--edge) transparent;
   }
   .col::-webkit-scrollbar { width: 8px; }
-  .col::-webkit-scrollbar-thumb { background: var(--line); }
+  .col::-webkit-scrollbar-thumb { background: var(--edge); }
   .handset-body {
     padding: var(--pad);
     display: flex;
@@ -939,11 +952,11 @@
     display: flex;
     justify-content: space-between;
     font-size: 12px;
-    color: var(--amber-dim);
+    color: var(--ink-dim);
   }
   .tradeoff {
     font-size: 11px;
-    color: var(--amber-dim);
+    color: var(--ink-dim);
     margin: -0.25rem 0 0.6rem;
   }
   /* Panes size to their content; the column scrolls. Fixed viewport fractions were what
@@ -954,7 +967,7 @@
     max-height: none;
   }
   .dossier-list {
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--edge);
   }
 
   .bulk {
@@ -966,8 +979,8 @@
     font-size: 10px;
   }
   .bulk button.active {
-    border-color: var(--amber);
-    color: var(--amber);
+    border-color: var(--ink);
+    color: var(--ink);
   }
 
   .log {
@@ -980,16 +993,16 @@
   .log-line {
     margin: 0;
     font-size: 12px;
-    color: var(--amber-dim);
+    color: var(--ink-dim);
   }
   .log-line.beat {
-    color: var(--amber);
+    color: var(--ink);
   }
   .log-line.threat {
     color: var(--red);
   }
   .log-line.system {
-    color: var(--amber-deep);
+    color: var(--ink-deep);
   }
 
   /* --------------------------------------------------- opportunity windows */
@@ -1006,17 +1019,17 @@
     align-items: center;
     width: 100%;
     padding: 0.7rem var(--pad);
-    background: var(--amber-deep);
-    border: 1px solid var(--amber);
-    color: var(--amber-text);
+    background: var(--ink-deep);
+    border: 1px solid var(--ink);
+    color: var(--ink-text);
     letter-spacing: 0.04em;
     animation: event-pulse 1s ease-in-out infinite;
   }
   .event-meta {
-    color: var(--amber);
+    color: var(--ink);
   }
   @keyframes event-pulse {
-    0%, 100% { background: var(--amber-deep); }
+    0%, 100% { background: var(--ink-deep); }
     50% { background: #8f6220; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -1033,11 +1046,11 @@
 
   .row.persona.active {
     background: #17140d;
-    border-left: 2px solid var(--amber);
+    border-left: 2px solid var(--ink);
   }
   .persona-stats {
     font-size: 10px;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
     font-variant-numeric: tabular-nums;
   }
 
@@ -1046,11 +1059,11 @@
     font-size: 15px;
     line-height: 1;
     border-color: transparent;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
   }
   .gear:hover {
-    color: var(--amber);
-    border-color: var(--line);
+    color: var(--ink);
+    border-color: var(--edge);
   }
   .settings {
     position: fixed;
@@ -1062,7 +1075,7 @@
     max-height: 86vh;
     display: flex;
     flex-direction: column;
-    background: var(--panel);
+    background: var(--surface);
   }
   .settings-body {
     overflow-y: auto;
@@ -1080,7 +1093,7 @@
     font-size: 11px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--amber);
+    color: var(--ink);
   }
   .audio-row {
     display: flex;
@@ -1097,14 +1110,14 @@
   }
   .audio-row .vol input[type='range'] {
     flex: 1;
-    accent-color: var(--amber);
+    accent-color: var(--ink);
   }
   .save-box {
     width: 100%;
     resize: vertical;
     background: #000;
-    color: var(--amber-text);
-    border: 1px solid var(--line);
+    color: var(--ink-text);
+    border: 1px solid var(--edge);
     border-radius: var(--radius);
     font-family: var(--mono);
     font-size: 11px;
@@ -1120,13 +1133,13 @@
     gap: 0.75rem;
     font-size: 10px;
     letter-spacing: 0.06em;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
   }
   .cond {
     display: flex;
     gap: 0.25rem;
     align-items: baseline;
-    border-bottom: 1px solid var(--line-hot);
+    border-bottom: 1px solid var(--edge-hot);
     padding-bottom: 1px;
   }
   .cond.met {
@@ -1144,7 +1157,7 @@
   }
   .fork {
     font-size: 10px;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
     font-style: italic;
   }
 
@@ -1157,7 +1170,7 @@
   .breakdown-row {
     display: flex;
     justify-content: space-between;
-    color: var(--amber-dim);
+    color: var(--ink-dim);
   }
 
   .ending {
@@ -1179,8 +1192,8 @@
     margin: 0;
   }
   .ending-stat {
-    color: var(--amber);
-    border-left: 2px solid var(--amber-deep);
+    color: var(--ink);
+    border-left: 2px solid var(--ink-deep);
     padding-left: 0.7rem;
   }
 

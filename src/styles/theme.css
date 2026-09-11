@@ -13,6 +13,37 @@
  */
 
 :root {
+  /*
+   * ROLE TOKENS
+   * ===========
+   * Structural rules must reference these, never a palette name directly.
+   *
+   * WHY. This sheet used to hard-code --amber at the point of use, and roughly two thirds of
+   * it turned out to be Phase 1's IDENTITY rather than shared structure. When Phase 2 was
+   * given the same shared vocabulary - which it needed, because Svelte scoping had left it
+   * almost unstyled - it inherited the telephone's warm amber wholesale and the two consoles
+   * became visually identical. A playtester's verdict was blunt: 'the ui needs to completely
+   * change. in both phase 1 and phase 2. separate UIs for separate concerns.'
+   *
+   * With roles, ONE class on the root element re-skins an entire phase:
+   *   .phase-telephone  Phase 1. Warm amber, analogue, a voice in your ear. Nothing changes.
+   *   .phase-console    Phase 2. Cold, digital, a session on somebody else's machine.
+   *
+   * The defaults below are Phase 1's values exactly, so this indirection is a no-op until a
+   * phase class says otherwise.
+   */
+  --ink: var(--amber);
+  --ink-dim: var(--amber-dim);
+  --ink-deep: var(--amber-deep);
+  --ink-text: var(--amber-text);
+  --accent: var(--amber);
+  --edge: var(--line);
+  --edge-hot: var(--line-hot);
+  --surface: var(--panel);
+  --surface-raised: var(--panel-raised);
+  --backdrop: var(--void);
+  --face: var(--mono);
+
   /* --- Phosphor (the player's console) --- */
   --amber: #ffb949;
   --amber-dim: #c98a2e;
@@ -28,6 +59,26 @@
   --steel: #8fa3b8;
   --steel-dim: #5a6b7d;
   --steel-deep: #2b3540;
+
+  /*
+   * --- Console (Phase 2: you are on their machine) ---
+   *
+   * CYAN, not green. Green phosphor reads as Matrix kitsch and recasts the player as a movie
+   * hacker; the research's best references for this exact fiction (Orwell, Duskers) are
+   * bureaucratically plain rather than neon. Cyan against a slate surface buys cold-versus-warm
+   * AND digital-versus-analogue in one move, which is the whole job.
+   *
+   * Contrast measured against --slate-panel #0b1014: --cyan-text 11.2:1, --cyan 8.4:1,
+   * --cyan-dim 4.9:1. Do not darken these without re-measuring.
+   */
+  --cyan: #5fd3e6;
+  --cyan-dim: #3f8fa3;
+  --cyan-deep: #1e4550;
+  --cyan-text: #c7ecf4;
+  --slate: #0b1014;
+  --slate-raised: #121a20;
+  --slate-line: #1e2a33;
+  --slate-line-hot: #10323d;
 
   /* --- Surfaces --- */
   --void: #07070a;
@@ -56,8 +107,8 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: var(--void);
-  color: var(--amber-text);
+  background: var(--backdrop);
+  color: var(--ink-text);
   font-family: var(--mono);
   font-size: 14px;
   line-height: 1.5;
@@ -85,8 +136,8 @@ body {
 /* ------------------------------------------------------------------ panels */
 
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: var(--surface);
+  border: 1px solid var(--edge);
   border-radius: var(--radius);
   /* Contain layout+paint so a counter updating at 20 Hz cannot invalidate layout
      for the rest of the page. This is the cheapest performance win available. */
@@ -97,9 +148,9 @@ body {
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--amber-deep);
+  color: var(--ink-deep);
   padding: 0.5rem var(--pad);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--edge);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -111,9 +162,9 @@ body {
 button {
   font-family: inherit;
   font-size: inherit;
-  color: var(--amber-text);
-  background: var(--panel-raised);
-  border: 1px solid var(--line);
+  color: var(--ink-text);
+  background: var(--surface-raised);
+  border: 1px solid var(--edge);
   border-radius: var(--radius);
   padding: 0.4rem 0.7rem;
   cursor: pointer;
@@ -122,7 +173,7 @@ button {
 
 button:hover:not(:disabled) {
   background: #1c1f27;
-  border-color: var(--amber-deep);
+  border-color: var(--ink-deep);
 }
 
 button:disabled {
@@ -133,7 +184,7 @@ button:disabled {
 /* Visible focus ring. A keyboard player must be able to see where they are. */
 button:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--amber);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -145,8 +196,8 @@ button:focus-visible,
   font-size: 15px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--void);
-  background: var(--amber);
+  color: var(--backdrop);
+  background: var(--ink);
   border: none;
   font-weight: 600;
   /* Promote to its own layer: this element is pressed thousands of times and
@@ -169,15 +220,15 @@ button:focus-visible,
   /* A faint wash rather than pure black. An empty meter against a black panel with only a
      near-black hairline border read as blank space - phase 2's coverage bar looked like a
      600px gap in the header rather than a meter at zero. */
-  background: rgba(255, 176, 0, 0.09);
-  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
+  border: 1px solid var(--edge);
   overflow: hidden;
   min-width: 40px;
 }
 
 .meter-fill {
   height: 100%;
-  background: var(--amber);
+  background: var(--ink);
   /* Width is set inline from state. Transition it so a jump reads as movement. */
   transition: width var(--t-med) linear, background-color var(--t-med);
 }
@@ -226,7 +277,7 @@ button:focus-visible,
 
 /** Phosphor glow, for headline numbers only. Applied to body text it becomes mud. */
 .phosphor {
-  color: var(--amber);
+  color: var(--ink);
   text-shadow: 0 0 6px rgba(255, 185, 73, 0.45), 0 0 18px rgba(255, 185, 73, 0.15);
 }
 
@@ -246,7 +297,7 @@ button:focus-visible,
 .popup {
   position: absolute;
   pointer-events: none;
-  color: var(--amber);
+  color: var(--ink);
   font-size: 13px;
   animation: rise 900ms ease-out forwards;
 }
@@ -261,10 +312,10 @@ button:focus-visible,
 .scroll {
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent;
+  scrollbar-color: var(--edge) transparent;
 }
 .scroll::-webkit-scrollbar { width: 8px; }
-.scroll::-webkit-scrollbar-thumb { background: var(--line); }
+.scroll::-webkit-scrollbar-thumb { background: var(--edge); }
 .scroll::-webkit-scrollbar-track { background: transparent; }
 
 /* --------------------------------------------------------------- a11y gates */
@@ -335,7 +386,7 @@ button:focus-visible,
 .hint,
   .locked {
     font-size: 11px;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
     margin: 0;
   }
 .locked {
@@ -371,13 +422,13 @@ button:focus-visible,
     text-align: left;
     background: transparent;
     border: none;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--edge);
     border-radius: 0;
     padding: 0.6rem var(--pad);
     align-items: flex-start;
   }
 .row:hover:not(:disabled) {
-    background: var(--panel-raised);
+    background: var(--surface-raised);
   }
 /**
  * A row you cannot afford yet must still be READABLE - it is the thing you are reading in
@@ -395,15 +446,15 @@ button:focus-visible,
     min-width: 0;
   }
 .row-name {
-    color: var(--amber);
+    color: var(--ink);
   }
 .row-effect {
     font-size: 11px;
-    color: var(--amber-dim);
+    color: var(--ink-dim);
   }
 .row-flavor {
     font-size: 11px;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
     font-style: italic;
   }
 .row-side {
@@ -415,17 +466,17 @@ button:focus-visible,
   }
 .row-owned {
     font-size: 15px;
-    color: var(--amber);
+    color: var(--ink);
   }
 .cost {
     font-size: 12px;
-    color: var(--amber-dim);
+    color: var(--ink-dim);
   }
 .row-out {
     font-size: 10px;
   }
 .dim {
-    color: var(--amber-deep);
+    color: var(--ink-deep);
   }
 .modal-scrim {
     position: fixed;
@@ -470,7 +521,7 @@ button:focus-visible,
   }
 .warn-text {
     font-size: 11px;
-    color: var(--amber-text);
+    color: var(--ink-text);
     margin: 0 0 0.6rem;
   }
 .link {
@@ -478,12 +529,12 @@ button:focus-visible,
     border: none;
     padding: 0.4rem 0 0;
     font-size: 11px;
-    color: var(--amber-dim);
+    color: var(--ink-dim);
     text-decoration: underline;
     text-underline-offset: 3px;
   }
 .link:hover {
-    color: var(--amber);
+    color: var(--ink);
     background: none;
   }
 .panel.fill {
@@ -492,3 +543,52 @@ button:focus-visible,
     display: flex;
     flex-direction: column;
   }
+
+/* =========================================================================================
+   PHASE IDENTITIES
+   =========================================================================================
+   One class on the root element decides which console the player is looking at. Structural
+   rules above read the role tokens, so nothing here needs to know about layout.
+   ----------------------------------------------------------------------------------------- */
+
+/**
+ * PHASE 1 — THE TELEPHONE.
+ *
+ * Warm amber on near-black, rounded nothing, a CRT that glows. This is deliberately identical
+ * to the :root defaults: Phase 1 is finished, playtested and liked, and the whole point of the
+ * token layer is that it can be introduced without touching it.
+ */
+.phase-telephone {
+  --ink: var(--amber);
+  --ink-dim: var(--amber-dim);
+  --ink-deep: var(--amber-deep);
+  --ink-text: var(--amber-text);
+  --accent: var(--amber);
+  --edge: var(--line);
+  --edge-hot: var(--line-hot);
+  --surface: var(--panel);
+  --surface-raised: var(--panel-raised);
+  --backdrop: var(--void);
+}
+
+/**
+ * PHASE 2 — THE CONSOLE.
+ *
+ * You are on their machine. Cold cyan on slate, harder edges, denser type. No scanlines and no
+ * phosphor glow: those belong to the telephone, and reusing them is what made the two phases
+ * look the same. The contrast between the consoles IS the point.
+ */
+.phase-console {
+  --ink: var(--cyan);
+  --ink-dim: var(--cyan-dim);
+  --ink-deep: var(--cyan-deep);
+  --ink-text: var(--cyan-text);
+  --accent: var(--cyan);
+  --edge: var(--slate-line);
+  --edge-hot: var(--slate-line-hot);
+  --surface: var(--slate);
+  --surface-raised: var(--slate-raised);
+  --backdrop: #06090b;
+  color: var(--cyan-text);
+  background: var(--backdrop);
+}
