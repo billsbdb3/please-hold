@@ -79,7 +79,7 @@ export const STREAMS: StreamDef[] = [
     name: 'The Dialler Console',
     flavor: 'Lead lists, rebuttal trees, and a leaderboard nobody wants to be bottom of.',
     yields: { structure: 1.2, people: 1.0, money: 0.6 },
-    heatPerAttention: 0.15,
+    heatPerAttention: 0.26,
     unlockCost: 3_500,
     maxAttention: 4,
   },
@@ -88,7 +88,7 @@ export const STREAMS: StreamDef[] = [
     name: 'The Group Chats',
     flavor: 'Where they say the parts they would not say on a recorded line.',
     yields: { people: 1.6, evidence: 2.2 },
-    heatPerAttention: 0.24,
+    heatPerAttention: 0.42,
     unlockCost: 9_000,
     maxAttention: 4,
   },
@@ -97,7 +97,7 @@ export const STREAMS: StreamDef[] = [
     name: 'The Spreadsheet',
     flavor: 'Takings by day, by closer, by account. Somebody keeps it very neatly.',
     yields: { money: 3.4, evidence: 1.1 },
-    heatPerAttention: 0.35,
+    heatPerAttention: 0.60,
     unlockCost: 22_000,
     maxAttention: 4,
   },
@@ -182,10 +182,10 @@ export const HEAT = {
  */
 export const COVERAGE = {
   need: {
-    people: 120_000,
-    structure: 96_000,
-    money: 78_000,
-    evidence: 102_000,
+    people: 33_000,
+    structure: 27_500,
+    money: 22_500,
+    evidence: 28_500,
   } as Record<IntelKind, number>,
   /**
    * Roster entries whose real name must be resolved. An attentive Phase 1 arrives with 12,
@@ -316,7 +316,7 @@ export const TRADECRAFT: TradecraftDef[] = [
     name: 'Quiet Sessions',
     effect: 'Suspicion falls 60% faster.',
     flavor: 'You have learned when to close the laptop, which is not a thing you knew before.',
-    cost: 9_000,
+    cost: 6_500,
     decayMultiplier: 1.6,
     requires: ['t.hours'],
   },
@@ -325,16 +325,40 @@ export const TRADECRAFT: TradecraftDef[] = [
     name: 'Their Own Reporting',
     effect: 'All intel ×1.8.',
     flavor: 'They generate a daily summary. You are on the distribution list, which is careless of them.',
-    cost: 18_000,
+    cost: 10_000,
     yieldMultiplier: 1.8,
     requires: ['t.vm'],
+  },
+  {
+    id: 't.analyst',
+    name: 'A Second Pair Of Eyes',
+    effect: 'You have longer to notice something on the cameras.',
+    flavor: 'Someone else watches the wall while you work. They are not paid, exactly.',
+    cost: 3_000,
+    requires: ['t.vm'],
+  },
+  {
+    id: 't.desk',
+    name: 'Somebody On The Desk',
+    effect: 'Anything on the cameras is logged without you, at half value.',
+    /*
+     * The deliberate exit from staring at the screen.
+     *
+     * 12-bonus-events.md is emphatic that every successful game eventually sells you out of its
+     * own busywork - Cookie Clicker's auto-clickers, Realm Grinder's autocast. Without this the
+     * optimal play late in a long phase is to watch the wall continuously, which is how an
+     * optional bonus turns into an obligation. Half value, so noticing yourself is still better.
+     */
+    flavor: 'They write down what they see. They do not ask what it is for.',
+    cost: 8_500,
+    requires: ['t.analyst'],
   },
   {
     id: 't.attention2',
     name: 'Nothing Else In The Diary',
     effect: '+3 attention.',
     flavor: 'You have stopped being asked to things. This has been convenient.',
-    cost: 35_000,
+    cost: 15_000,
     attentionBonus: 3,
     requires: ['t.attention1'],
   },
@@ -343,7 +367,7 @@ export const TRADECRAFT: TradecraftDef[] = [
     name: 'The IT Man Is Careless',
     effect: 'Suspicion rises 40% slower. All intel ×1.5.',
     flavor: 'He reuses one password across four systems. He also only comes in on Tuesdays.',
-    cost: 65_000,
+    cost: 24_000,
     heatMultiplier: 0.6,
     yieldMultiplier: 1.5,
     requires: ['t.quiet'],
@@ -355,7 +379,14 @@ export const TRADECRAFT_BY_ID: Record<string, TradecraftDef> = Object.fromEntrie
 );
 
 /** Target duration for the `active` archetype. Enforced by the regression gate. */
-export const PHASE2_TARGET_MINUTES = { min: 150, max: 200 } as const;
+/**
+ * Target duration for the `active` archetype.
+ *
+ * Cut from 150-200. The decision-density audit found Phase 2 running at ~0.13 player decisions
+ * per minute against Phase 1's ~1.5, and a long duration multiplies decision-starved minutes
+ * rather than adding content. The engagement layer raises density; this lowers the denominator.
+ */
+export const PHASE2_TARGET_MINUTES = { min: 110, max: 150 } as const;
 
 /**
  * Phase 2 milestones, on Coverage progress rather than a currency total — for the same

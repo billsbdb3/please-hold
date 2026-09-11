@@ -16,11 +16,12 @@
   import { fmt, fmtRate, fmtPct, fmtDuration } from './engine/numbers';
   import {
     assignAttention, clearAttention, unlockStream, buyAttention,
-    buyTradecraft, availableTradecraft, corroborateNext, deriveP2,
+    buyTradecraft, availableTradecraft, corroborateNext, deriveP2, claimCameraEvent, freshnessOf,
   } from './engine/phase2';
   import {
     STREAMS, HEAT, COVERAGE, INTEL_KINDS, INTEL_KIND_LABEL, TRADECRAFT,
   } from './data/phase2';
+  import { CAMERA_EVENTS, FATIGUE } from './data/phase2events';
   import type { StreamId } from './engine/types';
   import CctvGrid from './cctv/CctvGrid.svelte';
 
@@ -51,6 +52,26 @@
     p.streams.includes('cctv') && (p.attention.cctv ?? 0) > 0 && !(t.burnedUntil.cctv ?? 0),
   );
 
+  const live = $derived(t.liveEvent);
+  const liveLine = $derived(live ? CAMERA_EVENTS[live.index].line : null);
+
+  /**
+   * Freshness in words, not a bare percentage.
+   *
+   * Fatigue is invisible unless it is stated: a player watching the same stream would otherwise
+   * just see the numbers quietly getting worse and reasonably conclude something was broken.
+   */
+  function freshLabel(fresh: number): string {
+    if (fresh >= 0.99) return 'fresh';
+    if (fresh <= FATIGUE.floor + 0.01) return 'nothing new here';
+    return `${Math.round(fresh * 100)}% new`;
+  }
+
+  function notice() {
+    claimCameraEvent(game);
+    interacted();
+  }
+
   function attend(id: StreamId, delta: number) {
     assignAttention(game, id, delta);
     interacted();
@@ -74,6 +95,15 @@
       <span class="stat-label">Attention</span>
       <span class="stat-value num" class:over={d.assigned > d.pool}>
         {d.assigned}/{d.pool}
+      </span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">
+        Run
+        {#if d.hotLead}<span class="rising">hot</span>{/if}
+      </span>
+      <span class="stat-value num" class:chain-on={p.chain > 0.5}>
+        ×{d.chainMultiplier.toFixed(2)}
       </span>
     </div>
     <div class="stat">
@@ -163,6 +193,9 @@
               </div>
               <span class="row-flavor">{s.flavor}</span>
               <span class="stream-stats">
+                <span class="fresh" class:stale={freshnessOf(p, s.id) < 0.75}>
+                  {freshLabel(freshnessOf(p, s.id))}
+                </span>
                 {#each INTEL_KINDS as k (k)}
                   {#if s.yields[k]}
                     <span class="yield">{INTEL_KIND_LABEL[k].toLowerCase()} {s.yields[k]}</span>
@@ -218,8 +251,26 @@
             {:else}live{/if}
           </span>
         </div>
+        {#if live && liveLine}
+          <!-- A second claim path beside the wall. A pulsing tile is not an accessible target
+               for a keyboard user or a player looking somewhere else. -->
+          <div class="notice-bar">
+            <button class="notice-claim" onclick={notice}>Note it down</button>
+            <span class="notice-line">{liveLine}</span>
+            <span class="notice-clock num">{Math.ceil(live.remaining)}s</span>
+          </div>
+        {:else if t.lastEventNote}
+          <div class="notice-bar quiet">
+            <span class="notice-line">{t.lastEventNote}</span>
+          </div>
+        {/if}
         <div class="wall-body" class:unwatched={!cctvLive}>
-          <CctvGrid sizing="fit" />
+          <CctvGrid
+            sizing="fit"
+            litCamera={live ? live.camera : null}
+            litRemaining={live ? live.remaining / live.window : 1}
+            onNotice={notice}
+          />
         </div>
       </div>
     </section>
@@ -471,6 +522,23 @@
   .meter-fill.done { background: var(--green); }
 
   .binding { color: var(--amber); }
+  .chain-on { color: var(--green); }
+
+  .notice-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem var(--pad);
+    border-bottom: 1px solid var(--line);
+    font-size: 11px;
+  }
+  .notice-bar.quiet { opacity: 0.55; }
+  .notice-line { flex: 1; min-width: 0; }
+  .notice-claim { white-space: nowrap; }
+  .notice-clock { color: var(--amber-deep); }
+
+  .fresh { color: var(--amber-deep); }
+  .fresh.stale { color: var(--red-dim); }
   /* The requirement actually holding coverage back, so the panel answers 'what now'. */
   .binding-row .meter-label { color: var(--amber); }
   .binding-row .meter-fill { background: var(--amber); }

@@ -65,6 +65,7 @@ export function snapshot(game: GameState): Snapshot {
       // which is what that test is for.
       slipBag: p.slipBag.slice(),
       boilBag: p.boilBag.slice(),
+      freshness: { ...p.freshness },
       // Phase 2's collections need the same treatment for the same reason. Phase 2 shipped
       // with its component reading `game.p` directly and froze exactly as described above —
       // a camera wall updating live next to an attention counter stuck on its first value.
