@@ -154,12 +154,12 @@
     position: absolute;
     inset: 0;
     padding: 0;
-    border: 2px solid var(--amber);
+    border: 2px solid var(--accent);
     background: none;
     cursor: pointer;
     animation: notice-pulse 1.1s ease-in-out infinite;
   }
-  .notice:hover { border-color: var(--amber-text, #ffd9a0); }
+  .notice:hover { border-color: var(--ink-text); }
   /* The window depleting, drawn as a bar rather than only a colour change. */
   .notice::after {
     content: '';
@@ -168,7 +168,7 @@
     bottom: 0;
     height: 3px;
     width: calc(var(--left, 1) * 100%);
-    background: var(--amber);
+    background: var(--accent);
   }
   .notice-flag {
     position: absolute;
@@ -177,12 +177,12 @@
     font-size: 9px;
     letter-spacing: 0.12em;
     padding: 1px 4px;
-    background: var(--amber);
+    background: var(--accent);
     color: #000;
   }
   @keyframes notice-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 185, 73, 0.55); }
-    50% { box-shadow: 0 0 14px 3px rgba(255, 185, 73, 0.35); }
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+    50% { box-shadow: 0 0 14px 3px color-mix(in srgb, var(--accent) 35%, transparent); }
   }
   @media (prefers-reduced-motion: reduce) {
     .notice { animation: none; }

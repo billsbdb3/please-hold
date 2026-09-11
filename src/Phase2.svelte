@@ -13,7 +13,7 @@
    */
   import { frame, game, interacted } from './store.svelte';
   import { snapshot } from './engine/snapshot';
-  import { fmt, fmtRate, fmtPct, fmtDuration } from './engine/numbers';
+  import { fmt, fmtPct } from './engine/numbers';
   import {
     assignAttention, clearAttention, unlockStream, buyAttention,
     buyTradecraft, availableTradecraft, corroborateNext, deriveP2, claimCameraEvent, freshnessOf,
@@ -21,9 +21,14 @@
   import {
     STREAMS, HEAT, COVERAGE, INTEL_KINDS, INTEL_KIND_LABEL, TRADECRAFT,
   } from './data/phase2';
-  import { CAMERA_EVENTS, FATIGUE } from './data/phase2events';
+  import { FATIGUE } from './data/phase2events';
   import type { StreamId } from './engine/types';
   import CctvGrid from './cctv/CctvGrid.svelte';
+  import { audio } from './audio';
+  import SessionBar from './phase2/SessionBar.svelte';
+  import LogTail from './phase2/LogTail.svelte';
+  import { STREAM_EVENT_VOICE } from './data/streamEvents';
+  import { eventsFor } from './engine/phase2';
 
   /**
    * Opens the shared settings drawer, which lives in App. Phase 2 needs its own way in:
@@ -39,6 +44,7 @@
   const snap = $derived.by(() => { void frame.n; return snapshot(game); });
   const p = $derived(snap.p);
   const t = $derived(snap.t);
+  const log = $derived(snap.log);
   const d = $derived.by(() => { void frame.n; return snap.t.p2 ?? deriveP2(snap.p, snap.t.burnedUntil); });
 
   const heatPct = $derived(p.heat / HEAT.max);
@@ -53,7 +59,10 @@
   );
 
   const live = $derived(t.liveEvent);
-  const liveLine = $derived(live ? CAMERA_EVENTS[live.index].line : null);
+  const liveLine = $derived(live ? (eventsFor(live.stream)[live.index]?.line ?? null) : null);
+  /** Each stream announces itself in its own verb: you HEAR a recording, you READ a chat. */
+  const liveVoice = $derived(live ? STREAM_EVENT_VOICE[live.stream] : null);
+  const liveOnWall = $derived(live?.stream === 'cctv');
 
   /**
    * Freshness in words, not a bare percentage.
@@ -69,8 +78,60 @@
 
   function notice() {
     claimCameraEvent(game);
+    audio.noteConfirm();
     interacted();
   }
+
+  /**
+   * The room, and the three things it reacts to.
+   *
+   * Phase 1's hold music stops first: these are two different places, and hearing a telephone
+   * queue over a server room would say the player is in neither.
+   */
+  $effect(() => {
+    audio.stopHoldMusic();
+    audio.startRoom();
+    return () => audio.stopRoom();
+  });
+
+  // Suspicion closes the room down; coverage walks the drone up. Both are cheap setTargetAtTime
+  // ramps, so driving them every frame is fine.
+  $effect(() => {
+    audio.setSuspicion(heatPct);
+  });
+  $effect(() => {
+    audio.setCoverage(d.progress);
+  });
+
+  // A feed lighting up, and getting caught. Tracked by identity rather than by value so the
+  // chirp fires once per event rather than once per frame.
+  let lastEventKey = $state<string | null>(null);
+  $effect(() => {
+    const key = t.liveEvent ? `${t.liveEvent.index}:${t.liveEvent.camera}` : null;
+    if (key && key !== lastEventKey) audio.feedChirp();
+    lastEventKey = key;
+  });
+  let lastBurns = $state(0);
+  $effect(() => {
+    if (p.burns > lastBurns) audio.burnSting();
+    lastBurns = p.burns;
+  });
+
+  /**
+   * A remaining-time estimate, in the tradition of every progress bar ever shipped.
+   *
+   * Honest arithmetic - elapsed divided by progress - which is exactly why it is useless early
+   * and why the line beside it admits as much without changing anything.
+   */
+  const estimate = $derived.by(() => {
+    void frame.n;
+    if (d.progress <= 0.004) return 'UNKNOWN';
+    const total = p.phase2Elapsed / d.progress;
+    const left = Math.max(0, total - p.phase2Elapsed);
+    const h = Math.floor(left / 3600);
+    const m = Math.round((left % 3600) / 60);
+    return h > 0 ? `${h} h ${m} m` : `${m} m`;
+  });
 
   function attend(id: StreamId, delta: number) {
     assignAttention(game, id, delta);
@@ -81,72 +142,41 @@
 <!-- The picture destabilises as they get suspicious. Same effect phase 1 uses for his temper,
      driven here by the thing that threatens YOU. -->
 <div class="p2" class:glitching={heatPct > 0.55} style="--glitch: {heatPct.toFixed(2)}">
-  <!-- ------------------------------------------------------------------ header -->
-  <header class="statusbar panel">
-    <div class="stat">
-      <span class="stat-label">Intel</span>
-      <span class="stat-value phosphor num">{fmt(p.intel)}</span>
-    </div>
-    <div class="stat">
-      <span class="stat-label">Rate</span>
-      <span class="stat-value num">{fmtRate(d.totalRate)}/s</span>
-    </div>
-    <div class="stat">
-      <span class="stat-label">Attention</span>
-      <span class="stat-value num" class:over={d.assigned > d.pool}>
-        {d.assigned}/{d.pool}
-      </span>
-    </div>
-    <div class="stat">
-      <span class="stat-label">
-        Run
-        {#if d.hotLead}<span class="rising">hot</span>{/if}
-      </span>
-      <span class="stat-value num" class:chain-on={p.chain > 0.5}>
-        ×{d.chainMultiplier.toFixed(2)}
-      </span>
-    </div>
-    <div class="stat">
-      <span class="stat-label">Inside</span>
-      <span class="stat-value num">{fmtDuration(p.phase2Elapsed)}</span>
-    </div>
+  <SessionBar
+    suspicion={heatPct}
+    interrupted={d.burned.length > 0}
+    elapsed={p.phase2Elapsed}
+    rate={d.totalRate}
+    onSettings={onSettings}
+  />
 
-    <div class="stat grow">
-      <span class="stat-label">
-        Coverage {fmtPct(d.progress)}
-        <!-- Always name the requirement holding it. Coverage is a minimum, so the headline on
-             its own can read 0% while three of the five are going well. -->
-        <span class="binding">· held by {d.bindingLabel}</span>
-        {#if p.burns > 0}<span class="dim">· {p.burns} burns</span>{/if}
-      </span>
-      <div class="meter">
-        <div class="meter-fill" style="width: {d.progress * 100}%"></div>
-      </div>
-    </div>
-
-    <button class="gear" onclick={onSettings} aria-label="Settings" title="Settings">⚙</button>
-
-    <div class="stat heat-stat">
-      <span class="stat-label">
-        Suspicion
-        <!-- Zero suspicion is a STATE, not a stuck meter. Early on you are watching two quiet
-             streams and it genuinely takes a while before anyone starts to notice; reporting
-             that as 'cooling' made a correct reading look like a bug. -->
-        {#if d.heatRate > 0}<span class="rising">rising</span>
-        {:else if p.heat <= 0}<span class="dim">nobody has noticed</span>
-        {:else}<span class="dim">cooling</span>{/if}
-      </span>
-      <div class="meter">
-        <div
-          class="meter-fill {heatPct > 0.85 ? 'danger' : heatPct > HEAT.warnAt / 100 ? 'warn' : ''}"
-          style="width: {heatPct * 100}%"
-        ></div>
-      </div>
-      <span class="heat-note num">
-        {p.heat.toFixed(0)} · intel ×{d.heatYieldMultiplier.toFixed(2)}
-      </span>
-    </div>
-  </header>
+  <!--
+    The readout, in the register of a status page.
+    See src/phase2/SessionBar.svelte for why: the comedy is that the tool has no idea what it is
+    measuring, and files industrial fraud under NOMINAL.
+  -->
+  <div class="readout">
+    <span class="r"><span class="k">COVERAGE</span> <span class="v num">{fmtPct(d.progress)}</span></span>
+    <span class="r"><span class="k">HELD BY</span> <span class="v">{d.bindingLabel.toUpperCase()}</span></span>
+    <span class="r"><span class="k">INTEL</span> <span class="v num">{fmt(p.intel)}</span></span>
+    <span class="r"><span class="k">ATTENTION</span>
+      <span class="v num" class:over={d.assigned > d.pool}>{d.assigned}/{d.pool}</span></span>
+    <span class="r"><span class="k">RUN</span>
+      <span class="v num" class:chain-on={p.chain > 0.5}>×{d.chainMultiplier.toFixed(2)}</span>
+      {#if d.hotLead}<span class="hot">HOT</span>{/if}</span>
+    <span class="r"><span class="k">SUSPICION</span>
+      <span class="v num">{p.heat.toFixed(0)}</span>
+      <span class="k">YIELD</span>
+      <span class="v num">×{d.heatYieldMultiplier.toFixed(2)}</span></span>
+    {#if p.burns > 0}
+      <span class="r"><span class="k">INTERRUPTIONS</span> <span class="v num">{p.burns}</span></span>
+    {/if}
+    <span class="spacer"></span>
+    <!-- An estimate, offered without confidence and without being asked. -->
+    <span class="r dim-note">
+      ESTIMATED TIME REMAINING {estimate}. This estimate has not been accurate.
+    </span>
+  </div>
 
   {#if d.burned.length > 0}
     <div class="drop-bar">
@@ -255,7 +285,8 @@
           <!-- A second claim path beside the wall. A pulsing tile is not an accessible target
                for a keyboard user or a player looking somewhere else. -->
           <div class="notice-bar">
-            <button class="notice-claim" onclick={notice}>Note it down</button>
+            <span class="notice-flag">{liveVoice?.flag}</span>
+            <button class="notice-claim" onclick={notice}>{liveVoice?.claim}</button>
             <span class="notice-line">{liveLine}</span>
             <span class="notice-clock num">{Math.ceil(live.remaining)}s</span>
           </div>
@@ -267,11 +298,15 @@
         <div class="wall-body" class:unwatched={!cctvLive}>
           <CctvGrid
             sizing="fit"
-            litCamera={live ? live.camera : null}
+            litCamera={live && liveOnWall ? live.camera : null}
             litRemaining={live ? live.remaining / live.window : 1}
             onNotice={notice}
           />
         </div>
+      </div>
+
+      <div class="tail-slot">
+        <LogTail lines={log} rate={d.totalRate} suspicion={heatPct} />
       </div>
     </section>
 
@@ -390,38 +425,6 @@
     gap: var(--pad);
     min-height: 0;
   }
-
-  .statusbar {
-    display: flex;
-    gap: 1.5rem;
-    padding: 0.55rem var(--pad);
-    align-items: center;
-    flex-wrap: wrap;
-    flex: 0 0 auto;
-  }
-  .stat {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-  .stat.grow {
-    flex: 0 1 240px;
-    min-width: 160px;
-    margin-left: auto;
-  }
-  .heat-stat { flex: 0 1 220px; min-width: 190px; }
-  .stat-label {
-    font-size: 9px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--amber-deep);
-  }
-  .stat-value { font-size: 15px; }
-  .stat-value.over { color: var(--red); }
-  .rising { color: var(--red); }
-  .heat-note { font-size: 10px; color: var(--amber-deep); }
-
   /* Three columns, with the wall taking the space it deserves as the centrepiece. */
   .p2-grid {
     flex: 1 1 auto;
@@ -437,12 +440,52 @@
     min-height: 0;
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: var(--line) transparent;
+    scrollbar-color: var(--edge) transparent;
   }
   .col::-webkit-scrollbar { width: 8px; }
-  .col::-webkit-scrollbar-thumb { background: var(--line); }
+  .col::-webkit-scrollbar-thumb { background: var(--edge); }
   /* The wall must not scroll internally — it sizes itself to the box it is given. */
   .wall-col { overflow: hidden; }
+
+  /* The tail gets a fixed slice of the centre column; the wall takes the rest. */
+  .tail-slot {
+    flex: 0 0 auto;
+    height: 26%;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .tail-slot :global(.tail) { flex: 1 1 auto; min-height: 0; }
+
+  .readout {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--edge);
+    background: var(--surface);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    flex: 0 0 auto;
+  }
+  .readout .k { color: var(--ink-deep); }
+  .readout .v { color: var(--ink-text); }
+  .readout .r { display: inline-flex; gap: 4px; align-items: baseline; }
+  .readout .spacer { flex: 1; }
+  .readout .over { color: var(--red); }
+  .readout .chain-on { color: var(--green); }
+  .readout .hot { color: var(--red); }
+  .dim-note { color: var(--ink-deep); }
+
+  .notice-flag {
+    background: var(--accent);
+    color: #000;
+    padding: 0 5px;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+  }
 
   .wall-body {
     flex: 1 1 auto;
@@ -455,24 +498,14 @@
     filter: grayscale(1);
   }
 
-  .hint-block { border-bottom: 1px solid var(--line); }
-
-  .gear {
-    padding: 0.2rem 0.5rem;
-    font-size: 15px;
-    line-height: 1;
-    border-color: transparent;
-    color: var(--amber-deep);
-    order: 99;
-  }
-  .gear:hover { color: var(--amber); border-color: var(--line); }
+  .hint-block { border-bottom: 1px solid var(--edge); }
 
   .stream {
     display: flex;
     flex-direction: column;
     gap: 3px;
     padding: 0.6rem var(--pad);
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--edge);
   }
   .stream.dark { opacity: 0.4; }
   .stream-head {
@@ -491,17 +524,17 @@
     font-size: 14px;
     line-height: 1.4;
   }
-  .alloc { font-size: 14px; color: var(--amber); }
+  .alloc { font-size: 14px; color: var(--ink); }
 
   .stream-stats {
     display: flex;
     flex-wrap: wrap;
     gap: 0.6rem;
     font-size: 10px;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
     font-variant-numeric: tabular-nums;
   }
-  .yield { color: var(--amber-dim); }
+  .yield { color: var(--ink-dim); }
   .heat-cost { color: var(--red-dim); }
   .dark-note { color: var(--red); }
 
@@ -521,30 +554,27 @@
   }
   .meter-fill.done { background: var(--green); }
 
-  .binding { color: var(--amber); }
-  .chain-on { color: var(--green); }
-
   .notice-bar {
     display: flex;
     align-items: center;
     gap: 0.6rem;
     padding: 0.45rem var(--pad);
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--edge);
     font-size: 11px;
   }
   .notice-bar.quiet { opacity: 0.55; }
   .notice-line { flex: 1; min-width: 0; }
   .notice-claim { white-space: nowrap; }
-  .notice-clock { color: var(--amber-deep); }
+  .notice-clock { color: var(--ink-deep); }
 
-  .fresh { color: var(--amber-deep); }
+  .fresh { color: var(--ink-deep); }
   .fresh.stale { color: var(--red-dim); }
   /* The requirement actually holding coverage back, so the panel answers 'what now'. */
-  .binding-row .meter-label { color: var(--amber); }
-  .binding-row .meter-fill { background: var(--amber); }
+  .binding-row .meter-label { color: var(--ink); }
+  .binding-row .meter-fill { background: var(--ink); }
   .binding-row::after {
     content: '←';
-    color: var(--amber);
+    color: var(--ink);
     font-size: 10px;
     align-self: center;
   }
@@ -556,12 +586,12 @@
     justify-content: space-between;
     gap: 0.5rem;
     padding: 0.35rem var(--pad);
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--edge);
     font-size: 11px;
-    color: var(--amber-deep);
+    color: var(--ink-deep);
   }
   .roster-row.named {
-    color: var(--amber-text);
+    color: var(--ink-text);
   }
   .roster-row.named .roster-handle::before {
     content: '✓ ';
@@ -572,7 +602,7 @@
   .next-slip {
     margin: 0.4rem 0 0;
     font-size: 11px;
-    color: var(--amber-dim);
+    color: var(--ink-dim);
     font-style: italic;
   }
   .roster-role { text-transform: uppercase; font-size: 9px; letter-spacing: 0.1em; }
@@ -580,5 +610,4 @@
   @media (max-width: 1100px) {
     .p2-grid { grid-template-columns: 1fr; overflow-y: auto; }
     .wall-col { overflow: visible; min-height: 60vh; }
-  }
-</style>
+  }</style>

@@ -435,9 +435,17 @@ export interface Popup {
 
 /** A camera event currently on screen, waiting to be noticed. */
 export interface LiveCameraEvent {
-  /** Index into CAMERA_EVENTS. */
+  /**
+   * Which stream produced it.
+   *
+   * Events were camera-only, and a player with one attention point spare for the cameras saw two
+   * moments in twenty-two minutes. Any watched stream can produce one now, so this says where to
+   * light up and which verb to use.
+   */
+  stream: StreamId;
+  /** Index into that stream's event list. */
   index: number;
-  /** Which camera, 0-based, so the wall can light the right tile. */
+  /** Which camera, 0-based, when the stream is the wall. Ignored otherwise. */
   camera: number;
   /** Seconds left to claim it. */
   remaining: number;
