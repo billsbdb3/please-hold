@@ -24,6 +24,7 @@
   import { CAMERA_EVENTS, FATIGUE } from './data/phase2events';
   import type { StreamId } from './engine/types';
   import CctvGrid from './cctv/CctvGrid.svelte';
+  import { audio } from './audio';
 
   /**
    * Opens the shared settings drawer, which lives in App. Phase 2 needs its own way in:
@@ -69,8 +70,44 @@
 
   function notice() {
     claimCameraEvent(game);
+    audio.noteConfirm();
     interacted();
   }
+
+  /**
+   * The room, and the three things it reacts to.
+   *
+   * Phase 1's hold music stops first: these are two different places, and hearing a telephone
+   * queue over a server room would say the player is in neither.
+   */
+  $effect(() => {
+    audio.stopHoldMusic();
+    audio.startRoom();
+    return () => audio.stopRoom();
+  });
+
+  // Suspicion closes the room down; coverage walks the drone up. Both are cheap setTargetAtTime
+  // ramps, so driving them every frame is fine.
+  $effect(() => {
+    audio.setSuspicion(heatPct);
+  });
+  $effect(() => {
+    audio.setCoverage(d.progress);
+  });
+
+  // A feed lighting up, and getting caught. Tracked by identity rather than by value so the
+  // chirp fires once per event rather than once per frame.
+  let lastEventKey = $state<string | null>(null);
+  $effect(() => {
+    const key = t.liveEvent ? `${t.liveEvent.index}:${t.liveEvent.camera}` : null;
+    if (key && key !== lastEventKey) audio.feedChirp();
+    lastEventKey = key;
+  });
+  let lastBurns = $state(0);
+  $effect(() => {
+    if (p.burns > lastBurns) audio.burnSting();
+    lastBurns = p.burns;
+  });
 
   function attend(id: StreamId, delta: number) {
     assignAttention(game, id, delta);

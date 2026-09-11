@@ -10,6 +10,7 @@
  */
 
 import { engine } from './engine';
+import * as roomTone from './roomTone';
 import type { Category } from './engine';
 import * as holdMusic from './holdMusic';
 import * as sfx from './sfx';
@@ -45,6 +46,38 @@ export const audio = {
   },
   setCategoryVolume(c: Category, v: number): void {
     engine.setCategoryVolume(c, v);
+  },
+
+  // --- Phase 2: the room ---
+  /**
+   * Start the server-room bed. Phase 1's hold music should be stopped first — they are two
+   * different places and hearing both at once would say the player is in neither.
+   */
+  startRoom(): void {
+    roomTone.startRoom();
+  },
+  stopRoom(): void {
+    roomTone.stopRoom();
+  },
+  /** Suspicion 0..1. Closes the room down: quieter and smaller, never louder. */
+  setSuspicion(f: number): void {
+    roomTone.setSuspicion(f);
+  },
+  /** Coverage 0..1. Walks the drone's tonal centre up as the map fills in. */
+  setCoverage(f: number): void {
+    roomTone.setCoverage(f);
+  },
+  /** Somebody noticed: duck the whole room to near-silence, then a relay. */
+  burnSting(): void {
+    roomTone.burnSting();
+  },
+  /** Something has appeared on a feed. */
+  feedChirp(): void {
+    roomTone.feedChirp();
+  },
+  /** Noted down. */
+  noteConfirm(): void {
+    roomTone.noteConfirm();
   },
 
   // --- Hold music ---
