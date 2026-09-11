@@ -23,7 +23,7 @@ import { tick } from '../src/engine/sim';
 import {
   enterPhase2, assignAttention, clearAttention, unlockStream,
   buyAttention, buyTradecraft, availableTradecraft, corroborateNext, deriveP2,
-  claimCameraEvent, freshnessOf,
+  claimCameraEvent, freshnessOf, lookCloser,
 } from '../src/engine/phase2';
 import { DT } from '../src/engine/loop';
 import {
@@ -61,6 +61,13 @@ interface P2Policy {
    */
   camerasReserved: number;
   /**
+   * How diligently the player reads streams properly, 0..1.
+   *
+   * Has to be modelled, or the simulator measures a player ignoring the phase's main action - and
+   * the whole reason that action exists is that a playtester had nothing to do.
+   */
+  closerDiligence: number;
+  /**
    * Whether the player rotates attention to exploit freshness.
    *
    * Fatigue makes parked attention decay to its floor, so a policy that never rotates measures
@@ -73,13 +80,13 @@ interface P2Policy {
 const POLICIES: Record<P2Archetype, P2Policy> = {
   // Pins everything wide open and never backs off. Should get burned constantly.
   reckless: { heatCeiling: 1, reviewEverySeconds: 5, attentionFraction: 1, spendAggression: 1,
-    catchRate: 0.9, rotates: true, camerasReserved: 2 },
+    catchRate: 0.9, rotates: true, camerasReserved: 2, closerDiligence: 0.9 },
   optimal: { heatCeiling: 0.55, reviewEverySeconds: 5, attentionFraction: 1, spendAggression: 1,
-    catchRate: 0.95, rotates: true, camerasReserved: 2 },
+    catchRate: 0.95, rotates: true, camerasReserved: 2, closerDiligence: 0.95 },
   active: { heatCeiling: 0.6, reviewEverySeconds: 15, attentionFraction: 1, spendAggression: 0.85,
-    catchRate: 0.7, rotates: true, camerasReserved: 2 },
+    catchRate: 0.7, rotates: true, camerasReserved: 2, closerDiligence: 0.6 },
   casual: { heatCeiling: 0.7, reviewEverySeconds: 45, attentionFraction: 0.6, spendAggression: 0.6,
-    catchRate: 0.3, rotates: true, camerasReserved: 1 },
+    catchRate: 0.3, rotates: true, camerasReserved: 1, closerDiligence: 0.25 },
   /**
    * THE FLOOR, and the most important archetype in this file.
    *
@@ -89,7 +96,7 @@ const POLICIES: Record<P2Archetype, P2Policy> = {
    * explicit that engaged play should be ~1.3-2x faster, not ~10x, and a test asserts it.
    */
   neglectful: { heatCeiling: 0.7, reviewEverySeconds: 120, attentionFraction: 1,
-    spendAggression: 0.8, catchRate: 0, rotates: false, camerasReserved: 0 },
+    spendAggression: 0.8, catchRate: 0, rotates: false, camerasReserved: 0, closerDiligence: 0 },
 };
 
 export interface P2Result {
@@ -187,6 +194,18 @@ export function runPhase2(archetype: P2Archetype, verbose = false): P2Result {
 
     tick(s, DT);
     peakHeat = Math.max(peakHeat, p.heat);
+
+    // Read a stream properly, when one is off cooldown. An engaged player does this constantly;
+    // it is the action the phase was missing.
+    if (present && policy.closerDiligence > 0) {
+      for (const st of STREAMS) {
+        if ((p.attention[st.id] ?? 0) <= 0) continue;
+        if ((s.t.closerCooldown[st.id] ?? 0) > 0) continue;
+        const roll = nextRandom(p.rngState);
+        p.rngState = roll.state;
+        if (roll.value < policy.closerDiligence) lookCloser(s, st.id);
+      }
+    }
 
     // Notice a lit feed, or do not. Deterministic from the game's own RNG so the run stays
     // reproducible, and only while present.

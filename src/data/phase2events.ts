@@ -253,13 +253,18 @@ export const CAMERA_EVENT = {
    * suggests on the order of 25-40 optional events across a phase this long, so the interval is
    * widened and each catch is worth more.
    */
-  minInterval: 200,
-  maxInterval: 520,
+  minInterval: 170,
+  maxInterval: 440,
   /**
    * How much more attention on the cameras speeds events up. Sub-linear, so filling the wall
    * with attention is not simply correct.
    */
-  attentionExponent: 0.3,
+  /*
+   * Raised from 0.3, which made buying attention nearly pointless for events: going from 3 points
+   * to 10 moved the interval only from 221s to 154s, so the thing the player was saving up for
+   * would not have fixed what he was complaining about.
+   */
+  attentionExponent: 0.45,
   /** Seconds the feed stays lit. Long enough not to be a reflex test. */
   window: 12,
   /** With the analyst upgrade, the window is this much longer. */
@@ -339,6 +344,34 @@ export const CHAIN = {
 
 /** Fraction of an event's value granted when the desk claims it for you. */
 export const DESK_CLAIM_FRACTION = 0.5;
+
+/**
+ * LOOKING CLOSER — the verb Phase 2 was missing.
+ *
+ * The complaint that mattered most was not that the phase was slow but that there was nothing to
+ * DO: 'now im just waiting for 1.5k to get another thing to do at once'. Phase 1 always had a
+ * hand busy. Phase 2 had allocation, which stabilises, and then several minutes of watching bars.
+ *
+ * This is deliberately NOT Phase 1's stall button rebuilt. It is always available, it is modest,
+ * and it COSTS something: reading a stream properly makes it go stale faster, so a player who
+ * hammers it burns out the very stream they are reading. That is a tradeoff rather than a clicker,
+ * and it is the same choice the phase is already about - what to spend attention on - only at a
+ * scale of seconds instead of minutes.
+ *
+ * The numbers are set from the guardrail rather than by feel. Engaged play should be about
+ * 1.3-2x idle, so the maximum possible contribution has to land near 40%: a claim worth
+ * `seconds` of that stream's output on a `cooldown` gives at most seconds/cooldown of extra
+ * income, which at 6 and 15 is 0.4. And that ceiling is only reachable by rotating perfectly,
+ * which the freshness cost then punishes.
+ */
+export const LOOK_CLOSER = {
+  /** Seconds of that stream's own output, granted at once. */
+  seconds: 6,
+  /** Per-stream cooldown, seconds. */
+  cooldown: 15,
+  /** Freshness spent by reading properly. */
+  freshnessCost: 0.05,
+} as const;
 
 /** Which stream the events belong to. */
 export const EVENT_STREAM: StreamId = 'cctv';

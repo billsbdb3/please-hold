@@ -11,6 +11,7 @@
 
 import { engine } from './engine';
 import * as roomTone from './roomTone';
+import * as phase2Music from './phase2Music';
 import type { Category } from './engine';
 import * as holdMusic from './holdMusic';
 import * as sfx from './sfx';
@@ -55,21 +56,29 @@ export const audio = {
    */
   startRoom(): void {
     roomTone.startRoom();
+    // The room is the place; the music is the machine keeping time in it. Room tone alone was
+    // just white noise, which is exactly how it was described.
+    phase2Music.startMusic();
   },
   stopRoom(): void {
     roomTone.stopRoom();
+    phase2Music.stopMusic();
   },
   /** Suspicion 0..1. Closes the room down: quieter and smaller, never louder. */
   setSuspicion(f: number): void {
     roomTone.setSuspicion(f);
+    phase2Music.setMusicSuspicion(f);
   },
   /** Coverage 0..1. Walks the drone's tonal centre up as the map fills in. */
   setCoverage(f: number): void {
     roomTone.setCoverage(f);
+    // Layers arrive with coverage, so the music is itself a progress bar.
+    phase2Music.setMusicCoverage(f);
   },
   /** Somebody noticed: duck the whole room to near-silence, then a relay. */
   burnSting(): void {
     roomTone.burnSting();
+    phase2Music.musicDuck();
   },
   /** Something has appeared on a feed. */
   feedChirp(): void {

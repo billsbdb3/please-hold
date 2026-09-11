@@ -17,6 +17,7 @@
   import {
     assignAttention, clearAttention, unlockStream, buyAttention,
     buyTradecraft, availableTradecraft, corroborateNext, deriveP2, claimCameraEvent, freshnessOf,
+    lookCloser,
   } from './engine/phase2';
   import {
     STREAMS, HEAT, COVERAGE, INTEL_KINDS, INTEL_KIND_LABEL, TRADECRAFT,
@@ -133,6 +134,19 @@
     return h > 0 ? `${h} h ${m} m` : `${m} m`;
   });
 
+  /**
+   * Read a stream properly. The always-available action the phase lacked.
+   *
+   * Deliberately placed on the stream row rather than as one global button: which stream you read
+   * is the decision, and it costs that stream's freshness.
+   */
+  function closer(id: StreamId) {
+    if (lookCloser(game, id)) {
+      audio.noteConfirm();
+      interacted();
+    }
+  }
+
   function attend(id: StreamId, delta: number) {
     assignAttention(game, id, delta);
     interacted();
@@ -156,7 +170,12 @@
     measuring, and files industrial fraud under NOMINAL.
   -->
   <div class="readout">
-    <span class="r"><span class="k">COVERAGE</span> <span class="v num">{fmtPct(d.progress)}</span></span>
+    <!-- One decimal below 5%: a flat 0% for the first ten minutes reads as broken, and the
+         player has in fact been making progress the whole time. -->
+    <span class="r"><span class="k">COVERAGE</span>
+      <span class="v num">
+        {d.progress < 0.05 ? `${(d.progress * 100).toFixed(1)}%` : fmtPct(d.progress)}
+      </span></span>
     <span class="r"><span class="k">HELD BY</span> <span class="v">{d.bindingLabel.toUpperCase()}</span></span>
     <span class="r"><span class="k">INTEL</span> <span class="v num">{fmt(p.intel)}</span></span>
     <span class="r"><span class="k">ATTENTION</span>
@@ -222,10 +241,22 @@
                 </span>
               </div>
               <span class="row-flavor">{s.flavor}</span>
-              <span class="stream-stats">
+              <div class="stream-act">
+                <button
+                  class="closer"
+                  onclick={() => closer(s.id)}
+                  disabled={dark || a <= 0 || (t.closerCooldown[s.id] ?? 0) > 0}
+                  title="Read this stream properly. Costs freshness."
+                >
+                  {(t.closerCooldown[s.id] ?? 0) > 0
+                    ? `${Math.ceil(t.closerCooldown[s.id] ?? 0)}s`
+                    : 'Look closer'}
+                </button>
                 <span class="fresh" class:stale={freshnessOf(p, s.id) < 0.75}>
                   {freshLabel(freshnessOf(p, s.id))}
                 </span>
+              </div>
+              <span class="stream-stats">
                 {#each INTEL_KINDS as k (k)}
                   {#if s.yields[k]}
                     <span class="yield">{INTEL_KIND_LABEL[k].toLowerCase()} {s.yields[k]}</span>
@@ -567,6 +598,17 @@
   .notice-claim { white-space: nowrap; }
   .notice-clock { color: var(--ink-deep); }
 
+  .stream-act {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 2px 0 1px;
+  }
+  .closer {
+    font-size: 10px;
+    padding: 1px 6px;
+    min-width: 5.5rem;
+  }
   .fresh { color: var(--ink-deep); }
   .fresh.stale { color: var(--red-dim); }
   /* The requirement actually holding coverage back, so the panel answers 'what now'. */

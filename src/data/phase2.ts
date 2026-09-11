@@ -62,7 +62,7 @@ export const STREAMS: StreamDef[] = [
     // early money source the phase was missing.
     yields: { people: 1.4, evidence: 0.7, money: 0.55 },
     heatPerAttention: 0.09,
-    unlockCost: 300,
+    unlockCost: 150,
     maxAttention: 5,
   },
   {
@@ -71,7 +71,7 @@ export const STREAMS: StreamDef[] = [
     flavor: 'Two hundred and six extensions, and a log of which ones ring each other.',
     yields: { structure: 2.0 },
     heatPerAttention: 0.11,
-    unlockCost: 1_200,
+    unlockCost: 600,
     maxAttention: 5,
   },
   {
@@ -80,7 +80,7 @@ export const STREAMS: StreamDef[] = [
     flavor: 'Lead lists, rebuttal trees, and a leaderboard nobody wants to be bottom of.',
     yields: { structure: 1.2, people: 1.0, money: 0.6 },
     heatPerAttention: 0.26,
-    unlockCost: 3_500,
+    unlockCost: 1_600,
     maxAttention: 4,
   },
   {
@@ -89,7 +89,7 @@ export const STREAMS: StreamDef[] = [
     flavor: 'Where they say the parts they would not say on a recorded line.',
     yields: { people: 1.6, evidence: 2.2 },
     heatPerAttention: 0.42,
-    unlockCost: 9_000,
+    unlockCost: 4_000,
     maxAttention: 4,
   },
   {
@@ -98,7 +98,7 @@ export const STREAMS: StreamDef[] = [
     flavor: 'Takings by day, by closer, by account. Somebody keeps it very neatly.',
     yields: { money: 3.4, evidence: 1.1 },
     heatPerAttention: 0.60,
-    unlockCost: 22_000,
+    unlockCost: 9_000,
     maxAttention: 4,
   },
 ];
@@ -118,10 +118,26 @@ export const INTEL_KIND_LABEL: Record<IntelKind, string> = {
 
 /** Attention: the resource that makes this an allocation game rather than a shop. */
 export const ATTENTION = {
+  /*
+   * THE OPENING WAS STARVED.
+   *
+   * Base was 3 against six streams, and a playtester eleven minutes in had 385 intel and NOTHING
+   * he could afford - his own words were 'now im just waiting for 1.5k to get another thing to do
+   * at once'. Three points also leaves no spare capacity to rotate with, so attention fatigue,
+   * which is supposed to be the phase's main decision, cannot be played at all.
+   *
+   * Six points means three or four streams live from the start, room to rotate, and enough
+   * attention that events actually fire.
+   */
   /** Starting pool. Deliberately less than the first two streams can absorb. */
-  base: 3,
+  base: 6,
   /** Bought with Intel; each costs more than the last. */
-  costBase: 1_500,
+  /*
+   * 1,500 for the first extra point was ten minutes of saving for a barely perceptible change.
+   * At 400 the next point is a couple of minutes away, so there is nearly always something worth
+   * buying - which is the actual complaint.
+   */
+  costBase: 400,
   costGrowth: 1.75,
   max: 14,
 } as const;
@@ -182,10 +198,10 @@ export const HEAT = {
  */
 export const COVERAGE = {
   need: {
-    people: 33_000,
-    structure: 27_500,
-    money: 22_500,
-    evidence: 28_500,
+    people: 106_000,
+    structure: 88_000,
+    money: 72_000,
+    evidence: 92_000,
   } as Record<IntelKind, number>,
   /**
    * Roster entries whose real name must be resolved. An attentive Phase 1 arrives with 12,
