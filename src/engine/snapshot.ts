@@ -78,7 +78,15 @@ export function snapshot(game: GameState): Snapshot {
     // Derived is rebuilt from scratch every tick, so a shallow copy is already a
     // point-in-time value; its nested records are never mutated after construction.
     d: { ...game.d },
-    t: { ...game.t, popups: game.t.popups.slice(), burnedUntil: { ...game.t.burnedUntil } },
+    t: {
+      ...game.t,
+      popups: game.t.popups.slice(),
+      burnedUntil: { ...game.t.burnedUntil },
+      // Copied for the same reason as every other collection here: a shared array reference is how
+      // this UI froze twice before.
+      liveEvents: game.t.liveEvents.map((e) => ({ ...e })),
+      closerCooldown: { ...game.t.closerCooldown },
+    },
     log: game.t.log.slice(),
   };
 }

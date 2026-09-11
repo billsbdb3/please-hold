@@ -358,7 +358,13 @@ export interface Transient {
    * a window that had already expired while the tab was shut. Reloading simply means waiting
    * for the next one.
    */
-  liveEvent: LiveCameraEvent | null;
+  /**
+   * Moments currently live, at most one per stream.
+   *
+   * Was a single global slot, which is why a six-stream operations console felt empty. Several
+   * things happening at once on different streams is what a control room is.
+   */
+  liveEvents: LiveCameraEvent[];
   /** Seconds until the next camera event may spawn. */
   eventTimer: number;
   /** Per-stream cooldown on looking closer. Transient: a cooldown should not survive a reload. */

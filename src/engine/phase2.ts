@@ -257,23 +257,38 @@ export function burnAStream(s: GameState): void {
     p.heat = HEAT.afterBurn;
     return;
   }
-  const target = live.reduce((worst, x) =>
-    (p.attention[x.id] ?? 0) > (p.attention[worst.id] ?? 0) ? x : worst,
-  );
-
-  // Escalating: the more often they have caught you, the longer they look.
+  // Escalating in BOTH directions: the more often they have caught you, the longer they look and
+  // the more they lock down at once.
   const dark = Math.min(
     HEAT.burnSecondsMax,
     HEAT.burnSeconds * (1 + p.burns * HEAT.burnEscalation),
   );
-  s.t.burnedUntil[target.id] = dark;
-  p.attention[target.id] = 0;
+  const count = Math.min(
+    HEAT.burnStreamsMax,
+    live.length,
+    1 + Math.floor(p.burns / HEAT.burnsPerExtraStream),
+  );
+
+  // Taking away what you are relying on most, in order.
+  const byReliance = live
+    .slice()
+    .sort((a, b) => (p.attention[b.id] ?? 0) - (p.attention[a.id] ?? 0));
+  const taken = byReliance.slice(0, count);
+  for (const st of taken) {
+    s.t.burnedUntil[st.id] = dark;
+    p.attention[st.id] = 0;
+  }
+  const target = taken[0];
+
   p.heat = HEAT.afterBurn;
   p.burns++;
   pushLog(
     s,
-    `Somebody has noticed. ${target.name} is dark for ${Math.round(dark)} seconds. ` +
-    'A password has been changed, unhelpfully well.',
+    taken.length > 1
+      ? `Somebody has noticed. ${taken.map((x) => x.name).join(' and ')} are dark for ` +
+        `${Math.round(dark)} seconds. Several passwords have been changed, unhelpfully well.`
+      : `Somebody has noticed. ${target.name} is dark for ${Math.round(dark)} seconds. ` +
+        'A password has been changed, unhelpfully well.',
     'threat',
   );
 }
@@ -410,40 +425,49 @@ export function corroborateNext(s: GameState): boolean {
 function tickCameraEvents(s: GameState, dt: number): void {
   const p = s.p;
   const t = s.t;
-  // Any stream being watched can produce a moment. Was cameras-only, which meant a player who
-  // could spare one point for the wall saw almost nothing happen for twenty minutes.
   const watched = watchedEventStreams(s);
-  const watching = watched.length > 0;
 
-  // A live event expires on its own. Nothing is deducted and nothing is counted: a miss must
-  // cost the player nothing at all, or the wall becomes an obligation.
-  if (t.liveEvent) {
-    t.liveEvent.remaining -= dt;
+  // Age the live ones. A miss costs NOTHING and is not counted anywhere: Cookie Clicker's author
+  // removed his missed-cookies counter because the counter, not the miss, produced the anxiety.
+  const stillLive: typeof t.liveEvents = [];
+  for (const ev of t.liveEvents) {
+    ev.remaining -= dt;
+    const streamStillWatched = watched.some((w) => w.id === ev.stream);
+
     // Somebody on the desk notices it for you, at half value, once the window is nearly gone.
-    // The player still gets full value by being quicker than their own employee.
-    if (p.tradecraft.includes('t.desk') && t.liveEvent.remaining <= 1.5) {
-      claimCameraEvent(s, DESK_CLAIM_FRACTION);
-      return;
+    if (p.tradecraft.includes('t.desk') && ev.remaining <= 1.5 && ev.remaining > 0) {
+      claimEvent(s, ev.stream, DESK_CLAIM_FRACTION);
+      continue;
     }
-    if (t.liveEvent.remaining <= 0 || !watching) {
-      t.liveEvent = null;
-      t.eventTimer = rollEventInterval(s);
-    }
-    return;
+    if (ev.remaining > 0 && streamStillWatched) stillLive.push(ev);
   }
+  const expired = t.liveEvents.length - stillLive.length;
+  t.liveEvents = stillLive;
+  if (expired > 0) t.eventTimer = Math.max(t.eventTimer, CAMERA_EVENT.cooldown);
 
-  if (!watching) return;
+  if (watched.length === 0) return;
 
   t.eventTimer -= dt;
   if (t.eventTimer > 0) return;
+  if (t.liveEvents.length >= CAMERA_EVENT.maxConcurrent) {
+    t.eventTimer = CAMERA_EVENT.cooldown;
+    return;
+  }
 
-  // Weighted by attention: a stream you are watching hard is likelier to show you something,
-  // which keeps allocation meaningful rather than making every stream equally chatty.
-  const roll = nextInt(p.rngState, watched.reduce((n, w) => n + w.weight, 0));
+  // Only streams that have not already got something live: two simultaneous moments on one feed
+  // would be a bug rather than a busy room.
+  const free = watched.filter((w) => !t.liveEvents.some((e) => e.stream === w.id));
+  if (free.length === 0) {
+    t.eventTimer = CAMERA_EVENT.cooldown;
+    return;
+  }
+
+  // Weighted by attention, so a stream you are watching hard is likelier to show you something.
+  const roll = nextInt(p.rngState, free.reduce((n, w) => n + w.weight, 0));
   p.rngState = roll.state;
   let acc = 0;
-  let stream = watched[0].id;
-  for (const w of watched) {
+  let stream = free[0].id;
+  for (const w of free) {
     acc += w.weight;
     if (roll.value < acc) {
       stream = w.id;
@@ -462,14 +486,16 @@ function tickCameraEvents(s: GameState, dt: number): void {
   const cam = nextInt(p.rngState, CAMERA_COUNT);
   p.rngState = cam.state;
 
-  const window = CAMERA_EVENT.window + (p.tradecraft.includes('t.analyst') ? CAMERA_EVENT.windowBonus : 0);
-  t.liveEvent = {
+  const window =
+    CAMERA_EVENT.window + (p.tradecraft.includes('t.analyst') ? CAMERA_EVENT.windowBonus : 0);
+  t.liveEvents.push({
     stream,
     index: candidates[pick.value],
     camera: cam.value,
     remaining: window,
     window,
-  };
+  });
+  t.eventTimer = rollEventInterval(s);
 }
 
 /** Streams currently watched, un-burned, and capable of producing a moment. */
@@ -544,21 +570,32 @@ function availableEventIndices(s: GameState, stream: StreamId): number[] {
  * and it is hard-capped regardless of tier and chain.
  */
 export function claimCameraEvent(s: GameState, valueFraction = 1): boolean {
+  // No stream named: take the one closest to expiring, which is what a player clicking a single
+  // claim button means.
+  const soonest = s.t.liveEvents.reduce<null | { stream: StreamId; remaining: number }>(
+    (best, e) => (best === null || e.remaining < best.remaining ? e : best),
+    null,
+  );
+  if (!soonest) return false;
+  return claimEvent(s, soonest.stream, valueFraction);
+}
+
+/** Claim the moment live on one specific stream. */
+export function claimEvent(s: GameState, stream: StreamId, valueFraction = 1): boolean {
   const p = s.p;
   const t = s.t;
-  const live = t.liveEvent;
+  const live = t.liveEvents.find((e) => e.stream === stream);
   if (!live) return false;
 
   const def = eventsFor(live.stream)[live.index];
   if (!def) {
-    t.liveEvent = null;
-    t.eventTimer = rollEventInterval(s);
+    t.liveEvents = t.liveEvents.filter((e) => e !== live);
     return false;
   }
   const d = s.t.p2 ?? deriveP2(p, s.t.burnedUntil);
 
-  t.liveEvent = null;
-  t.eventTimer = rollEventInterval(s);
+  t.liveEvents = t.liveEvents.filter((e) => e !== live);
+  t.eventTimer = Math.max(t.eventTimer, CAMERA_EVENT.cooldown);
   p.cameraEventsCaught += 1;
 
   // A dud. Deliberate: Cookie Clicker ships one, and most of what you watch is a man not doing
@@ -645,6 +682,7 @@ export function lookCloser(s: GameState, id: StreamId): boolean {
   p.intelLifetime += granted;
   p.freshness[id] = Math.max(FATIGUE.floor, freshnessOf(p, id) - LOOK_CLOSER.freshnessCost);
   s.t.closerCooldown[id] = LOOK_CLOSER.cooldown;
+  p.chain = Math.min(CHAIN.max, p.chain + CHAIN.perLookCloser);
   s.t.p2 = deriveP2(p, s.t.burnedUntil);
   return true;
 }

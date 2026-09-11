@@ -17,7 +17,7 @@
   import {
     assignAttention, clearAttention, unlockStream, buyAttention,
     buyTradecraft, availableTradecraft, corroborateNext, deriveP2, claimCameraEvent, freshnessOf,
-    lookCloser,
+    lookCloser, claimEvent,
   } from './engine/phase2';
   import {
     STREAMS, HEAT, COVERAGE, INTEL_KINDS, INTEL_KIND_LABEL, TRADECRAFT,
@@ -59,11 +59,23 @@
     p.streams.includes('cctv') && (p.attention.cctv ?? 0) > 0 && !(t.burnedUntil.cctv ?? 0),
   );
 
-  const live = $derived(t.liveEvent);
-  const liveLine = $derived(live ? (eventsFor(live.stream)[live.index]?.line ?? null) : null);
-  /** Each stream announces itself in its own verb: you HEAR a recording, you READ a chat. */
-  const liveVoice = $derived(live ? STREAM_EVENT_VOICE[live.stream] : null);
-  const liveOnWall = $derived(live?.stream === 'cctv');
+  /**
+   * Everything currently live, oldest first.
+   *
+   * Several at once, on different streams: a single global slot is why a six-stream console felt
+   * empty. Each row carries its own stream's verb, because you HEAR a recording and you READ a
+   * chat, and 'SEE THIS' on a spreadsheet is simply wrong.
+   */
+  const liveList = $derived.by(() => {
+    void frame.n;
+    return t.liveEvents.map((e) => ({
+      ev: e,
+      line: eventsFor(e.stream)[e.index]?.line ?? '',
+      voice: STREAM_EVENT_VOICE[e.stream],
+      name: STREAMS.find((st) => st.id === e.stream)?.name ?? '',
+    }));
+  });
+  const wallEvent = $derived(t.liveEvents.find((e) => e.stream === 'cctv') ?? null);
 
   /**
    * Freshness in words, not a bare percentage.
@@ -77,10 +89,12 @@
     return `${Math.round(fresh * 100)}% new`;
   }
 
-  function notice() {
-    claimCameraEvent(game);
-    audio.noteConfirm();
-    interacted();
+  function notice(stream: StreamId | null = null) {
+    const ok = stream !== null ? claimEvent(game, stream) : claimCameraEvent(game);
+    if (ok) {
+      audio.noteConfirm();
+      interacted();
+    }
   }
 
   /**
@@ -106,11 +120,11 @@
 
   // A feed lighting up, and getting caught. Tracked by identity rather than by value so the
   // chirp fires once per event rather than once per frame.
-  let lastEventKey = $state<string | null>(null);
+  let lastEventCount = $state(0);
   $effect(() => {
-    const key = t.liveEvent ? `${t.liveEvent.index}:${t.liveEvent.camera}` : null;
-    if (key && key !== lastEventKey) audio.feedChirp();
-    lastEventKey = key;
+    // Chirp when a NEW one appears, not on every frame and not when one is claimed.
+    if (t.liveEvents.length > lastEventCount) audio.feedChirp();
+    lastEventCount = t.liveEvents.length;
   });
   let lastBurns = $state(0);
   $effect(() => {
@@ -312,15 +326,19 @@
             {:else}live{/if}
           </span>
         </div>
-        {#if live && liveLine}
-          <!-- A second claim path beside the wall. A pulsing tile is not an accessible target
-               for a keyboard user or a player looking somewhere else. -->
-          <div class="notice-bar">
-            <span class="notice-flag">{liveVoice?.flag}</span>
-            <button class="notice-claim" onclick={notice}>{liveVoice?.claim}</button>
-            <span class="notice-line">{liveLine}</span>
-            <span class="notice-clock num">{Math.ceil(live.remaining)}s</span>
-          </div>
+        {#if liveList.length > 0}
+          <!-- A claim path that does not require hitting a small pulsing tile: a keyboard user or
+               a player looking at another panel needs a real button. -->
+          {#each liveList as item (item.ev.stream)}
+            <div class="notice-bar">
+              <span class="notice-flag">{item.voice.flag}</span>
+              <button class="notice-claim" onclick={() => notice(item.ev.stream)}>
+                {item.voice.claim}
+              </button>
+              <span class="notice-line">{item.line}</span>
+              <span class="notice-clock num">{Math.ceil(item.ev.remaining)}s</span>
+            </div>
+          {/each}
         {:else if t.lastEventNote}
           <div class="notice-bar quiet">
             <span class="notice-line">{t.lastEventNote}</span>
@@ -329,9 +347,9 @@
         <div class="wall-body" class:unwatched={!cctvLive}>
           <CctvGrid
             sizing="fit"
-            litCamera={live && liveOnWall ? live.camera : null}
-            litRemaining={live ? live.remaining / live.window : 1}
-            onNotice={notice}
+            litCamera={wallEvent ? wallEvent.camera : null}
+            litRemaining={wallEvent ? wallEvent.remaining / wallEvent.window : 1}
+            onNotice={() => notice('cctv')}
           />
         </div>
       </div>
