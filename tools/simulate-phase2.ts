@@ -313,9 +313,25 @@ function reallocate(s: GameState, policy: P2Policy): void {
    * when a kind is badly behind. `heatCeiling` now scales how far over budget the archetype is
    * willing to run rather than acting as a panic switch.
    */
+  /**
+   * A policy that means to avoid burns must not spend MORE than the decay can absorb.
+   *
+   * This was `decayBudget * (1 + heatCeiling)`, which let a careful archetype sustain generation
+   * ABOVE decay indefinitely - so its heat always reached 100 eventually and it burned. That was
+   * latent for a while and only surfaced once burns were made to compound properly: `optimal`
+   * burned six times against `reckless`'s eight, which is not a careful player at all, and the
+   * regression test that says heat discipline pays caught it.
+   *
+   * `heatCeiling` now means what its name says: the fraction of the SUSTAINABLE budget this
+   * player is willing to run at. Below 1 it is genuinely sustainable and burns approach zero.
+   * At 1 or above the player does not price suspicion at all.
+   */
   const decayBudget = HEAT.decayPerSecond * decayMultiplierOf(p);
-  const overdraft = policy.heatCeiling >= 1 ? Infinity : 1 + policy.heatCeiling;
-  const heatAllowance = decayBudget * overdraft;
+  // Mapped into [0.6, 0.95] of the sustainable budget rather than used raw: a careful player
+  // rides NEAR the limit, not at half of it. Taking the ceiling literally throttled `optimal` so
+  // hard that reckless play beat it on throughput even while burning eight times.
+  const heatAllowance =
+    policy.heatCeiling >= 1 ? Infinity : decayBudget * (0.6 + 0.35 * policy.heatCeiling);
 
   // Kinds furthest from their requirement first: coverage is a minimum, so the weakest kind
   // is the only one that actually matters.
