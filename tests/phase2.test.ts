@@ -28,6 +28,7 @@ import {
   PHASE2_TARGET_MINUTES, TRADECRAFT,
   IDENTIFY,
 } from '../src/data/phase2';
+import { PHASE1_COMPLETION } from '../src/data/balance';
 import { runPhase2 } from '../tools/simulate-phase2';
 import type { GameState } from '../src/engine/types';
 
@@ -369,5 +370,73 @@ describe('cost-reduction upgrades can actually repay themselves', () => {
   it('leaves the total corroboration bill large enough for a discount to matter', () => {
     const xref = TRADECRAFT.find((t) => t.id === 't.notes')!;
     expect(remainingSpend(0) * (xref.identifyDiscount ?? 0)).toBeGreaterThan(xref.cost * 2);
+  });
+});
+
+/**
+ * THE SOFT-LOCK.
+ *
+ * Phase 1's gate asks for 8 roster entries. Phase 2 asks for 12 CORROBORATED, drawn only from
+ * the roster. So a player who finished Phase 1 at its gate entered a Phase 2 whose coverage
+ * could never exceed 8/12 — uncompletable, permanently, with no feedback saying so.
+ *
+ * It survived every measurement because all three of my harnesses agreed with each other and
+ * all three were wrong: the development shortcut pads the roster to 12, the test helper above
+ * builds 12, and the simulator seeded 12. Nothing simulated the WORST LEGAL ARRIVAL.
+ *
+ * The fix is that the shortfall is found on the cameras, which also gives The Camera Bank the
+ * one thing it lacked — a job no other stream can do. It was the worst stream by intel per
+ * attention point and therefore correct to ignore.
+ */
+describe('arriving with the minimum roster is not a dead end', () => {
+  it('phase 1 lets you through with fewer entries than phase 2 requires', () => {
+    // The precondition for the bug. Keeping it asserted means closing the gap by RAISING the
+    // phase 1 gate would also be noticed, rather than silently making this test vacuous.
+    expect(PHASE1_COMPLETION.rosterEntries).toBeLessThan(COVERAGE.corroborated);
+  });
+
+  it('completes from the worst legal arrival', () => {
+    // The simulator now seeds PHASE1_COMPLETION.rosterEntries, not 12.
+    const r = runPhase2('active');
+    expect(r.completed).toBe(true);
+    expect(r.corroborated).toBe(COVERAGE.corroborated);
+  });
+
+  it('turns up new faces while the cameras are watched', () => {
+    const s = atPhase2(8);
+    clearAttention(s);
+    assignAttention(s, 'cctv', 3);
+    const before = s.p.roster.length;
+    for (let i = 0; i < Math.ceil(400 / DT); i++) tick(s, DT);
+    expect(s.p.roster.length).toBeGreaterThan(before);
+    expect(s.p.roster.some((r) => r.fromCamera)).toBe(true);
+  });
+
+  it('turns up nobody when the cameras are not watched', () => {
+    // The whole point: this is the Camera Bank's job, not a passive trickle.
+    const s = atPhase2(8);
+    clearAttention(s);
+    const before = s.p.roster.length;
+    for (let i = 0; i < Math.ceil(400 / DT); i++) tick(s, DT);
+    expect(s.p.roster.length).toBe(before);
+  });
+
+  it('turns up nobody while the cameras are dark', () => {
+    const s = atPhase2(8);
+    clearAttention(s);
+    assignAttention(s, 'cctv', 3);
+    s.t.burnedUntil.cctv = 999;
+    const before = s.p.roster.length;
+    for (let i = 0; i < Math.ceil(400 / DT); i++) tick(s, DT);
+    expect(s.p.roster.length).toBe(before);
+  });
+
+  it('never corroborates past the requirement', () => {
+    // Uncapped, this was a money pit: costs grow at 1.28^n and the roster can now reach 26,
+    // so the simulator corroborated all 26 and added two hours to the phase.
+    const s = atPhase2(26);
+    s.p.intel = 1e12;
+    for (let i = 0; i < 40; i++) corroborateNext(s);
+    expect(s.p.corroborated.length).toBe(COVERAGE.corroborated);
   });
 });

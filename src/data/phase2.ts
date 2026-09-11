@@ -204,6 +204,33 @@ export const COVERAGE = {
   corroborated: 12,
 } as const;
 
+/**
+ * NEW FACES — slips discovered on the cameras during Phase 2.
+ *
+ * This closes a SOFT-LOCK. Phase 1's gate requires 8 roster entries; Phase 2 requires 12
+ * corroborated, drawn only from the roster. So a player who finished Phase 1 at the gate
+ * entered a Phase 2 whose coverage could never exceed 8/12 - mathematically uncompletable,
+ * permanently. Every measurement I took missed it because the development shortcut pads the
+ * roster to 12, the test helper builds 12, and the simulator seeds 12.
+ *
+ * Raising Phase 1's gate would have fixed the arithmetic and wasted the opportunity. Finding
+ * the shortfall on the cameras instead gives The Camera Bank the one thing it lacked: a job
+ * nothing else can do. It was the worst stream in the game by intel per attention point and
+ * therefore correct to ignore - the phase greyed out its own centrepiece. Now it is the only
+ * source of new people, so watching it is not a sacrifice, it is how you finish.
+ */
+export const NEW_FACES = {
+  /** Seconds of watching the cameras, at one attention point, to turn up somebody new. */
+  secondsPerFaceAtOneAttention: 150,
+  /**
+   * How much more attention helps. Sub-linear: a second monitor helps, a sixth barely does,
+   * so this never becomes the only thing worth doing.
+   */
+  attentionExponent: 0.65,
+  /** Never exceed the slip pool. */
+  maxRoster: 26,
+} as const;
+
 /** Cost to put a real name to a roster entry. Rises as the easy ones run out. */
 export const IDENTIFY = {
   costBase: 220,
