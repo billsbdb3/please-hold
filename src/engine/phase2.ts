@@ -97,7 +97,22 @@ function multipliers(p: GameState['p']) {
 /** Attention pool: base, plus purchased points, plus tradecraft bonuses. */
 export function attentionPool(p: GameState['p']): number {
   const { attentionBonus } = multipliers(p);
-  return Math.min(ATTENTION.max, ATTENTION.base + p.attentionBought + attentionBonus);
+  /*
+   * THE CAP APPLIES TO WHAT YOU BUY. Tradecraft bonuses go ABOVE it.
+   *
+   * This was `min(max, base + bought + bonus)`, which swallowed the bonuses: a player who had
+   * bought points up to the ceiling could then purchase 'A Third Monitor, +2 attention' and get
+   * nothing whatsoever for it. That is the same fault as the one a playtester found from the other
+   * side - the game selling something it had already capped - and my first fix only covered the
+   * raw points, not the upgrades that also grant them.
+   *
+   * Capping the PURCHASED points and letting tradecraft exceed the cap makes both honest, and it
+   * is the better design anyway: intel can only get you so many screens, and the upgrades - a
+   * third monitor, nothing else in the diary - are how you get past what money can do. The real
+   * ceiling becomes max + every bonus, which is still less than the streams can absorb, so you
+   * still cannot watch everything.
+   */
+  return Math.min(ATTENTION.max, ATTENTION.base + p.attentionBought) + attentionBonus;
 }
 
 export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId, number>>): Phase2Derived {
@@ -184,7 +199,7 @@ export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId
      * because the others merely wasted a slot - this one takes the resource.
      */
     nextAttentionCost:
-      attentionPool(p) >= ATTENTION.max
+      ATTENTION.base + p.attentionBought >= ATTENTION.max
         ? null
         : Math.floor(ATTENTION.costBase * Math.pow(ATTENTION.costGrowth, p.attentionBought)),
     corroborateCost: Math.floor(
