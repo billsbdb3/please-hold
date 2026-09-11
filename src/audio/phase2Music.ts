@@ -1,61 +1,87 @@
 /**
- * PHASE 2 MUSIC — the machine keeping time.
+ * PHASE 2 MUSIC — the hold music, from inside the building.
  *
- * WHY THIS FILE EXISTS. Phase 2 shipped with room tone and a drone so quiet it may as well not
- * have been there. The playtest verdict: "the music needs to change. its just white noise at this
- * point. needs more substance." Correct. I aimed at "almost unscored" and landed on unscored.
+ * WHY THIS IS THE SECOND ATTEMPT
+ * ------------------------------
+ * The first version was an abstract sequencer in seven with no thirds and no fifths. Technically
+ * cold, and the playtest verdict was "music is still trash. needs to be music like the first one
+ * with a twist." That is a better idea than mine, and it is better because it is the one the
+ * FICTION was already asking for.
  *
- * The mistake was treating sparse as a synonym for quiet. Sparse means FEW EVENTS, not
- * inaudible ones — so this is a real sequencer with real notes, and the restraint lives in the
- * pattern rather than in the gain.
+ * You spent ninety minutes listening to their hold music down a telephone line. You are now on a
+ * machine inside the building where it is generated. One of the game's own event lines says it
+ * outright: "A recording has finished processing. It is nineteen minutes long. Two of those
+ * minutes are hold music. It is the hold music."
  *
- * WHAT IT PLAYS
- * -------------
- * A slow machine cycle at 69 BPM in seven, which is the whole character: seven beats never
- * settles, so the phase always sounds like it is mid-process. A steady four would sound like a
- * decision had been made.
+ * So this is the SAME PIECE — same key, same I-vi-IV-V loop, same plodding shape as
+ * src/audio/holdMusic.ts, deliberately shared so it is recognisable within a bar. The twist is
+ * everything about the listening:
  *
- * Notes come from stacked fourths plus a tritone — no thirds and no perfect fifths anywhere.
- * A third would make it sad and a fifth would make it resolved, and this is neither: it is
- * equipment running in a room you should not be in.
+ *   - NO TELEPHONE FILTER. Phase 1 plays through a 900 Hz band-pass because you are on a phone.
+ *     Here you are in the room: full range, with a sub octave underneath that the phone line
+ *     physically could not carry. Same tune, suddenly with a body.
+ *   - SLOWER. 92 BPM becomes 61. Recognisable, wrong.
+ *   - THE THIRDS GO FLAT. Each chord's major third drops a semitone, so the cheerful I-vi-IV-V
+ *     turns modal and sour without changing a single root. The progression you know, in a key it
+ *     was not in.
+ *   - THE MELODY IS MISSING AT FIRST, and returns as coverage grows. At the start you get the pad
+ *     and the bass - the tune as heard through a wall. By the end the melody is back, complete,
+ *     in the room with you.
  *
- * THE MUSIC IS THE PROGRESS BAR. Layers arrive with coverage:
- *   0%   a low pulse. Something is powered on.
- *   15%  a second voice a fourth up. It is doing something.
- *   35%  a data figure, plucked, off the beat.
- *   55%  a high bell every other cycle. Somebody is paying attention.
- *   80%  the bass doubles and the figure fills in. It is nearly over.
- * Nobody notices a layer arriving. They notice, an hour later, that the room is playing something
- * it was not playing when they got there.
+ * THE MUSIC IS THE PROGRESS BAR. Nobody notices a layer arriving. They notice, an hour later,
+ * that they are hearing the whole thing.
  *
- * SUSPICION TAKES IT AWAY. High heat strips layers back and detunes what is left. The music
- * getting simpler is the sound of you having less room to work in — same subtractive logic as the
- * room tone, and the same as the yield penalty in the simulation. It never adds a stinger.
- *
- * COST. One lookahead scheduler on a 25 Hz timer, notes built and discarded per hit, nothing
- * retained. Comparable to Phase 1's hold music, which is the budget it has to fit inside.
+ * SUSPICION takes it away again: layers drop, detune widens, and the phone filter creeps BACK -
+ * as if you were being pushed out of the room and onto the line again. A burn drops it entirely.
  */
 
 import { engine } from './engine';
 
-/** Stacked fourths and a tritone. Deliberately no third, no fifth. */
-const ROOT = 55;
-const SCALE = [1, 4 / 3, 45 / 32, 16 / 9, 2, 8 / 3, 45 / 16];
+/**
+ * Phase 1's material, restated rather than imported.
+ *
+ * holdMusic.ts keeps these private, and copying four short arrays is better than exporting its
+ * internals and coupling two soundscapes that need to evolve separately. If Phase 1's loop ever
+ * changes, this comment is the reminder that these must change with it.
+ */
+const ROOT = 220; // A3, as Phase 1
+const CHORDS: number[][] = [
+  [0, 4, 7], // A   (I)
+  [9, 12, 16], // F#m (vi)
+  [5, 9, 12], // D   (IV)
+  [7, 11, 14], // E   (V)
+];
+const BASS_LINE = [0, 9, 5, 7];
 
-/** Seven beats, so it never settles. */
-const STEPS = 7;
-const BPM = 69;
-const STEP_SECONDS = 60 / BPM;
+/** Phase 1's melody walks the chord tones, one note per beat. */
+const SEMI = (n: number) => ROOT * Math.pow(2, n / 12);
+
+/**
+ * Flatten every major third by a semitone.
+ *
+ * This is the whole twist in one function. A major third is 4 semitones above the root and a
+ * minor third is 3, so dropping any interval of 4 or 16 turns the chord minor while leaving the
+ * root and fifth alone. The progression stays I-vi-IV-V; it simply stops being pleased about it.
+ */
+function sour(semis: number, degreeRoot: number): number {
+  const interval = ((semis - degreeRoot) % 12 + 12) % 12;
+  return interval === 4 ? semis - 1 : semis;
+}
+
+const BPM = 61;
+const BEAT = 60 / BPM;
+const BAR = BEAT * 4;
+const BARS_PER_CHORD = 2;
 
 interface Music {
   ctx: AudioContext;
   out: GainNode;
-  filter: BiquadFilterNode;
+  /** The telephone band-pass, wide open in the room and closing as suspicion rises. */
+  phone: BiquadFilterNode;
   timer: number | null;
-  /** Next step index and its scheduled audio time. */
-  step: number;
   nextTime: number;
-  cycle: number;
+  /** Half-bar index through the loop. */
+  step: number;
   coverage: number;
   suspicion: number;
   stopped: boolean;
@@ -63,16 +89,15 @@ interface Music {
 
 let live: Music | null = null;
 
-/** How many layers the current coverage has earned. */
+/** How much of the piece the player has earned back. */
 function layers(coverage: number, suspicion: number): number {
-  let n = 1;
-  if (coverage >= 0.15) n = 2;
-  if (coverage >= 0.35) n = 3;
-  if (coverage >= 0.55) n = 4;
-  if (coverage >= 0.8) n = 5;
-  // Suspicion takes them away again. The room gets simpler, not louder.
+  let n = 1; // pad and bass: the tune through a wall
+  if (coverage >= 0.12) n = 2; // sub octave — the body a phone line cannot carry
+  if (coverage >= 0.3) n = 3; // the melody, in fragments
+  if (coverage >= 0.55) n = 4; // the melody, complete
+  if (coverage >= 0.8) n = 5; // and a counter-line above it
   if (suspicion > 0.6) n = Math.max(1, n - 1);
-  if (suspicion > 0.85) n = Math.max(1, n - 1);
+  if (suspicion > 0.85) n = Math.max(1, n - 2);
   return n;
 }
 
@@ -84,19 +109,20 @@ export function startMusic(): void {
 
   const out = ctx.createGain();
   out.gain.value = 0.0001;
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = 2600;
-  filter.Q.value = 0.6;
-  out.connect(filter).connect(bus);
+  const phone = ctx.createBiquadFilter();
+  // Wide open: you are in the room, not on the line. Suspicion narrows this back down.
+  phone.type = 'lowpass';
+  phone.frequency.value = 7000;
+  phone.Q.value = 0.5;
+  out.connect(phone).connect(bus);
 
   live = {
-    ctx, out, filter, timer: null,
-    step: 0, nextTime: ctx.currentTime + 0.15, cycle: 0,
+    ctx, out, phone, timer: null,
+    nextTime: ctx.currentTime + 0.2, step: 0,
     coverage: 0, suspicion: 0, stopped: false,
   };
-  out.gain.setTargetAtTime(0.5, ctx.currentTime, 2.2);
-  tickScheduler();
+  out.gain.setTargetAtTime(0.62, ctx.currentTime, 2.5);
+  run();
 }
 
 export function stopMusic(): void {
@@ -116,98 +142,101 @@ export function setMusicSuspicion(f: number): void {
   const m = live;
   if (!m || m.stopped) return;
   m.suspicion = Math.max(0, Math.min(1, f));
-  // Closing the filter as suspicion rises: the same gesture the room tone makes, so the two
-  // layers move together rather than fighting.
-  m.filter.frequency.setTargetAtTime(2600 - 1700 * m.suspicion, m.ctx.currentTime, 2);
+  // The phone line creeping back: at full suspicion you are hearing it the way you did in Phase 1,
+  // pushed out of the room and back onto the handset.
+  m.phone.frequency.setTargetAtTime(7000 - 5800 * m.suspicion, m.ctx.currentTime, 3);
 }
 
-/** A plucked tone. Short, filtered, gone. */
-function pluck(m: Music, at: number, freq: number, gain: number, decay: number, type: OscillatorType): void {
+/** One voice. Detune rises with suspicion, exactly as Phase 1's line degrades under rage. */
+function note(
+  m: Music,
+  at: number,
+  freq: number,
+  dur: number,
+  type: OscillatorType,
+  gain: number,
+  detune = 0,
+): void {
   const { ctx } = m;
   const o = ctx.createOscillator();
   o.type = type;
-  // Detune with suspicion. Never quite in tune once they are nervous.
-  o.frequency.value = freq * (1 + (Math.random() - 0.5) * 0.004 + m.suspicion * 0.006);
+  o.frequency.value = freq;
+  o.detune.value = detune + m.suspicion * 26;
   const g = ctx.createGain();
   g.gain.setValueAtTime(0, at);
-  g.gain.linearRampToValueAtTime(gain, at + 0.008);
-  g.gain.exponentialRampToValueAtTime(0.0001, at + decay);
-  const f = ctx.createBiquadFilter();
-  f.type = 'lowpass';
-  f.frequency.value = Math.max(400, freq * 6);
-  o.connect(f).connect(g).connect(m.out);
+  g.gain.linearRampToValueAtTime(gain, at + 0.02);
+  g.gain.setTargetAtTime(gain * 0.7, at + 0.05, dur * 0.4);
+  g.gain.setTargetAtTime(0.0001, at + dur * 0.75, 0.12);
+  o.connect(g).connect(m.out);
   o.start(at);
-  o.stop(at + decay + 0.05);
+  o.stop(at + dur + 0.1);
 }
 
-/** One step of the pattern. */
-function playStep(m: Music, step: number, at: number): void {
+/** Schedule one half-bar, mirroring Phase 1's structure so the two are the same piece. */
+function scheduleHalfBar(m: Music, step: number, time: number): void {
   const n = layers(m.coverage, m.suspicion);
-  const cycle = m.cycle;
+  const chordIndex = Math.floor(step / (BARS_PER_CHORD * 2)) % CHORDS.length;
+  const chord = CHORDS[chordIndex] ?? CHORDS[0];
+  const degreeRoot = chord[0];
+  const bassRoot = BASS_LINE[chordIndex] ?? 0;
+  const detune = 3 + m.suspicion * 20;
 
-  // 1. The pulse. Something is powered on. Beats 0 and 4 of seven.
-  if (step === 0 || step === 4) {
-    pluck(m, at, ROOT, 0.30, step === 0 ? 0.9 : 0.6, 'sine');
-    // A second, tuned a hair off, so the low end breathes rather than sitting still.
-    pluck(m, at, ROOT * 1.004, 0.12, 0.7, 'triangle');
+  // 1. The pad, soured. The tune as heard through a wall.
+  for (const semis of chord) {
+    note(m, time, SEMI(sour(semis, degreeRoot)), BAR * 0.5 * 0.98, 'triangle', 0.05, -detune);
   }
 
-  // 2. A fourth above, answering. It is doing something.
-  if (n >= 2 && step === 2) {
-    pluck(m, at, ROOT * SCALE[1], 0.16, 0.75, 'triangle');
+  // 2. The bass, and beneath it the sub octave a telephone could not carry.
+  note(m, time, SEMI(bassRoot - 12), BAR * 0.5 * 0.9, 'triangle', 0.075, 0);
+  if (n >= 2) {
+    note(m, time, SEMI(bassRoot - 24), BAR * 0.5 * 0.85, 'sine', 0.11, 0);
   }
 
-  // 3. The data figure, off the beat, in the tritone. This is the part that reads as machinery.
-  if (n >= 3 && (step === 1 || step === 3 || step === 6)) {
-    const note = SCALE[[2, 3, 5][step % 3]] ?? SCALE[2];
-    pluck(m, at + STEP_SECONDS * 0.5, ROOT * note * 2, 0.075, 0.22, 'square');
+  // 3. The melody, returning. Fragments first - one beat of the two - then both.
+  if (n >= 3) {
+    const beats = n >= 4 ? [0, 1] : [step % 2];
+    for (const beat of beats) {
+      const t = time + beat * BEAT;
+      const toneIndex = (step + beat) % chord.length;
+      const semis = sour(chord[toneIndex] ?? 0, degreeRoot);
+      note(m, t, SEMI(semis + 12), BEAT * 0.85, 'square', 0.042, detune);
+    }
   }
 
-  // 4. A bell, every other cycle. Somebody is paying attention.
-  if (n >= 4 && step === 5 && cycle % 2 === 0) {
-    pluck(m, at, ROOT * SCALE[4] * 2, 0.085, 1.6, 'sine');
-  }
-
-  // 5. The bass doubles and the figure fills in. It is nearly over.
-  if (n >= 5) {
-    if (step === 2 || step === 6) pluck(m, at, ROOT * 0.5, 0.18, 0.8, 'sine');
-    if (step === 5) pluck(m, at + STEP_SECONDS * 0.5, ROOT * SCALE[3] * 2, 0.06, 0.2, 'square');
+  // 4. A counter-line above it. It is nearly over.
+  if (n >= 5 && step % 2 === 1) {
+    const semis = sour(chord[(step + 2) % chord.length] ?? 0, degreeRoot);
+    note(m, time + BEAT * 1.5, SEMI(semis + 24), BEAT * 0.7, 'sine', 0.03, -detune);
   }
 }
 
-/**
- * Lookahead scheduler.
- *
- * A timer this coarse cannot place notes accurately, so it schedules AHEAD on the audio clock and
- * only wakes often enough to stay in front. Same pattern as Phase 1's hold music.
- */
-function tickScheduler(): void {
+/** Lookahead scheduler, same shape as Phase 1's. A coarse timer cannot place notes itself. */
+function run(): void {
   const m = live;
   if (!m || m.stopped) return;
   m.timer = setInterval(() => {
     const cur = live;
     if (!cur || cur.stopped) return;
-    const horizon = cur.ctx.currentTime + 0.4;
+    const horizon = cur.ctx.currentTime + 0.8;
     while (cur.nextTime < horizon) {
-      playStep(cur, cur.step, cur.nextTime);
-      cur.nextTime += STEP_SECONDS;
-      cur.step = (cur.step + 1) % STEPS;
-      if (cur.step === 0) cur.cycle++;
+      scheduleHalfBar(cur, cur.step, cur.nextTime);
+      cur.nextTime += BAR * 0.5;
+      cur.step = (cur.step + 1) % (CHORDS.length * BARS_PER_CHORD * 2);
     }
-  }, 40) as unknown as number;
+  }, 250) as unknown as number;
 }
 
 /**
- * A burn: drop out entirely for a moment.
+ * A burn: the music stops.
  *
- * The music stopping is worth more than any sting. An hour of a seven-beat cycle makes its
- * absence the loudest event available.
+ * Worth more than any sting. An hour of a loop this familiar makes its absence the loudest thing
+ * available, and it is the same gesture the room tone makes at the same moment.
  */
 export function musicDuck(): void {
   const m = live;
   if (!m || m.stopped) return;
   const t = m.ctx.currentTime;
   m.out.gain.cancelScheduledValues(t);
-  m.out.gain.setTargetAtTime(0.0001, t, 0.06);
-  m.out.gain.setTargetAtTime(0.5, t + 1.4, 0.6);
+  m.out.gain.setTargetAtTime(0.0001, t, 0.07);
+  m.out.gain.setTargetAtTime(0.62, t + 1.6, 0.7);
 }

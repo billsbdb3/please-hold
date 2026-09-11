@@ -169,6 +169,21 @@ export const HEAT = {
   burnEscalation: 0.45,
   /** Ceiling, so a long session cannot become unplayable. */
   burnSecondsMax: 300,
+  /**
+   * Burns before they start locking down an ADDITIONAL stream at once, capped by `burnStreamsMax`.
+   *
+   * Darkening one stream of six is survivable: you reallocate and carry on. That is why reckless
+   * play kept measuring FASTER than careful play - 52 burns against 0 and it still won by thirteen
+   * minutes, because the hot streams yield three times what the cold ones do and losing one at a
+   * time never cost enough to matter.
+   *
+   * Escalating the BREADTH rather than only the duration fixes it at the right level: an
+   * occasional burn still costs one stream, and a player who is caught fifty times is eventually
+   * locked out of half the building at once. It is also what the fiction says happens - they get
+   * more thorough every time they find you.
+   */
+  burnsPerExtraStream: 7,
+  burnStreamsMax: 3,
   /** Heat left after a burn — not zero, so a second burn is a real risk. */
   afterBurn: 55,
   /**
@@ -184,7 +199,20 @@ export const HEAT = {
    * In fiction: a suspicious floor is a careful floor. They say less on a line they think is
    * being listened to.
    */
-  yieldPenaltyAtMax: 0.7,
+  /*
+   * RAISED from 0.7, after reckless play measured faster than careful play for the fourth time.
+   *
+   * The arithmetic was simply against me. The hot streams yield about three times what the cold
+   * ones do, so a player who does not price suspicion at all gets a 3x throughput advantage, and
+   * at 0.7 the penalty for sitting near maximum heat only took that back to about 1.4x. Escalating
+   * the burns did not help - it made things WORSE, because a darkened stream generates no heat, so
+   * being caught more often self-limited and the burn count fell.
+   *
+   * The continuous cost has to exceed the spread it is competing with. At 0.88 a floor at maximum
+   * suspicion yields 12% - which is also the more honest fiction: people who think they are being
+   * listened to do not say anything useful at all.
+   */
+  yieldPenaltyAtMax: 0.88,
 } as const;
 
 /**
@@ -198,10 +226,10 @@ export const HEAT = {
  */
 export const COVERAGE = {
   need: {
-    people: 106_000,
-    structure: 88_000,
-    money: 72_000,
-    evidence: 92_000,
+    people: 224_000,
+    structure: 186_000,
+    money: 152_000,
+    evidence: 193_000,
   } as Record<IntelKind, number>,
   /**
    * Roster entries whose real name must be resolved. An attentive Phase 1 arrives with 12,
@@ -398,11 +426,18 @@ export const TRADECRAFT_BY_ID: Record<string, TradecraftDef> = Object.fromEntrie
 /**
  * Target duration for the `active` archetype.
  *
- * Cut from 150-200. The decision-density audit found Phase 2 running at ~0.13 player decisions
- * per minute against Phase 1's ~1.5, and a long duration multiplies decision-starved minutes
- * rather than adding content. The engagement layer raises density; this lowers the denominator.
+ * Cut from 150-200, then again from 110-150.
+ *
+ * The decision-density audit found Phase 2 running at ~0.13 player decisions per minute against
+ * Phase 1's ~1.5, and a long duration multiplies decision-starved minutes rather than adding
+ * content. The engagement layer raised the density; each cut lowered the denominator.
+ *
+ * The second cut is playtest-led rather than calculated: the phase was called slow three separate
+ * times, and padding the requirements to defend a number I chose would be defending the wrong
+ * thing. Phase 1 runs 90-120, so the two phases are now comparable in length, which also makes
+ * the whole game a more plausible sitting.
  */
-export const PHASE2_TARGET_MINUTES = { min: 110, max: 150 } as const;
+export const PHASE2_TARGET_MINUTES = { min: 95, max: 135 } as const;
 
 /**
  * Phase 2 milestones, on Coverage progress rather than a currency total — for the same

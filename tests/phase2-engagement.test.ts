@@ -53,7 +53,7 @@ function atPhase2(roster = 12): GameState {
 function runToEvent(s: GameState, maxSeconds = 3000): boolean {
   for (let i = 0; i < Math.ceil(maxSeconds / DT); i++) {
     tick(s, DT);
-    if (s.t.liveEvent) return true;
+    if (s.t.liveEvents.length > 0) return true;
   }
   return false;
 }
@@ -150,9 +150,9 @@ describe('camera events', () => {
     clearAttention(s);
     assignAttention(s, 'cctv', 4);
     expect(runToEvent(s)).toBe(true);
-    expect(s.t.liveEvent!.camera).toBeGreaterThanOrEqual(0);
-    expect(s.t.liveEvent!.camera).toBeLessThan(14);
-    expect(s.t.liveEvent!.index).toBeLessThan(CAMERA_EVENTS.length);
+    expect(s.t.liveEvents[0]!.camera).toBeGreaterThanOrEqual(0);
+    expect(s.t.liveEvents[0]!.camera).toBeLessThan(14);
+    expect(s.t.liveEvents[0]!.index).toBeLessThan(CAMERA_EVENTS.length);
   });
 
   it('give a window long enough not to be a reflex test', () => {
@@ -160,7 +160,7 @@ describe('camera events', () => {
     clearAttention(s);
     assignAttention(s, 'cctv', 4);
     runToEvent(s);
-    expect(s.t.liveEvent!.window).toBeGreaterThanOrEqual(10);
+    expect(s.t.liveEvents[0]!.window).toBeGreaterThanOrEqual(10);
   });
 
   it('pay intel when claimed', () => {
@@ -171,7 +171,7 @@ describe('camera events', () => {
     const before = s.p.intel;
     expect(claimCameraEvent(s)).toBe(true);
     expect(s.p.intel).toBeGreaterThan(before);
-    expect(s.t.liveEvent).toBeNull();
+    expect(s.t.liveEvents.length).toBe(0);
   });
 
   it('refuse a claim when there is nothing lit', () => {
@@ -189,9 +189,9 @@ describe('camera events', () => {
     expect(runToEvent(s)).toBe(true);
     const intel = s.p.intel;
     const chain = s.p.chain;
-    const wait = s.t.liveEvent!.window + 2;
+    const wait = s.t.liveEvents[0]!.window + 2;
     for (let i = 0; i < Math.ceil(wait / DT); i++) tick(s, DT);
-    expect(s.t.liveEvent).toBeNull();
+    expect(s.t.liveEvents.length).toBe(0);
     expect(s.p.intel).toBeGreaterThanOrEqual(intel);
     expect(s.p.chain).toBeLessThanOrEqual(chain + 0.001);
     expect(s.p as unknown as Record<string, unknown>).not.toHaveProperty('eventsMissedOnCamera');

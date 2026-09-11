@@ -209,7 +209,7 @@ export function runPhase2(archetype: P2Archetype, verbose = false): P2Result {
 
     // Notice a lit feed, or do not. Deterministic from the game's own RNG so the run stays
     // reproducible, and only while present.
-    if (present && s.t.liveEvent && policy.catchRate > 0) {
+    if (present && s.t.liveEvents.length > 0 && policy.catchRate > 0) {
       const roll = nextRandom(p.rngState);
       p.rngState = roll.state;
       if (roll.value < policy.catchRate) {

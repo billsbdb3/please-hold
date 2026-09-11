@@ -67,7 +67,16 @@ export const FATIGUE = {
    *
    * Faster than decay, so rotating genuinely pays rather than merely slowing the loss.
    */
-  recoveryPerSecond: 0.0018,
+  /*
+   * RAISED 3.3x, from 0.0018. Recovery took 267 seconds to return a stream to fresh, and a single
+   * use of Look Closer took 28 seconds to undo - so rotating away from a stream felt like nothing
+   * happened, and the playtest verdict was that freshness 'takes incredibly long to get back'.
+   *
+   * Decay should be slow because it is a slow tax you plan around. RECOVERY should be quick,
+   * because it is the reward for making the decision - a lever with a four-minute response time is
+   * not a lever.
+   */
+  recoveryPerSecond: 0.006,
   /**
    * The floor. Deliberately not near zero: a stale stream must stay WORTH watching, or a player
    * who ignores fatigue entirely is punished rather than merely out-performed, which breaks the
@@ -253,8 +262,13 @@ export const CAMERA_EVENT = {
    * suggests on the order of 25-40 optional events across a phase this long, so the interval is
    * widened and each catch is worth more.
    */
-  minInterval: 170,
-  maxInterval: 440,
+  /*
+   * Tightened again. Reported three times as too sparse - 'too much time inbetween'. With
+   * concurrent events now allowed on different streams, a shorter interval fills the console
+   * rather than merely speeding one queue up.
+   */
+  minInterval: 95,
+  maxInterval: 260,
   /**
    * How much more attention on the cameras speeds events up. Sub-linear, so filling the wall
    * with attention is not simply correct.
@@ -269,8 +283,17 @@ export const CAMERA_EVENT = {
   window: 12,
   /** With the analyst upgrade, the window is this much longer. */
   windowBonus: 13,
-  /** Minimum gap after an event resolves, so two never overlap. */
-  cooldown: 8,
+  /** Minimum gap after an event resolves. */
+  cooldown: 4,
+  /**
+   * How many moments may be live at once, at most one per stream.
+   *
+   * Was effectively one, globally, which is why a six-stream operations console felt empty: the
+   * player asked for 'more cameras or other things to pop off'. Several things happening on
+   * different streams at once is what a control room IS, and it makes the allocation legible -
+   * you can see which streams are producing.
+   */
+  maxConcurrent: 3,
 
   /**
    * Payout, as SECONDS OF CURRENT PRODUCTION. This is the guardrail: the reward scales with
@@ -319,6 +342,14 @@ export const DUD_LINES: string[] = [
 export const CHAIN = {
   /** Added per catch. */
   perCatch: 1,
+  /**
+   * Added by reading a stream properly.
+   *
+   * Looking closer IS an act of noticing, so it should feed the streak - and it is the only thing
+   * frequent enough to keep one alive between events. Without this the chain sat at 1.04x however
+   * attentively the phase was played, which made it decoration.
+   */
+  perLookCloser: 0.34,
   /** Cap, so the chain cannot become the whole economy. */
   max: 8,
   /**
@@ -327,7 +358,11 @@ export const CHAIN = {
    * Has to be matched to the event cadence. At 0.018/s a chain could not survive the ~5 minute
    * gap between events at all, so it never built and the mechanic did nothing.
    */
-  decayPerSecond: 0.004,
+  /*
+   * Slowed from 0.004. The chain never got past 1.04x in play because the gap between catches
+   * cost more than a catch was worth. A streak that cannot be built is not a mechanic.
+   */
+  decayPerSecond: 0.0022,
   /** Each point of chain adds this to the event payout multiplier. */
   payoutPerPoint: 0.22,
   /**
@@ -337,7 +372,7 @@ export const CHAIN = {
    * nothing and recklessness measured FASTER than careful play - the same inversion this phase
    * had before. The chain is now what recklessness actually loses when it gets caught.
    */
-  yieldPerPoint: 0.045,
+  yieldPerPoint: 0.06,
   /** A burn resets it. Getting caught is the one thing that actually costs you the streak. */
   brokenByBurn: true,
 } as const;
@@ -366,11 +401,25 @@ export const DESK_CLAIM_FRACTION = 0.5;
  */
 export const LOOK_CLOSER = {
   /** Seconds of that stream's own output, granted at once. */
-  seconds: 6,
+  seconds: 7,
   /** Per-stream cooldown, seconds. */
   cooldown: 15,
-  /** Freshness spent by reading properly. */
-  freshnessCost: 0.05,
+  /**
+   * Freshness spent by reading properly.
+   *
+   * WAS 0.05, WHICH MADE THIS A TRAP. Used on cooldown that is 0.05 every 15 seconds, or
+   * 0.0033/s of staleness against a base decay of 0.0009/s at one attention point - it TRIPLED
+   * the rate at which a stream went stale. So the mechanic gave 40% more output while driving the
+   * stream to the 0.52 floor and costing 48%, and using it diligently made you SLOWER.
+   *
+   * The simulator said so plainly and I nearly missed it: the `optimal` archetype, which reads
+   * streams almost every time it can, finished eleven minutes BEHIND `active`, which does it
+   * sixty percent of the time. An action that punishes the player for using it well is worse than
+   * no action at all, because it also punishes them for paying attention.
+   *
+   * At 0.018 it is a real cost that plans into rotation rather than defeating it.
+   */
+  freshnessCost: 0.018,
 } as const;
 
 /** Which stream the events belong to. */
