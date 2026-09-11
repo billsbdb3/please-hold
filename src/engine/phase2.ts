@@ -22,7 +22,7 @@ import type { GameState, StreamId, IntelKind } from './types';
 import { SLIPS } from '../data/balance';
 import {
   CAMERA_EVENTS, CAMERA_EVENT, CHAIN, FATIGUE, TIER_UNLOCK, TIER_WEIGHT, DUD_LINES, EVENT_STREAM,
-  DESK_CLAIM_FRACTION,
+  DESK_CLAIM_FRACTION, LOOK_CLOSER,
 } from '../data/phase2events';
 import type { CameraEventTier } from '../data/phase2events';
 import { STREAM_EVENTS, EVENT_STREAMS } from '../data/streamEvents';
@@ -213,6 +213,13 @@ export function tickPhase2(s: GameState, dt: number): void {
   // New faces on the cameras. The Camera Bank's unique job, and the reason Phase 2 is
   // completable at all when Phase 1 was left at its minimum roster.
   accrueNewFaces(s, dt);
+
+  // Cooldowns on looking closer.
+  for (const id of Object.keys(s.t.closerCooldown) as StreamId[]) {
+    const left = (s.t.closerCooldown[id] ?? 0) - dt;
+    if (left <= 0) delete s.t.closerCooldown[id];
+    else s.t.closerCooldown[id] = left;
+  }
 
   tickFatigue(s, dt);
   tickCameraEvents(s, dt);
@@ -598,6 +605,47 @@ export function claimCameraEvent(s: GameState, valueFraction = 1): boolean {
   p.chain = Math.min(CHAIN.max, p.chain + CHAIN.perCatch);
   t.lastEventNote = def.line;
   pushLog(s, def.line, 'intel');
+  return true;
+}
+
+/**
+ * Read a stream properly, right now.
+ *
+ * The verb Phase 2 was missing. Always available on any watched stream, modest, and it COSTS
+ * freshness — reading something closely uses it up, so hammering this burns out the stream you
+ * are reading. That makes it a tradeoff rather than a clicker, and it is the phase's own choice
+ * (what is worth your attention) at a scale of seconds instead of minutes.
+ *
+ * Returns false when there is nothing to read: unwatched, dark, or still on cooldown.
+ */
+export function lookCloser(s: GameState, id: StreamId): boolean {
+  const p = s.p;
+  if (!p.streams.includes(id)) return false;
+  if ((p.attention[id] ?? 0) <= 0) return false;
+  if ((s.t.burnedUntil[id] ?? 0) > 0) return false;
+  if ((s.t.closerCooldown[id] ?? 0) > 0) return false;
+
+  const d = s.t.p2 ?? deriveP2(p, s.t.burnedUntil);
+  const def = STREAM_BY_ID[id];
+
+  // Only what THIS stream produces, so looking closer at the cameras is not a way to farm money.
+  const a = Math.min(p.attention[id] ?? 0, def.maxAttention);
+  const mult = d.totalRate > 0 ? 1 : 1;
+  let granted = 0;
+  for (const kind of INTEL_KINDS) {
+    const y = def.yields[kind];
+    if (!y) continue;
+    const gain = y * a * LOOK_CLOSER.seconds * freshnessOf(p, id) * mult;
+    p.intelByKind[kind] += gain;
+    granted += gain;
+  }
+  if (granted <= 0) return false;
+
+  p.intel += granted;
+  p.intelLifetime += granted;
+  p.freshness[id] = Math.max(FATIGUE.floor, freshnessOf(p, id) - LOOK_CLOSER.freshnessCost);
+  s.t.closerCooldown[id] = LOOK_CLOSER.cooldown;
+  s.t.p2 = deriveP2(p, s.t.burnedUntil);
   return true;
 }
 

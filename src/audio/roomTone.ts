@@ -121,7 +121,9 @@ export function startRoom(): void {
   const room = ctx.createGain();
   room.gain.value = 0.85;
   const drone = ctx.createGain();
-  drone.gain.value = 0.16;
+  // Quieter than it was: the sequencer in phase2Music.ts is now the tonal voice, and two
+  // sustained tonal layers in the same octave just muddied each other.
+  drone.gain.value = 0.09;
   const machine = ctx.createGain();
   machine.gain.value = 0.5;
   for (const g of [room, drone, machine]) g.connect(bed);

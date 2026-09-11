@@ -361,6 +361,8 @@ export interface Transient {
   liveEvent: LiveCameraEvent | null;
   /** Seconds until the next camera event may spawn. */
   eventTimer: number;
+  /** Per-stream cooldown on looking closer. Transient: a cooldown should not survive a reload. */
+  closerCooldown: Partial<Record<StreamId, number>>;
   /** The last resolved event's text, kept briefly for the panel. */
   lastEventNote: string | null;
 
