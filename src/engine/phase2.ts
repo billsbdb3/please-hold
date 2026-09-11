@@ -24,6 +24,8 @@ import {
   CAMERA_EVENTS, CAMERA_EVENT, CHAIN, FATIGUE, TIER_UNLOCK, TIER_WEIGHT, DUD_LINES, EVENT_STREAM,
   DESK_CLAIM_FRACTION,
 } from '../data/phase2events';
+import type { CameraEventTier } from '../data/phase2events';
+import { STREAM_EVENTS, EVENT_STREAMS } from '../data/streamEvents';
 import { drawFromBag, nextInt, nextRandom } from './rng';
 import {
   NEW_FACES,
@@ -401,9 +403,10 @@ export function corroborateNext(s: GameState): boolean {
 function tickCameraEvents(s: GameState, dt: number): void {
   const p = s.p;
   const t = s.t;
-  const attention = p.attention[EVENT_STREAM] ?? 0;
-  const dark = (t.burnedUntil[EVENT_STREAM] ?? 0) > 0;
-  const watching = attention > 0 && !dark && p.streams.includes(EVENT_STREAM);
+  // Any stream being watched can produce a moment. Was cameras-only, which meant a player who
+  // could spare one point for the wall saw almost nothing happen for twenty minutes.
+  const watched = watchedEventStreams(s);
+  const watching = watched.length > 0;
 
   // A live event expires on its own. Nothing is deducted and nothing is counted: a miss must
   // cost the player nothing at all, or the wall becomes an obligation.
@@ -427,13 +430,26 @@ function tickCameraEvents(s: GameState, dt: number): void {
   t.eventTimer -= dt;
   if (t.eventTimer > 0) return;
 
-  const candidates = availableEventIndices(s);
+  // Weighted by attention: a stream you are watching hard is likelier to show you something,
+  // which keeps allocation meaningful rather than making every stream equally chatty.
+  const roll = nextInt(p.rngState, watched.reduce((n, w) => n + w.weight, 0));
+  p.rngState = roll.state;
+  let acc = 0;
+  let stream = watched[0].id;
+  for (const w of watched) {
+    acc += w.weight;
+    if (roll.value < acc) {
+      stream = w.id;
+      break;
+    }
+  }
+
+  const candidates = availableEventIndices(s, stream);
   if (candidates.length === 0) {
     t.eventTimer = rollEventInterval(s);
     return;
   }
 
-  // Which observation, and on which camera.
   const pick = nextInt(p.rngState, candidates.length);
   p.rngState = pick.state;
   const cam = nextInt(p.rngState, CAMERA_COUNT);
@@ -441,11 +457,31 @@ function tickCameraEvents(s: GameState, dt: number): void {
 
   const window = CAMERA_EVENT.window + (p.tradecraft.includes('t.analyst') ? CAMERA_EVENT.windowBonus : 0);
   t.liveEvent = {
+    stream,
     index: candidates[pick.value],
     camera: cam.value,
     remaining: window,
     window,
   };
+}
+
+/** Streams currently watched, un-burned, and capable of producing a moment. */
+function watchedEventStreams(s: GameState): { id: StreamId; weight: number }[] {
+  const p = s.p;
+  const out: { id: StreamId; weight: number }[] = [];
+  for (const id of [EVENT_STREAM, ...EVENT_STREAMS]) {
+    if (out.some((o) => o.id === id)) continue;
+    if (!p.streams.includes(id)) continue;
+    if ((s.t.burnedUntil[id] ?? 0) > 0) continue;
+    const a = p.attention[id] ?? 0;
+    if (a > 0) out.push({ id, weight: a });
+  }
+  return out;
+}
+
+/** The observation list for a stream: the wall has its own, the rest share a table. */
+export function eventsFor(stream: StreamId): { tier: CameraEventTier; line: string; kinds: IntelKind[] }[] {
+  return stream === EVENT_STREAM ? CAMERA_EVENTS : (STREAM_EVENTS[stream] ?? []);
 }
 
 /** Which camera-count the wall has, so an event can never light a tile that is not there. */
@@ -465,7 +501,7 @@ const CAMERA_COUNT = 14;
  */
 function rollEventInterval(s: GameState): number {
   const p = s.p;
-  const attention = Math.max(1, p.attention[EVENT_STREAM] ?? 0);
+  const attention = Math.max(1, watchedEventStreams(s).reduce((n, w) => n + w.weight, 0));
   const r = nextRandom(p.rngState);
   p.rngState = r.state;
   const span = CAMERA_EVENT.maxInterval - CAMERA_EVENT.minInterval;
@@ -483,11 +519,12 @@ function rollEventInterval(s: GameState): number {
  * answered an advertisement, the player has already clicked on a sleeping teenager and a drawer
  * of other people's passports.
  */
-function availableEventIndices(s: GameState): number[] {
+function availableEventIndices(s: GameState, stream: StreamId): number[] {
   const d = s.t.p2 ?? deriveP2(s.p, s.t.burnedUntil);
+  const list = eventsFor(stream);
   const out: number[] = [];
-  for (let i = 0; i < CAMERA_EVENTS.length; i++) {
-    if (d.progress >= TIER_UNLOCK[CAMERA_EVENTS[i].tier]) out.push(i);
+  for (let i = 0; i < list.length; i++) {
+    if (d.progress >= TIER_UNLOCK[list[i].tier]) out.push(i);
   }
   return out;
 }
@@ -505,7 +542,12 @@ export function claimCameraEvent(s: GameState, valueFraction = 1): boolean {
   const live = t.liveEvent;
   if (!live) return false;
 
-  const def = CAMERA_EVENTS[live.index];
+  const def = eventsFor(live.stream)[live.index];
+  if (!def) {
+    t.liveEvent = null;
+    t.eventTimer = rollEventInterval(s);
+    return false;
+  }
   const d = s.t.p2 ?? deriveP2(p, s.t.burnedUntil);
 
   t.liveEvent = null;
