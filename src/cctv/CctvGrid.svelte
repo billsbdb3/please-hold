@@ -33,9 +33,18 @@
      * let the wall scroll.
      */
     sizing?: 'fit' | number;
+    /** Index of the camera currently showing something, or null. */
+    litCamera?: number | null;
+    /** 0..1 of the claim window remaining, for the depleting border. */
+    litRemaining?: number;
+    /** Called when the player notices the lit feed. */
+    onNotice?: () => void;
   }
 
-  const { intervalMs = 3000, only, sizing = 'fit' }: Props = $props();
+  const {
+    intervalMs = 3000, only, sizing = 'fit',
+    litCamera = null, litRemaining = 1, onNotice,
+  }: Props = $props();
 
   const cams = $derived(only ? SCENES.filter((s) => only.includes(s.id)) : SCENES);
 
@@ -108,14 +117,77 @@
   class:fits
   style="--cols: {cols}"
 >
-  {#each cams as scene (scene.id)}
-    <div class="cell">
-      <Cam {scene} {tick} />
+  {#each cams as scene, i (scene.id)}
+    {@const lit = litCamera === i}
+    <!--
+      A lit tile is a real button, not a div with a click handler: it has to be reachable by
+      keyboard and announced, and the panel carries a second claim control besides, because
+      12-bonus-events.md is clear that a small moving target is not an accessible claim path.
+      Signalling is redundant by design - brightness, a border, and a caption - never colour
+      alone.
+    -->
+    <div class="cell" class:lit>
+      {#if lit}
+        <button
+          class="notice"
+          style="--left: {litRemaining}"
+          onclick={onNotice}
+          aria-label="Something is happening on {scene.location}. Claim it."
+        >
+          <Cam {scene} {tick} />
+          <span class="notice-flag" aria-hidden="true">SEE THIS</span>
+        </button>
+      {:else}
+        <Cam {scene} {tick} />
+      {/if}
     </div>
   {/each}
 </div>
 
 <style>
+  .cell.lit {
+    /* Outside the .cam absolute-positioning contract, so it cannot reintroduce the row overlap
+       that took three rounds to fix. */
+    z-index: 2;
+  }
+  .notice {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    border: 2px solid var(--amber);
+    background: none;
+    cursor: pointer;
+    animation: notice-pulse 1.1s ease-in-out infinite;
+  }
+  .notice:hover { border-color: var(--amber-text, #ffd9a0); }
+  /* The window depleting, drawn as a bar rather than only a colour change. */
+  .notice::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 3px;
+    width: calc(var(--left, 1) * 100%);
+    background: var(--amber);
+  }
+  .notice-flag {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    padding: 1px 4px;
+    background: var(--amber);
+    color: #000;
+  }
+  @keyframes notice-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 185, 73, 0.55); }
+    50% { box-shadow: 0 0 14px 3px rgba(255, 185, 73, 0.35); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .notice { animation: none; }
+  }
+
   .wall {
     /* Fill the container. NO vh — the parent decides the box. */
     width: 100%;

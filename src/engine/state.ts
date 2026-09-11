@@ -69,6 +69,10 @@ export function freshState(): Persisted {
     slipBag: [],
     boilBag: [],
     faceProgress: 0,
+    freshness: { cctv: 1, recordings: 1, switchboard: 1, crm: 1, whatsapp: 1, ledger: 1 },
+    chain: 0,
+    cameraEventsCaught: 0,
+    hotLeadFor: 0,
 
     heat: 0,
     warning: 0,

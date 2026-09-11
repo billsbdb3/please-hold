@@ -15,12 +15,15 @@
 import type { GameState, IntelKind } from '../src/engine/types';
 import { freshState } from '../src/engine/state';
 import { PHASE1_COMPLETION } from '../src/data/balance';
+import { TRADECRAFT } from '../src/data/phase2';
+import { nextRandom } from '../src/engine/rng';
 import { freshTransient } from '../src/engine/log';
 import { derive } from '../src/engine/derive';
 import { tick } from '../src/engine/sim';
 import {
   enterPhase2, assignAttention, clearAttention, unlockStream,
   buyAttention, buyTradecraft, availableTradecraft, corroborateNext, deriveP2,
+  claimCameraEvent, freshnessOf,
 } from '../src/engine/phase2';
 import { DT } from '../src/engine/loop';
 import {
@@ -29,7 +32,7 @@ import {
 } from '../src/data/phase2';
 import { fmt } from '../src/engine/numbers';
 
-export type P2Archetype = 'reckless' | 'optimal' | 'active' | 'casual';
+export type P2Archetype = 'reckless' | 'optimal' | 'active' | 'casual' | 'neglectful';
 
 interface P2Policy {
   /** Heat fraction above which the player backs off. 1 = never backs off. */
@@ -40,14 +43,53 @@ interface P2Policy {
   attentionFraction: number;
   /** Spend on tradecraft/streams/attention this eagerly (0..1 of available intel). */
   spendAggression: number;
+  /**
+   * Probability of noticing a lit camera feed while present.
+   *
+   * Modelling this is not optional. The events are meant to be a MULTIPLIER on idle income of
+   * roughly 1.3-2x, and the only way to know whether that holds is to simulate both a player
+   * who catches them and one who never does.
+   */
+  catchRate: number;
+  /**
+   * Attention points held back for the cameras, regardless of their raw yield.
+   *
+   * Without this the optimiser measured a player who does not understand the mechanic: cameras
+   * are still the weakest stream by yield, so it allocated ZERO and therefore saw almost no
+   * events - 11 catches across a 159-minute run. A real player keeps eyes on the wall because
+   * that is where the events and the new faces come from.
+   */
+  camerasReserved: number;
+  /**
+   * Whether the player rotates attention to exploit freshness.
+   *
+   * Fatigue makes parked attention decay to its floor, so a policy that never rotates measures
+   * BAD PLAY. The first run after adding fatigue reported 329 minutes for exactly that reason:
+   * the simulator was pinning attention and sitting at 0.45 freshness throughout.
+   */
+  rotates: boolean;
 }
 
 const POLICIES: Record<P2Archetype, P2Policy> = {
   // Pins everything wide open and never backs off. Should get burned constantly.
-  reckless: { heatCeiling: 1, reviewEverySeconds: 5, attentionFraction: 1, spendAggression: 1 },
-  optimal: { heatCeiling: 0.55, reviewEverySeconds: 5, attentionFraction: 1, spendAggression: 1 },
-  active: { heatCeiling: 0.6, reviewEverySeconds: 15, attentionFraction: 1, spendAggression: 0.85 },
-  casual: { heatCeiling: 0.7, reviewEverySeconds: 45, attentionFraction: 0.6, spendAggression: 0.6 },
+  reckless: { heatCeiling: 1, reviewEverySeconds: 5, attentionFraction: 1, spendAggression: 1,
+    catchRate: 0.9, rotates: true, camerasReserved: 2 },
+  optimal: { heatCeiling: 0.55, reviewEverySeconds: 5, attentionFraction: 1, spendAggression: 1,
+    catchRate: 0.95, rotates: true, camerasReserved: 2 },
+  active: { heatCeiling: 0.6, reviewEverySeconds: 15, attentionFraction: 1, spendAggression: 0.85,
+    catchRate: 0.7, rotates: true, camerasReserved: 2 },
+  casual: { heatCeiling: 0.7, reviewEverySeconds: 45, attentionFraction: 0.6, spendAggression: 0.6,
+    catchRate: 0.3, rotates: true, camerasReserved: 1 },
+  /**
+   * THE FLOOR, and the most important archetype in this file.
+   *
+   * Never claims an event, never rotates, reviews rarely. This is the player the engagement
+   * layer must not punish: if `neglectful` cannot finish, or finishes far slower than `optimal`,
+   * then the optional layer is not optional and the game has become a job. The research is
+   * explicit that engaged play should be ~1.3-2x faster, not ~10x, and a test asserts it.
+   */
+  neglectful: { heatCeiling: 0.7, reviewEverySeconds: 120, attentionFraction: 1,
+    spendAggression: 0.8, catchRate: 0, rotates: false, camerasReserved: 0 },
 };
 
 export interface P2Result {
@@ -63,6 +105,17 @@ export interface P2Result {
   /** Which requirement finished last — the one setting the phase's length. */
   binding: string;
   peakHeat: number;
+  /** Camera events claimed over the run. */
+  caught: number;
+  /**
+   * Minute each requirement was satisfied.
+   *
+   * Coverage is a MINIMUM, so the phase's length is set entirely by whichever requirement lands
+   * last. Without this the table says which one bound but not by how far, and tuning becomes
+   * guesswork - scaling all four needs together moved the total far less than expected because
+   * one kind was finishing an hour after the others.
+   */
+  metAt: Record<string, number>;
   /**
    * Minutes during which overall coverage read exactly zero.
    *
@@ -120,6 +173,7 @@ export function runPhase2(archetype: P2Archetype, verbose = false): P2Result {
   let sinceReview = 0;
   let peakHeat = 0;
   let minutesAtZero = 0;
+  let caught = 0;
   const firstProgressAt: Record<string, number> = {};
   let completed = false;
   let minutes = Infinity;
@@ -133,6 +187,17 @@ export function runPhase2(archetype: P2Archetype, verbose = false): P2Result {
 
     tick(s, DT);
     peakHeat = Math.max(peakHeat, p.heat);
+
+    // Notice a lit feed, or do not. Deterministic from the game's own RNG so the run stays
+    // reproducible, and only while present.
+    if (present && s.t.liveEvent && policy.catchRate > 0) {
+      const roll = nextRandom(p.rngState);
+      p.rngState = roll.state;
+      if (roll.value < policy.catchRate) {
+        claimCameraEvent(s);
+        caught++;
+      }
+    }
 
     sinceReview += DT;
     if (present && sinceReview >= policy.reviewEverySeconds) {
@@ -175,7 +240,9 @@ export function runPhase2(archetype: P2Archetype, verbose = false): P2Result {
     attentionPool: d.pool,
     coverage: d.coverage,
     binding: entries.length === 5 ? entries.sort((a, b) => b[1] - a[1])[0][0] : 'incomplete',
+    metAt: { ...metAt },
     peakHeat,
+    caught,
     minutesAtZero,
     firstProgressAt: firstProgressAt as Record<IntelKind, number>,
   };
@@ -228,6 +295,12 @@ function reallocate(s: GameState, policy: P2Policy): void {
 
   clearAttention(s);
 
+  // Eyes on the wall first. Events and new faces only come from the cameras, so a player who
+  // understands the phase pays for them before optimising the rest.
+  if (policy.camerasReserved > 0 && p.streams.includes('cctv') && !(s.t.burnedUntil.cctv ?? 0)) {
+    assignAttention(s, 'cctv', Math.min(policy.camerasReserved, d.pool));
+  }
+
   /**
    * Heat budget: how much generation the decay can absorb indefinitely.
    *
@@ -248,7 +321,7 @@ function reallocate(s: GameState, policy: P2Policy): void {
   // is the only one that actually matters.
   const need = INTEL_KINDS.map((k) => ({ k, gap: 1 - d.coverage[k] })).sort((a, b) => b.gap - a.gap);
 
-  let attentionLeft = d.pool;
+  let attentionLeft = d.pool - (p.attention.cctv ?? 0);
   let heatUsed = 0;
 
   for (const { k, gap } of need) {
@@ -259,7 +332,7 @@ function reallocate(s: GameState, policy: P2Policy): void {
     // comparison - not raw yield.
     const candidates = STREAMS.filter(
       (st) => p.streams.includes(st.id) && !(s.t.burnedUntil[st.id] ?? 0) && st.yields[k],
-    ).sort((a, b) => b.yields[k]! / b.heatPerAttention - a.yields[k]! / a.heatPerAttention);
+    ).sort((a, b) => effectiveValue(p, b, k, policy) - effectiveValue(p, a, k, policy));
 
     for (const st of candidates) {
       const room = st.maxAttention - (p.attention[st.id] ?? 0);
@@ -271,6 +344,28 @@ function reallocate(s: GameState, policy: P2Policy): void {
       }
     }
   }
+}
+
+/**
+ * Value of a stream for one intel kind, per unit of heat, INCLUDING freshness.
+ *
+ * A policy that ignores freshness parks its attention and decays every watched stream to the
+ * 0.45 floor. That is bad play, and measuring bad play is how the first fatigue run came back
+ * at 329 minutes and looked like a balance problem rather than a policy one.
+ */
+function effectiveValue(
+  p: GameState['p'],
+  st: (typeof STREAMS)[number],
+  k: IntelKind,
+  policy: P2Policy,
+): number {
+  const fresh = policy.rotates ? freshnessOf(p, st.id) : 1;
+  // A player who does not care about suspicion does not price it either. Dividing by heat for
+  // EVERY archetype made `reckless` a misnomer - it ignored the heat ceiling while still
+  // preferring efficient streams, so it peaked at 51 heat and never burned once. That made the
+  // threat look decorative when what was actually broken was the archetype.
+  if (policy.heatCeiling >= 1) return st.yields[k]! * fresh;
+  return (st.yields[k]! * fresh) / st.heatPerAttention;
 }
 
 /** Decay multiplier from tradecraft, mirroring the engine's own calculation. */
@@ -295,19 +390,19 @@ function main(): void {
     `${COVERAGE.corroborated} corroborated\n`,
   );
 
-  const results = (['reckless', 'optimal', 'active', 'casual'] as P2Archetype[]).map((a) => {
+  const results = (['reckless', 'optimal', 'active', 'casual', 'neglectful'] as P2Archetype[]).map((a) => {
     if (verbose) console.log(`--- ${a} ---`);
     return runPhase2(a, verbose);
   });
 
-  console.log('| Archetype | Done | Binding | Burns | Peak heat | Streams | Tradecraft | Attention | Corroborated | 0% for | money from |');
+  console.log('| Archetype | Done | Binding | Burns | Peak heat | Streams | Tradecraft | Attention | Corroborated | caught | 0% for |');
   console.log('|---|---|---|---|---|---|---|---|---|---|');
   for (const r of results) {
     console.log(
       `| ${r.archetype} | ${r.completed ? `${r.minutes.toFixed(0)} min` : 'never'} | ${r.binding} | ` +
       `${r.burns} | ${r.peakHeat.toFixed(0)} | ${r.streams}/${STREAMS.length} | ` +
-      `${r.tradecraft}/8 | ${r.attentionPool} | ${r.corroborated}/${COVERAGE.corroborated} | `
-      + `${r.minutesAtZero.toFixed(0)}m | ${(r.firstProgressAt.money ?? -1).toFixed(1)}m |`,
+      `${r.tradecraft}/${TRADECRAFT.length} | ${r.attentionPool} | ${r.corroborated}/${COVERAGE.corroborated} | `
+      + `${r.caught} | ${r.minutesAtZero.toFixed(0)}m |`,
     );
   }
 

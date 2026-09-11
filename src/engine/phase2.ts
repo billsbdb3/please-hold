@@ -20,7 +20,11 @@
 
 import type { GameState, StreamId, IntelKind } from './types';
 import { SLIPS } from '../data/balance';
-import { drawFromBag } from './rng';
+import {
+  CAMERA_EVENTS, CAMERA_EVENT, CHAIN, FATIGUE, TIER_UNLOCK, TIER_WEIGHT, DUD_LINES, EVENT_STREAM,
+  DESK_CLAIM_FRACTION,
+} from '../data/phase2events';
+import { drawFromBag, nextInt, nextRandom } from './rng';
 import {
   NEW_FACES,
   STREAMS, STREAM_BY_ID, ATTENTION, HEAT, COVERAGE, IDENTIFY,
@@ -50,6 +54,10 @@ export interface Phase2Derived {
   identifiedFraction: number;
   /** Overall progress: the WORST of the five requirements. */
   progress: number;
+  /** Chain multiplier currently applied to every yield. */
+  chainMultiplier: number;
+  /** True while a hot-lead surge is running. */
+  hotLead: boolean;
   /**
    * Which requirement is currently that worst one, by name.
    *
@@ -98,6 +106,11 @@ export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId
   // what makes moderate heat optimal rather than maximum heat.
   const heatYieldMultiplier = 1 - (p.heat / HEAT.max) * HEAT.yieldPenaltyAtMax;
 
+  // The chain is felt outside the events too, so a run of catches is worth something even
+  // between them; and a hot lead is a short surge on everything.
+  const chainMult = 1 + p.chain * CHAIN.yieldPerPoint;
+  const hotMult = p.hotLeadFor > 0 ? CAMERA_EVENT.hotLeadMultiplier : 1;
+
   const intelRate = { people: 0, structure: 0, money: 0, evidence: 0 } as Record<IntelKind, number>;
   let heatGen = 0;
   let assigned = 0;
@@ -107,6 +120,7 @@ export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId
     if (!p.streams.includes(s.id)) continue;
     const dark = (burnedUntil[s.id] ?? 0) > 0;
     if (dark) burned.push(s.id);
+    const fresh = freshnessOf(p, s.id);
 
     // Attention beyond a stream's ceiling is wasted, and still counts against the pool —
     // over-committing is a real mistake the player can make and see.
@@ -116,7 +130,13 @@ export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId
 
     for (const kind of INTEL_KINDS) {
       const y = s.yields[kind];
-      if (y) intelRate[kind] += y * a * m.yieldMult * heatYieldMultiplier;
+      // Freshness, the chain and any hot lead all land here, multiplicatively, and all three
+      // are DERIVED every tick rather than stored. Storing a multiplier is what caused the
+      // original build's double-apply bug.
+      if (y) {
+        intelRate[kind] +=
+          y * a * m.yieldMult * heatYieldMultiplier * fresh * chainMult * hotMult;
+      }
     }
     heatGen += s.heatPerAttention * a * m.heatMult;
   }
@@ -147,6 +167,8 @@ export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId
     // The worst requirement, so nothing can be carried by a single stream.
     progress: Math.min(identifiedFraction, ...INTEL_KINDS.map((k) => coverage[k])),
     bindingLabel,
+    chainMultiplier: chainMult,
+    hotLead: p.hotLeadFor > 0,
     nextAttentionCost:
       ATTENTION.base + p.attentionBought >= ATTENTION.max
         ? null
@@ -190,6 +212,14 @@ export function tickPhase2(s: GameState, dt: number): void {
   // completable at all when Phase 1 was left at its minimum roster.
   accrueNewFaces(s, dt);
 
+  tickFatigue(s, dt);
+  tickCameraEvents(s, dt);
+
+  // The chain decays rather than breaking on a miss. See CHAIN in data/phase2events.ts for
+  // why: punishing a miss is how players come to feel chained to a game.
+  if (p.chain > 0) p.chain = Math.max(0, p.chain - CHAIN.decayPerSecond * dt);
+  if (p.hotLeadFor > 0) p.hotLeadFor = Math.max(0, p.hotLeadFor - dt);
+
   // Heat.
   p.heat = Math.max(0, Math.min(HEAT.max, p.heat + d.heatRate * dt));
   if (p.heat >= HEAT.burnAt) burnAStream(s);
@@ -205,8 +235,14 @@ export function tickPhase2(s: GameState, dt: number): void {
  * costs no intel and no progress — the setback is time and inconvenience, because punishment
  * that destroys progress makes people stop playing (research 01, anti-patterns).
  */
-function burnAStream(s: GameState): void {
+export function burnAStream(s: GameState): void {
   const p = s.p;
+
+  // Getting caught is the one thing that actually costs the streak. Everything else about the
+  // chain is forgiving — a missed event does not break it, it only decays — so this is where
+  // running hot is paid for, and it is why heat discipline is worth anything at all.
+  if (CHAIN.brokenByBurn) p.chain = 0;
+
   const live = STREAMS.filter((x) => p.streams.includes(x.id) && !(s.t.burnedUntil[x.id] ?? 0));
   if (live.length === 0) {
     p.heat = HEAT.afterBurn;
@@ -349,6 +385,211 @@ export function corroborateNext(s: GameState): boolean {
 }
 
 // ------------------------------------------------------------------- transition
+
+/**
+ * Camera events: spawn, expire, and the claim.
+ *
+ * The one rule that governs all of it: this is a MULTIPLIER ON TOP of idle income, never the
+ * income. A player who never clicks a lit feed still finishes the phase, only slower — the
+ * research is unambiguous that the moment an active layer becomes the real economy, the game
+ * has stopped being an idle game and become a job.
+ *
+ * Events only run while the cameras are watched, which is what finally gives The Camera Bank a
+ * reason to exist: at 1.40 intel per attention point it was the worst stream in the game and
+ * correct to ignore, so the phase greyed out its own centrepiece.
+ */
+function tickCameraEvents(s: GameState, dt: number): void {
+  const p = s.p;
+  const t = s.t;
+  const attention = p.attention[EVENT_STREAM] ?? 0;
+  const dark = (t.burnedUntil[EVENT_STREAM] ?? 0) > 0;
+  const watching = attention > 0 && !dark && p.streams.includes(EVENT_STREAM);
+
+  // A live event expires on its own. Nothing is deducted and nothing is counted: a miss must
+  // cost the player nothing at all, or the wall becomes an obligation.
+  if (t.liveEvent) {
+    t.liveEvent.remaining -= dt;
+    // Somebody on the desk notices it for you, at half value, once the window is nearly gone.
+    // The player still gets full value by being quicker than their own employee.
+    if (p.tradecraft.includes('t.desk') && t.liveEvent.remaining <= 1.5) {
+      claimCameraEvent(s, DESK_CLAIM_FRACTION);
+      return;
+    }
+    if (t.liveEvent.remaining <= 0 || !watching) {
+      t.liveEvent = null;
+      t.eventTimer = rollEventInterval(s);
+    }
+    return;
+  }
+
+  if (!watching) return;
+
+  t.eventTimer -= dt;
+  if (t.eventTimer > 0) return;
+
+  const candidates = availableEventIndices(s);
+  if (candidates.length === 0) {
+    t.eventTimer = rollEventInterval(s);
+    return;
+  }
+
+  // Which observation, and on which camera.
+  const pick = nextInt(p.rngState, candidates.length);
+  p.rngState = pick.state;
+  const cam = nextInt(p.rngState, CAMERA_COUNT);
+  p.rngState = cam.state;
+
+  const window = CAMERA_EVENT.window + (p.tradecraft.includes('t.analyst') ? CAMERA_EVENT.windowBonus : 0);
+  t.liveEvent = {
+    index: candidates[pick.value],
+    camera: cam.value,
+    remaining: window,
+    window,
+  };
+}
+
+/** Which camera-count the wall has, so an event can never light a tile that is not there. */
+const CAMERA_COUNT = 14;
+
+/**
+ * Seconds until the next event may spawn: the cooldown plus a fresh random interval.
+ *
+ * This function exists because its absence was a bug. Both resolution paths set the timer to the
+ * COOLDOWN alone and never re-rolled the interval, so after the first event the cameras produced
+ * one every eight seconds — the 300-620s interval was written down, documented, tuned twice, and
+ * never actually read. The simulator reported 128 catches in a 161-minute run, which I read as a
+ * cadence that needed widening rather than a timer that was not being set.
+ *
+ * More attention shortens the wait, sub-linearly, so filling the wall is a real but diminishing
+ * benefit rather than the only correct play.
+ */
+function rollEventInterval(s: GameState): number {
+  const p = s.p;
+  const attention = Math.max(1, p.attention[EVENT_STREAM] ?? 0);
+  const r = nextRandom(p.rngState);
+  p.rngState = r.state;
+  const span = CAMERA_EVENT.maxInterval - CAMERA_EVENT.minInterval;
+  // Squared, so the wait clusters toward the longer end: a soft floor with no instant repeats,
+  // which is the shape Cookie Clicker uses for the same reason.
+  const base = CAMERA_EVENT.minInterval + span * (r.value * r.value);
+  return CAMERA_EVENT.cooldown + base / Math.pow(attention, CAMERA_EVENT.attentionExponent);
+}
+
+/**
+ * Observations currently possible, gated by coverage.
+ *
+ * Tiers unlock on progress rather than on a clock, so the uncomfortable material arrives
+ * because of what the player has uncovered. By the time the game states that most of them
+ * answered an advertisement, the player has already clicked on a sleeping teenager and a drawer
+ * of other people's passports.
+ */
+function availableEventIndices(s: GameState): number[] {
+  const d = s.t.p2 ?? deriveP2(s.p, s.t.burnedUntil);
+  const out: number[] = [];
+  for (let i = 0; i < CAMERA_EVENTS.length; i++) {
+    if (d.progress >= TIER_UNLOCK[CAMERA_EVENTS[i].tier]) out.push(i);
+  }
+  return out;
+}
+
+/**
+ * Claim the lit feed. Returns false when there is nothing to claim.
+ *
+ * The payout is denominated in SECONDS OF CURRENT PRODUCTION, which is the guardrail that keeps
+ * this proportionate at every stage: it stays worth taking late without ever being a windfall,
+ * and it is hard-capped regardless of tier and chain.
+ */
+export function claimCameraEvent(s: GameState, valueFraction = 1): boolean {
+  const p = s.p;
+  const t = s.t;
+  const live = t.liveEvent;
+  if (!live) return false;
+
+  const def = CAMERA_EVENTS[live.index];
+  const d = s.t.p2 ?? deriveP2(p, s.t.burnedUntil);
+
+  t.liveEvent = null;
+  t.eventTimer = rollEventInterval(s);
+  p.cameraEventsCaught += 1;
+
+  // A dud. Deliberate: Cookie Clicker ships one, and most of what you watch is a man not doing
+  // very much. The chain still advances — you did notice something.
+  const roll = nextRandom(p.rngState);
+  p.rngState = roll.state;
+  if (roll.value < CAMERA_EVENT.dudChance) {
+    const line = nextInt(p.rngState, DUD_LINES.length);
+    p.rngState = line.state;
+    t.lastEventNote = DUD_LINES[line.value];
+    pushLog(s, DUD_LINES[line.value], 'system');
+    p.chain = Math.min(CHAIN.max, p.chain + CHAIN.perCatch);
+    return true;
+  }
+
+  const hot = nextRandom(p.rngState);
+  p.rngState = hot.state;
+  if (hot.value < CAMERA_EVENT.hotLeadChance) {
+    p.hotLeadFor = CAMERA_EVENT.hotLeadSeconds;
+    t.lastEventNote = `${def.line} This is worth following while it lasts.`;
+    pushLog(s, def.line, 'intel');
+    pushLog(s, `Everything is worth more for the next ${CAMERA_EVENT.hotLeadSeconds} seconds.`, 'beat');
+    p.chain = Math.min(CHAIN.max, p.chain + CHAIN.perCatch);
+    return true;
+  }
+
+  const tierWeight = TIER_WEIGHT[def.tier];
+  const chainMult = 1 + p.chain * CHAIN.payoutPerPoint;
+  const seconds = Math.min(
+    CAMERA_EVENT.payoutSecondsMax,
+    CAMERA_EVENT.payoutSeconds * tierWeight * chainMult,
+  );
+  const gained = Math.max(CAMERA_EVENT.payoutFlat, d.totalRate * seconds) * valueFraction;
+
+  // Credited to the kinds the observation is actually about, so an event can help with the
+  // requirement that is binding rather than being generic income.
+  const share = gained / def.kinds.length;
+  for (const kind of def.kinds) {
+    p.intelByKind[kind] += share;
+  }
+  p.intel += gained;
+  p.intelLifetime += gained;
+
+  p.chain = Math.min(CHAIN.max, p.chain + CHAIN.perCatch);
+  t.lastEventNote = def.line;
+  pushLog(s, def.line, 'intel');
+  return true;
+}
+
+/**
+ * A stream's freshness, defaulting to fully fresh.
+ *
+ * Defensive on purpose: a save migrated without the field must not multiply every yield by
+ * `undefined` and silently zero the economy.
+ */
+export function freshnessOf(p: GameState['p'], id: StreamId): number {
+  const v = p.freshness?.[id];
+  return typeof v === 'number' && Number.isFinite(v) ? v : 1;
+}
+
+/**
+ * Attention fatigue: what you watch goes stale, what you rest recovers.
+ *
+ * The structural fix for the phase being solved-once. Recovery is slightly faster than decay
+ * per point so that ROTATION beats parking, which is the behaviour the mechanic exists to
+ * reward — but the floor keeps a stale stream worth watching, so a player who ignores all of
+ * this is out-performed rather than punished.
+ */
+function tickFatigue(s: GameState, dt: number): void {
+  const p = s.p;
+  for (const st of STREAMS) {
+    const a = p.attention[st.id] ?? 0;
+    const current = freshnessOf(p, st.id);
+    const next =
+      a > 0
+        ? current - FATIGUE.decayPerAttentionSecond * a * dt
+        : current + FATIGUE.recoveryPerSecond * dt;
+    p.freshness[st.id] = Math.max(FATIGUE.floor, Math.min(1, next));
+  }
+}
 
 /**
  * Turn up somebody new on the cameras.

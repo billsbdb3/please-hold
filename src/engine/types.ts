@@ -156,6 +156,27 @@ export interface Persisted {
   boilBag: number[];
   /** Fractional progress toward the next new face on the cameras. */
   faceProgress: number;
+  /**
+   * Per-stream freshness, 0..1. Watching a stream lowers it; resting restores it.
+   *
+   * This is the fix for the phase's central fault: with constant yields the optimal allocation
+   * converged in about fifteen minutes and the game then asked nothing for two hours. Freshness
+   * makes the best allocation drift, so it has to be revisited.
+   */
+  freshness: Record<StreamId, number>;
+  /** Consecutive-catch chain on camera events. Decays with time, never broken by a miss. */
+  chain: number;
+  /**
+   * Camera events claimed.
+   *
+   * A statistic, and deliberately NOT paired with a count of misses. Cookie Clicker's author
+   * removed his missed-cookies counter because it gave players anxiety; the counter was the
+   * problem rather than the miss. Phase 1's own event system does count misses, for its
+   * end-of-call summary, where a missed opportunity is part of how the call went.
+   */
+  cameraEventsCaught: number;
+  /** Seconds remaining on a hot-lead yield surge. */
+  hotLeadFor: number;
 
   /** Phase 2 threat: their suspicion. */
   heat: number;
@@ -330,6 +351,18 @@ export interface Transient {
   burnedUntil: Partial<Record<StreamId, number>>;
   /** Last tick's Phase 2 derivation. Recomputed, never persisted. */
   p2: Phase2DerivedLike | null;
+  /**
+   * The camera currently showing something, if any.
+   *
+   * Transient by choice: a lit feed is a live moment, and restoring one from a save would mean
+   * a window that had already expired while the tab was shut. Reloading simply means waiting
+   * for the next one.
+   */
+  liveEvent: LiveCameraEvent | null;
+  /** Seconds until the next camera event may spawn. */
+  eventTimer: number;
+  /** The last resolved event's text, kept briefly for the panel. */
+  lastEventNote: string | null;
 
   // --- Opportunity events ---
   /**
@@ -378,6 +411,8 @@ export interface Phase2DerivedLike {
   identifiedFraction: number;
   progress: number;
   bindingLabel: string;
+  chainMultiplier: number;
+  hotLead: boolean;
   nextAttentionCost: number | null;
   corroborateCost: number;
   burned: StreamId[];
@@ -396,4 +431,16 @@ export interface Popup {
   id: number;
   text: string;
   at: number;
+}
+
+/** A camera event currently on screen, waiting to be noticed. */
+export interface LiveCameraEvent {
+  /** Index into CAMERA_EVENTS. */
+  index: number;
+  /** Which camera, 0-based, so the wall can light the right tile. */
+  camera: number;
+  /** Seconds left to claim it. */
+  remaining: number;
+  /** Total window, so the UI can draw a depleting bar. */
+  window: number;
 }

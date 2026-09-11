@@ -56,6 +56,9 @@ export function freshTransient(nowMs: number): GameState['t'] {
     returnedFromIdle: false,
     nextId: 1,
     burnedUntil: {},
+    liveEvent: null,
+    eventTimer: 0,
+    lastEventNote: null,
     p2: null,
     event: null,
     // First window is deliberately early so the mechanic teaches itself before the
