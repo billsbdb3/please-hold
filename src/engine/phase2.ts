@@ -583,9 +583,11 @@ function tickFatigue(s: GameState, dt: number): void {
   for (const st of STREAMS) {
     const a = p.attention[st.id] ?? 0;
     const current = freshnessOf(p, st.id);
+    // Square root, not linear: six points of attention should not exhaust a stream in seven
+    // seconds, which is what linear scaling did.
     const next =
       a > 0
-        ? current - FATIGUE.decayPerAttentionSecond * a * dt
+        ? current - FATIGUE.decayPerSecondAtOneAttention * Math.sqrt(a) * dt
         : current + FATIGUE.recoveryPerSecond * dt;
     p.freshness[st.id] = Math.max(FATIGUE.floor, Math.min(1, next));
   }

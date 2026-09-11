@@ -24,8 +24,7 @@
   } from './engine/sim';
   import {
     GENERATORS, COMPOSURE, RAPPORT, REDIAL, DOSSIER,
-    RAGE, PERSONA_SWITCH_COST, PHASE1_COMPLETION,
-  } from './data/balance';
+    RAGE, PERSONA_SWITCH_COST, PHASE1_COMPLETION, SLIPS} from './data/balance';
   import { UPGRADES, statusOf, excludedBy } from './data/upgrades';
   import { isUnlocked, maxComposure } from './engine/derive';
   import { snapshot } from './engine/snapshot';
@@ -183,14 +182,17 @@
   function onSkipToPhase2() {
     // Give the roster enough entries for Phase 2's requirements to be reachable, since those
     // normally come from Phase 1 boil-overs.
-    while (game.p.roster.length < 12) {
+    // REAL slips, not 'unnamed operator 4'. The placeholders made the roster read as filler in
+    // every preview, which is exactly the panel that is supposed to carry Phase 1's work forward.
+    while (game.p.roster.length < 12 && game.p.roster.length < SLIPS.length) {
       const i = game.p.roster.length;
+      const slip = SLIPS[i];
       game.p.roster.push({
-        id: `dev.${i}`,
-        handle: `unnamed operator ${i + 1}`,
+        id: `slip.${i}`,
+        handle: slip.entry,
         realName: null,
-        role: 'dialer',
-        recruitedByFalseAd: i % 3 === 1,
+        role: slip.role,
+        recruitedByFalseAd: slip.falseAd === true,
         freed: false,
       });
     }
