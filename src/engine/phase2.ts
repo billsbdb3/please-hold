@@ -171,8 +171,20 @@ export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId
     bindingLabel,
     chainMultiplier: chainMult,
     hotLead: p.hotLeadFor > 0,
+    /*
+     * The cap check MUST use the same total the pool does.
+     *
+     * It asked `base + attentionBought >= max` and ignored the tradecraft bonus, while the pool
+     * itself is `min(max, base + bought + bonus)`. So a player holding both attention upgrades
+     * (+5) sat at a fully capped 14/14 while the game cheerfully went on offering another point
+     * for 20,110 intel that could not possibly do anything. A playtester found it and asked the
+     * obvious question: 'why can i still buy more things to look at?'
+     *
+     * Selling a no-op is the worst version of the dead-content bug this project keeps producing,
+     * because the others merely wasted a slot - this one takes the resource.
+     */
     nextAttentionCost:
-      ATTENTION.base + p.attentionBought >= ATTENTION.max
+      attentionPool(p) >= ATTENTION.max
         ? null
         : Math.floor(ATTENTION.costBase * Math.pow(ATTENTION.costGrowth, p.attentionBought)),
     corroborateCost: Math.floor(

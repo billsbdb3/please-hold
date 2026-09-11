@@ -18,10 +18,11 @@ import { derive } from '../src/engine/derive';
 import { tick } from '../src/engine/sim';
 import {
   enterPhase2, assignAttention, clearAttention, unlockStream, lookCloser, freshnessOf, deriveP2,
+  buyAttention, buyTradecraft, attentionPool,
 } from '../src/engine/phase2';
 import { DT } from '../src/engine/loop';
 import { LOOK_CLOSER, FATIGUE } from '../src/data/phase2events';
-import { STREAM_BY_ID, ATTENTION } from '../src/data/phase2';
+import { STREAM_BY_ID, ATTENTION, STREAMS } from '../src/data/phase2';
 import { runPhase2 } from '../tools/simulate-phase2';
 import type { GameState } from '../src/engine/types';
 
@@ -163,5 +164,60 @@ describe('it stays optional', () => {
     const engaged = runPhase2('active');
     const ignoring = runPhase2('neglectful');
     expect(ignoring.minutes / engaged.minutes).toBeLessThan(2.2);
+  });
+});
+
+/**
+ * THE ATTENTION CAP MUST NOT SELL A NO-OP.
+ *
+ * `attentionPool` is `min(max, base + bought + tradecraftBonus)`, but the sell check asked only
+ * `base + bought >= max` and ignored the bonus. A player holding both attention upgrades (+5) sat
+ * at a fully capped 14/14 while the game went on offering another point for 20,110 intel that
+ * could not possibly do anything. He found it and asked the obvious question: "why can i still buy
+ * more things to look at?"
+ *
+ * Of all the dead-content bugs this project has produced, selling a no-op is the worst: the others
+ * wasted a slot, this one took the resource.
+ */
+describe('the attention cap', () => {
+  it('stops offering once the pool is actually full', () => {
+    const s = atPhase2();
+    s.p.intel = 1e9;
+    s.p.attentionBought = 999; // however it got there
+    expect(deriveP2(s.p, {}).nextAttentionCost).toBeNull();
+  });
+
+  it('accounts for tradecraft bonuses, not just what was bought', () => {
+    // The exact shape of the bug.
+    const s = atPhase2();
+    s.p.intel = 1e9;
+    for (const id of ['t.vm', 't.analyst', 't.attention1', 't.attention2']) buyTradecraft(s, id);
+    // Buy until the pool stops growing.
+    let guard = 0;
+    while (deriveP2(s.p, {}).nextAttentionCost !== null && guard++ < 200) buyAttention(s);
+    const pool = attentionPool(s.p);
+    expect(pool).toBe(ATTENTION.max);
+    // And having reached it, nothing further may be sold.
+    expect(deriveP2(s.p, {}).nextAttentionCost).toBeNull();
+    const before = s.p.intel;
+    expect(buyAttention(s)).toBe(false);
+    expect(s.p.intel).toBe(before);
+  });
+
+  it('leaves the pool smaller than the building, so you still cannot watch everything', () => {
+    // The tension is meant to survive the fix: total stream capacity must exceed the cap.
+    const capacity = STREAMS.reduce((n, st) => n + st.maxAttention, 0);
+    expect(capacity).toBeGreaterThan(ATTENTION.max);
+  });
+
+  it('is large enough to cover four streams at once', () => {
+    // 14 against 28 points of capacity was a trap: a player spread across the three cheap streams
+    // had nothing left for the ledger, and the ledger is the only real source of money - which is
+    // a hard coverage requirement.
+    const cheapestFour = STREAMS.slice()
+      .sort((a, b) => a.maxAttention - b.maxAttention)
+      .slice(0, 4)
+      .reduce((n, st) => n + st.maxAttention, 0);
+    expect(ATTENTION.max).toBeGreaterThanOrEqual(cheapestFour);
   });
 });

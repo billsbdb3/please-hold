@@ -138,8 +138,21 @@ export const ATTENTION = {
    * buying - which is the actual complaint.
    */
   costBase: 400,
-  costGrowth: 1.75,
-  max: 14,
+  costGrowth: 1.6,
+  /**
+   * The ceiling on how much you can watch at once.
+   *
+   * Was 14 against 28 points of total stream capacity, so half the building was unwatchable at
+   * any moment. That is the right IDEA - you cannot watch everything - but 14 was tight enough to
+   * be a trap: a player who spread across the three cheap streams had nothing left for the
+   * ledger, which is the only real source of money, and money is a hard coverage requirement.
+   * He was 38 minutes in with 5% coverage and no way to act on the readout telling him money was
+   * the problem.
+   *
+   * At 20 you can cover four streams properly and still not everything, which keeps the tension
+   * without making a requirement unreachable.
+   */
+  max: 20,
 } as const;
 
 /**
