@@ -46,21 +46,47 @@ import type { IntelKind, StreamId } from '../engine/types';
  * alone and there is something new to notice when you come back.
  */
 export const FATIGUE = {
-  /** Freshness lost per second, per attention point on the stream. */
-  decayPerAttentionSecond: 0.010,
-  /** Freshness recovered per second while a stream is unattended. */
-  recoveryPerSecond: 0.014,
+  /**
+   * Freshness lost per second at ONE attention point, scaled by the square root of attention.
+   *
+   * Was 0.010 and linear in attention, which was wrong by more than an order of magnitude: a
+   * stream went completely stale in 42 seconds at one point of attention and SEVEN at six, then
+   * recovered in 30. So any allocation held for more than a minute sat permanently at the floor -
+   * every stream reading 'nothing new here' at once, which is not a decision but a flat 42% tax
+   * on the whole economy. Playing it as designed would have meant re-allocating every twenty
+   * seconds, precisely the twitch busywork the research says players beg to automate.
+   *
+   * At 0.0009 with square-root scaling a stream takes about eight minutes to go stale at one
+   * point and three at six, so rotation is a considered move every few minutes. Square root
+   * rather than linear so that concentrating attention does not burn a stream out almost
+   * instantly.
+   */
+  decayPerSecondAtOneAttention: 0.0009,
+  /**
+   * Freshness recovered per second while a stream is unattended.
+   *
+   * Faster than decay, so rotating genuinely pays rather than merely slowing the loss.
+   */
+  recoveryPerSecond: 0.0018,
   /**
    * The floor. Deliberately not near zero: a stale stream must stay WORTH watching, or a player
    * who ignores fatigue entirely is punished rather than merely out-performed, which breaks the
    * idle-is-viable contract.
    */
   /*
-   * Raised from 0.45. At 0.45 the gap between a player who rotates and one who does not was
-   * large enough that, combined with the events, ignoring the whole engagement layer cost 2.16x
-   * the completion time - past the point where idle play is still a real option.
+   * Raised from 0.45: at 0.45, ignoring the engagement layer entirely cost 2.16x the completion
+   * time, past the point where idle play is still a real option.
    */
-  floor: 0.58,
+  /*
+   * SLOW BUT DEEP.
+   *
+   * Slowing the decay to a sensible timescale made rotation barely worth doing - a player who
+   * never rotated finished within 6% of one who did, so the mechanic existed without mattering.
+   * The timescale is the part that has to be gentle (a decision every few minutes, not every
+   * twenty seconds); the DEPTH can be significant, because a deep penalty on a slow clock is a
+   * real choice rather than micro-management.
+   */
+  floor: 0.52,
 } as const;
 
 /** Where a camera event can be in its life. */

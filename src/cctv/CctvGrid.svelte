@@ -214,9 +214,15 @@
     box-sizing: border-box;
   }
 
-  /* Fits without scrolling: centre the slack instead of leaving it all at the bottom. */
+  /*
+   * Fits without scrolling: keep the slack at the BOTTOM rather than centring it.
+   *
+   * Centring looked tidy when the wall was the only thing in its panel. With an event line above
+   * it the centred grid drifts down and reads as a large unexplained gap between the caption and
+   * the monitors, which is what a playtest screenshot showed.
+   */
   .wall.fits {
-    align-content: center;
+    align-content: start;
   }
 
   .cell {

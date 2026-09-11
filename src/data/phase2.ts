@@ -144,7 +144,7 @@ export const HEAT = {
   /** At max, a stream is burned. */
   burnAt: 100,
   /** Seconds a burned stream stays dark, for a FIRST burn. */
-  burnSeconds: 45,
+  burnSeconds: 70,
   /**
    * Each previous burn extends the next one by this fraction. They get more watchful every
    * time they catch something, so a reckless allocation degrades rather than paying a flat
@@ -154,7 +154,7 @@ export const HEAT = {
   /** Ceiling, so a long session cannot become unplayable. */
   burnSecondsMax: 300,
   /** Heat left after a burn — not zero, so a second burn is a real risk. */
-  afterBurn: 40,
+  afterBurn: 55,
   /**
    * How much high heat suppresses intel yields, at maximum heat.
    *
