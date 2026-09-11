@@ -21,6 +21,7 @@ import {
 import { GENERATOR_IDS } from './state';
 import { UPGRADES_BY_ID, isAvailable, UPGRADES } from '../data/upgrades';
 import { pushLog } from './log';
+import { drawFromBag } from './rng';
 import { tickPhase2 } from './phase2';
 
 /** Advance the whole game by `dt` seconds. Mutates in place, deliberately. */
@@ -158,7 +159,7 @@ function autoBuyCheapest(s: GameState): void {
  * man is a careless one, so something usable slips out — a name, a floor, a supervisor —
  * which is banked as a dossier page. Rage drops but not to zero, so the next one is work.
  */
-function boilOver(s: GameState): void {
+export function boilOver(s: GameState): void {
   const p = s.p;
   p.rage = RAGE.resetTo;
   p.boilOvers++;
@@ -168,22 +169,52 @@ function boilOver(s: GameState): void {
   // Each boil-over discloses the NEXT thing on the list, so the payoff escalates and is
   // permanent: a name, a shift, a supervisor, a floor. Once every slip is spent, fall back
   // to the generic shouting lines so the mechanic still reads.
-  const slipIndex = p.roster.length;
-  if (slipIndex < SLIPS.length) {
+  // Draw from a shuffle BAG, not `SLIPS[roster.length]`.
+  //
+  // The index-based draw meant every career anyone played produced the same twelve slips in
+  // the same order, and once they ran out it fell to `BOIL_OVER_LINES[boilOvers % length]` -
+  // a literal loop of ten lines. A bag guarantees no repeat until the pool is exhausted, and
+  // the pool is now 52 slips rather than 12.
+  const drawn = drawFromBag(p.slipBag, SLIPS.length, p.rngState);
+  p.rngState = drawn.state;
+
+  const alreadyHave = new Set(p.roster.map((r) => r.handle));
+  let slipIndex: number | null = drawn.value;
+  p.slipBag = drawn.bag;
+
+  // A bag refill can re-offer something already written down. Skip forward rather than
+  // recording a duplicate, and give up after a bounded search so this can never spin.
+  let guard = 0;
+  while (slipIndex !== null && alreadyHave.has(SLIPS[slipIndex].entry) && guard++ < SLIPS.length) {
+    const again = drawFromBag(p.slipBag, SLIPS.length, p.rngState);
+    p.rngState = again.state;
+    p.slipBag = again.bag;
+    slipIndex = alreadyHave.has(SLIPS[again.value].entry) ? again.value : again.value;
+    if (!alreadyHave.has(SLIPS[again.value].entry)) break;
+    if (guard >= SLIPS.length) slipIndex = null;
+  }
+
+  if (slipIndex !== null && !alreadyHave.has(SLIPS[slipIndex].entry)) {
     const slip = SLIPS[slipIndex];
     p.roster.push({
       id: `slip.${slipIndex}`,
       handle: slip.entry,
       realName: null,
       role: slip.role,
-      // Honest from the start, surfaced later: see docs/DESIGN.md twist 2.
-      recruitedByFalseAd: slipIndex % 3 === 1,
+      // Honest from the start, surfaced later: see docs/DESIGN.md twist 2. Now a property of
+      // the slip rather than of its position in the draw.
+      recruitedByFalseAd: slip.falseAd === true,
       freed: false,
     });
     pushLog(s, slip.line, 'beat');
     pushLog(s, `Written down: ${slip.entry}`, 'intel');
   } else {
-    pushLog(s, BOIL_OVER_LINES[p.boilOvers % BOIL_OVER_LINES.length], 'beat');
+    // Everything he has to give has been written down. Fall back to generic shouting, also
+    // bagged so it does not cycle in a fixed order.
+    const line = drawFromBag(p.boilBag, BOIL_OVER_LINES.length, p.rngState);
+    p.rngState = line.state;
+    p.boilBag = line.bag;
+    pushLog(s, BOIL_OVER_LINES[line.value], 'beat');
   }
 
   // A burst, because a man shouting at you is not reading his script.

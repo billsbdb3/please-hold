@@ -142,6 +142,21 @@ export interface Persisted {
   /** Total times he has lost his temper. A stat, and a Phase 2 roster feed. */
   boilOvers: number;
 
+  /**
+   * Seeded RNG state, advanced in the tick path.
+   *
+   * Saved rather than global so a career is reproducible: the simulator pins a seed and stays
+   * a valid regression gate, and offline catch-up replays exactly what playing would have
+   * produced. See src/engine/rng.ts.
+   */
+  rngState: number;
+  /** Remaining indices in the slip shuffle-bag, so no slip repeats before all are seen. */
+  slipBag: number[];
+  /** Remaining indices in the generic boil-over line bag. */
+  boilBag: number[];
+  /** Fractional progress toward the next new face on the cameras. */
+  faceProgress: number;
+
   /** Phase 2 threat: their suspicion. */
   heat: number;
   /** Phase 3 threat: the operation is aware and reacting. */
@@ -211,7 +226,7 @@ export interface RosterEntry {
   id: string;
   handle: string;
   realName: string | null;
-  role: 'dialer' | 'closer' | 'verifier' | 'manager' | 'it' | 'owner';
+  role: 'dialer' | 'closer' | 'verifier' | 'manager' | 'it' | 'trainer' | 'owner';
   /**
    * Set on some entries from the very first phase, but not surfaced in the UI
    * until Twist 2. The flag is honest from the start; only the presentation
@@ -219,6 +234,8 @@ export interface RosterEntry {
    */
   recruitedByFalseAd: boolean;
   freed: boolean;
+  /** True when this entry was found on the cameras in Phase 2 rather than said on the call. */
+  fromCamera?: boolean;
 }
 
 /**

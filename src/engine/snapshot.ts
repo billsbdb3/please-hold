@@ -61,6 +61,10 @@ export function snapshot(game: GameState): Snapshot {
       dossier: p.dossier.slice(),
       beatsSeen: p.beatsSeen.slice(),
       roster: p.roster.slice(),
+      // The shuffle bags. Caught by the enumerating snapshot test the moment they were added,
+      // which is what that test is for.
+      slipBag: p.slipBag.slice(),
+      boilBag: p.boilBag.slice(),
       // Phase 2's collections need the same treatment for the same reason. Phase 2 shipped
       // with its component reading `game.p` directly and froze exactly as described above —
       // a camera wall updating live next to an attention counter stuck on its first value.

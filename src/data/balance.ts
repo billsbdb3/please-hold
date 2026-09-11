@@ -422,7 +422,23 @@ export const BOIL_OVER_LINES: string[] = [
   'He is threatening to come to your house. He has the address wrong. It is a garden centre.',
   'He has told you what his quota is. It is higher than last month.',
   'Someone off-microphone has told him to keep his voice down.',
-];
+  'He has put the phone down on the desk. He has not put it down far enough.',
+  'He is explaining to somebody nearby that you are the problem. You have been agreeable throughout.',
+  'He has read the script from the beginning. He is reading it faster this time.',
+  'He has asked you to confirm the number he called you on. He called you.',
+  'He is breathing in a way that suggests he has been told about his blood pressure.',
+  'He has spelled a word out for you. He has spelled it incorrectly, twice, identically.',
+  'He has told you he is being recorded for quality. He has told you this as a threat.',
+  'He has offered to escalate you to his manager. His manager can be heard declining.',
+  'He has said the word "sir" eleven times in one sentence. None of them landed.',
+  'He is typing hard enough that you can hear which key is the return key.',
+  'He has asked whether anyone else is in the house with you. You have said the dog is.',
+  'He has begun a sentence about his mother and elected not to finish it.',
+  'A colleague has laughed. He has told the colleague what he will do about it.',
+  'He has told you the call is being terminated. The call has not been terminated.',
+  'He has apologised. It was not to you, and it was not sincere, but it was audible.',
+  'He is counting to ten in a language you were not supposed to hear him use.',
+]; 
 
 /**
  * What he lets slip when he loses it.
@@ -442,34 +458,130 @@ export interface SlipDef {
   /** The transcript line. */
   line: string;
   /** Roles map onto the real org chart: dialer, closer, manager, IT, owner. */
-  role: 'dialer' | 'closer' | 'verifier' | 'manager' | 'it' | 'owner';
+  role: 'dialer' | 'closer' | 'verifier' | 'manager' | 'it' | 'trainer' | 'owner';
+  /**
+   * Whether this slip is about somebody who answered an advertisement.
+   *
+   * Was computed as `slipIndex % 3 === 1`, which is meaningless once the draw order is random
+   * and was never honest even before: it marked whichever slip happened to land in that
+   * position rather than the ones actually about a recruited person. Twist 2 reads this field,
+   * so it has to be true of the slip, not of its index.
+   */
+  falseAd?: boolean;
 }
 
 export const SLIPS: SlipDef[] = [
-  { entry: 'A first name — "Brandon"', role: 'dialer',
+  // --- Names and people. The roster's backbone: a person you can put on an org chart.
+  { entry: 'A first name — "Brandon"', role: 'dialer', falseAd: true,
     line: 'He has told you his name is Brandon. It is the third name he has used today.' },
-  { entry: 'The shift pattern — 09:00 to 18:30', role: 'dialer',
-    line: 'He has complained about his hours. You now know his hours.' },
+  { entry: 'A real first name — "Vikram"', role: 'dialer', falseAd: true,
+    line: 'Someone has called him by a name that is not the one he gave you. He does not correct them.' },
   { entry: 'A supervisor — "Sir Andrew"', role: 'manager',
     line: 'He is shouting for someone called Sir Andrew. Sir Andrew does not come.' },
-  { entry: 'The floor — second, above a pharmacy', role: 'dialer',
-    line: 'He has told you which floor he is on, and what is downstairs.' },
-  { entry: 'The daily quota — 4 closes', role: 'manager',
-    line: 'He has told you his quota. He is two behind. It is 4:40.' },
   { entry: 'A colleague — "Ravi, the one with the headset"', role: 'closer',
     line: 'He has told a colleague to shut up. He used the colleague\'s name.' },
-  { entry: 'The dialler software — a licence expiring Thursday', role: 'it',
-    line: 'He is complaining that the system logged him out again. It does this on Thursdays.' },
+  { entry: 'A surname, on a lanyard', role: 'dialer',
+    line: 'He has read his own lanyard aloud to prove he is from the bank. It is not the bank.' },
+  { entry: 'The floor manager — "he counts the closes"', role: 'manager',
+    line: 'He has explained that someone walks the floor counting. He lowered his voice to explain it.' },
+  { entry: 'A trainer — takes the new ones for a week', role: 'manager',
+    line: 'He has complained that the new intake is slow. He has said who trains them.' },
   { entry: 'The verifier — takes the card details, sits by the window', role: 'verifier',
     line: 'He has passed you to someone whose only job is to read the numbers back.' },
-  { entry: 'The building — a business park, unit 12', role: 'manager',
-    line: 'He has described the car park. At length. He is not thinking clearly.' },
+  { entry: 'A second verifier — only works nights', role: 'verifier',
+    line: 'He has said the usual one has gone home. He has said who covers.' },
   { entry: 'The IT man — comes in on Tuesdays', role: 'it',
     line: 'He says the person who fixes this only comes in on Tuesdays.' },
   { entry: 'The owner — referred to only as "the boss"', role: 'owner',
     line: 'He has mentioned the boss. He lowered his voice to do it.' },
+  { entry: 'The owner drives a white Fortuner', role: 'owner',
+    line: 'He has described his employer\'s car. He has described it admiringly.' },
+  { entry: 'A brother-in-law works the next desk', role: 'closer', falseAd: true,
+    line: 'He has explained that the man beside him is family. He does not seem pleased about it.' },
+  { entry: 'Somebody called "Madam" approves refunds', role: 'manager',
+    line: 'He has asked someone he calls Madam for permission. He was refused.' },
+
+  // --- Structure. Where they are, when, and how the room is arranged.
+  { entry: 'The shift pattern — 09:00 to 18:30', role: 'dialer',
+    line: 'He has complained about his hours. You now know his hours.' },
+  { entry: 'The night shift starts at 19:00 for the US', role: 'dialer',
+    line: 'He has said the others come in when he leaves, and who they call.' },
+  { entry: 'The floor — second, above a pharmacy', role: 'dialer',
+    line: 'He has told you which floor he is on, and what is downstairs.' },
+  { entry: 'The building — a business park, unit 12', role: 'manager',
+    line: 'He has described the car park. At length. He is not thinking clearly.' },
   { entry: 'The other floor — a second room, forty seats', role: 'owner',
     line: 'He has let slip that this is not the only room.' },
+  { entry: 'The daily quota — 4 closes', role: 'manager',
+    line: 'He has told you his quota. He is two behind. It is 4:40.' },
+  { entry: 'The quota rose this month', role: 'manager',
+    line: 'He has said what the number used to be. He has said what it is now.' },
+  { entry: 'Sixty-one seats, forty-four occupied', role: 'manager',
+    line: 'He has counted the empty desks at you, as evidence that he is overworked.' },
+  { entry: 'The company name on the door — a marketing firm', role: 'owner',
+    line: 'He has said what it says on the door downstairs. It does not say what they do.' },
+  { entry: 'Fridays are half days', role: 'dialer',
+    line: 'He has told you when he will not be here. This was not wise.' },
+  { entry: 'The room is above the ceiling of another business', role: 'dialer',
+    line: 'He is complaining about noise from below. He has said what is below.' },
+  { entry: 'A rota is printed and pinned by the door', role: 'manager',
+    line: 'He has told you to hold while he checks who is in. There is a list of who is in.' },
+  { entry: 'The air conditioning has been broken since May', role: 'dialer',
+    line: 'He has described the temperature of the room he is sitting in. Repeatedly.' },
+
+  // --- Money. The part that becomes evidence.
+  { entry: 'Gift cards are accepted "for tax reasons"', role: 'closer',
+    line: 'He has explained why the refund must be paid in gift cards. The explanation is long.' },
+  { entry: 'A bank name, used for wires', role: 'closer',
+    line: 'He has read out where the money goes. He read it twice, slowly, to be helpful.' },
+  { entry: 'An account is in a third party\'s name', role: 'closer',
+    line: 'He has said the name on the account is not the company\'s. He said it as reassurance.' },
+  { entry: 'A wallet address, read out in full', role: 'it',
+    line: 'He has read thirty-four characters aloud without pausing. You did not ask him to repeat it.' },
+  { entry: 'The courier collects on Thursdays', role: 'manager',
+    line: 'He has said when the cash leaves the building. He was complaining about the wait.' },
+  { entry: 'A figure — £38,000 last month', role: 'owner',
+    line: 'He has told you what the room turns over. He is proud of it.' },
+  { entry: 'They buy leads by the thousand', role: 'it',
+    line: 'He has complained that the list he was given is old. He has said who sells it.' },
+  { entry: 'Refunds are "processed" by moving a decimal point', role: 'verifier',
+    line: 'He has described editing a number on a screen and calling it a refund.' },
+  { entry: 'A mule is paid ten per cent', role: 'closer',
+    line: 'He has said what the man whose account it is takes. He thinks it is too much.' },
+
+  // --- Operations. Software, scripts, the machinery.
+  { entry: 'The dialler software — a licence expiring Thursday', role: 'it',
+    line: 'He is complaining that the system logged him out again. It does this on Thursdays.' },
+  { entry: 'The script is printed and laminated', role: 'trainer',
+    line: 'He has read the same sentence to you three times, with the same stress on the same word.' },
+  { entry: 'A remote-access tool, named', role: 'it',
+    line: 'He has told you what to download. He has spelled it out. Twice.' },
+  { entry: 'One password, four systems', role: 'it',
+    line: 'He has typed his password aloud while complaining about having to type it.' },
+  { entry: 'The screens are recorded for "quality"', role: 'manager',
+    line: 'He has warned a colleague that the screens are recorded. You now know the screens are recorded.' },
+  { entry: 'Calls route through a US number', role: 'it',
+    line: 'He has insisted the number on your phone is local. He has explained how it is done.' },
+  { entry: 'The rebuttal sheet has nine objections on it', role: 'trainer',
+    line: 'He has worked through the objections in order. You have raised none of them.' },
+  { entry: 'A leaderboard, updated by hand', role: 'manager',
+    line: 'He has said where his name is on the board. It is not near the top.' },
+
+  // --- The uncomfortable ones. Honest from the start, surfaced at Twist 2.
+  { entry: 'He answered an advertisement for a call centre job', role: 'dialer', falseAd: true,
+    line: 'He has told you what the advertisement said. It said customer support.' },
+  { entry: 'His passport is in a drawer that is not his', role: 'dialer', falseAd: true,
+    line: 'He has said he cannot simply leave. He has said why, and then stopped talking.' },
+  { entry: 'He is nineteen', role: 'dialer', falseAd: true,
+    line: 'He has told you his age, to explain why he is not the manager.' },
+  { entry: 'Six years, described as a job', role: 'closer',
+    line: 'He says he has been doing this for six years. He says it the way a man describes a job.' },
+  { entry: 'Someone was dismissed for refusing a call', role: 'manager', falseAd: true,
+    line: 'He has explained what happens to people who will not read the script.' },
+  { entry: 'The desk beside him has changed occupant twice this month', role: 'dialer', falseAd: true,
+    line: 'He has said nobody stays. He said it as a complaint about training.' },
+  { entry: 'He is paid per close, not per hour', role: 'closer',
+    line: 'He has explained why he cannot let you go. It is not about you.' },
 ];
 
 export const RAPPORT = {

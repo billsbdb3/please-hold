@@ -63,6 +63,13 @@ export function freshState(): Persisted {
     // infuriating, which is the correct place to begin.
     persona: 'doris',
     boilOvers: 0,
+    // A FIXED default seed, so tests and the simulator are deterministic without having to
+    // remember to pin one. The store overrides it for a real new career.
+    rngState: 0x9e3779b9 | 0,
+    slipBag: [],
+    boilBag: [],
+    faceProgress: 0,
+
     heat: 0,
     warning: 0,
 

@@ -14,6 +14,7 @@
 
 import type { GameState, IntelKind } from '../src/engine/types';
 import { freshState } from '../src/engine/state';
+import { PHASE1_COMPLETION } from '../src/data/balance';
 import { freshTransient } from '../src/engine/log';
 import { derive } from '../src/engine/derive';
 import { tick } from '../src/engine/sim';
@@ -85,8 +86,17 @@ const MAX_MINUTES = 600;
 function stateAtTransition(): GameState {
   const p = freshState();
   p.phase = 1;
-  // Twelve roster entries is what an attentive Phase 1 player arrives with.
-  for (let i = 0; i < 12; i++) {
+  /**
+   * EIGHT, not twelve. Phase 1's gate (PHASE1_COMPLETION.rosterEntries) requires 8, so 8 is
+   * what a player can legitimately arrive with - and seeding 12 here is exactly what hid a
+   * soft-lock: Phase 2 needs 12 corroborated, so an 8-entry arrival could never exceed 8/12
+   * coverage and the phase was permanently uncompletable. The development shortcut padded to
+   * 12 and the test helper built 12, so nothing contradicted the assumption.
+   *
+   * Simulating the WORST legal arrival is the only way this stays fixed: the remaining four
+   * must be found on the cameras.
+   */
+  for (let i = 0; i < PHASE1_COMPLETION.rosterEntries; i++) {
     p.roster.push({
       id: `slip.${i}`,
       handle: `entry ${i}`,

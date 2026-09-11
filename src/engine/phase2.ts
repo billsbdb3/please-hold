@@ -19,7 +19,10 @@
  */
 
 import type { GameState, StreamId, IntelKind } from './types';
+import { SLIPS } from '../data/balance';
+import { drawFromBag } from './rng';
 import {
+  NEW_FACES,
   STREAMS, STREAM_BY_ID, ATTENTION, HEAT, COVERAGE, IDENTIFY,
   TRADECRAFT, TRADECRAFT_BY_ID, INTEL_KINDS, PHASE2_MILESTONES,
   INTEL_KIND_LABEL,
@@ -183,6 +186,10 @@ export function tickPhase2(s: GameState, dt: number): void {
     p.intelLifetime += gained;
   }
 
+  // New faces on the cameras. The Camera Bank's unique job, and the reason Phase 2 is
+  // completable at all when Phase 1 was left at its minimum roster.
+  accrueNewFaces(s, dt);
+
   // Heat.
   p.heat = Math.max(0, Math.min(HEAT.max, p.heat + d.heatRate * dt));
   if (p.heat >= HEAT.burnAt) burnAStream(s);
@@ -321,6 +328,11 @@ export function availableTradecraft(s: GameState) {
 export function corroborateNext(s: GameState): boolean {
   const p = s.p;
   const d = s.t.p2 ?? deriveP2(p, s.t.burnedUntil);
+  // Never past the requirement. Costs grow at 1.28^n, so with the roster now able to reach 26
+  // entries an uncapped button is a money pit: the simulator dutifully corroborated all 26 and
+  // added two hours to the phase. Twelve is what coverage asks for and twelve is all you buy.
+  if (p.corroborated.length >= COVERAGE.corroborated) return false;
+
   const target = p.roster.find((r) => !p.corroborated.includes(r.id));
   if (!target) return false;
   if (p.intel < d.corroborateCost) return false;
@@ -337,6 +349,49 @@ export function corroborateNext(s: GameState): boolean {
 }
 
 // ------------------------------------------------------------------- transition
+
+/**
+ * Turn up somebody new on the cameras.
+ *
+ * Only accrues while the cameras are actually being watched and not burned, so it rewards the
+ * allocation rather than the wall's mere existence. Sub-linear in attention: a second monitor
+ * helps, a sixth barely does, so staring at the cameras forever is never the answer.
+ */
+function accrueNewFaces(s: GameState, dt: number): void {
+  const p = s.p;
+  const attention = p.attention.cctv ?? 0;
+  if (attention <= 0) return;
+  if ((s.t.burnedUntil.cctv ?? 0) > 0) return;
+  if (p.roster.length >= NEW_FACES.maxRoster) return;
+  if (p.roster.length >= SLIPS.length) return;
+
+  const rate =
+    Math.pow(attention, NEW_FACES.attentionExponent) / NEW_FACES.secondsPerFaceAtOneAttention;
+  p.faceProgress += rate * dt;
+  if (p.faceProgress < 1) return;
+  p.faceProgress -= 1;
+
+  // Draw something he never got round to letting slip, from the same bag Phase 1 uses.
+  const have = new Set(p.roster.map((r) => r.handle));
+  for (let attempt = 0; attempt < SLIPS.length; attempt++) {
+    const drawn = drawFromBag(p.slipBag, SLIPS.length, p.rngState);
+    p.rngState = drawn.state;
+    p.slipBag = drawn.bag;
+    const slip = SLIPS[drawn.value];
+    if (have.has(slip.entry)) continue;
+    p.roster.push({
+      id: `face.${drawn.value}`,
+      handle: slip.entry,
+      realName: null,
+      role: slip.role,
+      recruitedByFalseAd: slip.falseAd === true,
+      freed: false,
+      fromCamera: true,
+    });
+    pushLog(s, `On the cameras: ${slip.entry}`, 'intel');
+    return;
+  }
+}
 
 /**
  * Enter Phase 2.
