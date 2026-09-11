@@ -54,6 +54,25 @@
   const openStreams = $derived(STREAMS.filter((s) => p.streams.includes(s.id)));
   const uncorroborated = $derived(p.roster.filter((r) => !p.corroborated.includes(r.id)));
 
+  /**
+   * Which intel kind is holding coverage back, and which streams actually produce it.
+   *
+   * The readout already said 'HELD BY MONEY'. It did not say that money comes from the dialler
+   * console and the spreadsheet, so a playtester sat 38 minutes in at 5% coverage with his whole
+   * pool on three streams that produce no money at all, correctly reading a message he could not
+   * act on. A gate should name what it wants AND where to get it.
+   */
+  const bindingKind = $derived.by(() => {
+    void frame.n;
+    return INTEL_KINDS.find((k) => INTEL_KIND_LABEL[k].toLowerCase() === d.bindingLabel) ?? null;
+  });
+  const feedsBinding = $derived.by(() => {
+    void frame.n;
+    const k = bindingKind;
+    if (!k) return new Set<string>();
+    return new Set(STREAMS.filter((st) => st.yields[k]).map((st) => st.id));
+  });
+
   /** Cameras the player is actually watching, so the wall reflects the allocation. */
   const cctvLive = $derived(
     p.streams.includes('cctv') && (p.attention.cctv ?? 0) > 0 && !(t.burnedUntil.cctv ?? 0),
@@ -241,9 +260,13 @@
           {#each openStreams as s (s.id)}
             {@const a = p.attention[s.id] ?? 0}
             {@const dark = (t.burnedUntil[s.id] ?? 0) > 0}
-            <div class="stream" class:dark>
+            <div class="stream" class:dark class:wanted={feedsBinding.has(s.id) && a === 0}>
               <div class="stream-head">
                 <span class="row-name">{s.name}</span>
+                {#if feedsBinding.has(s.id)}
+                  <!-- Names where the binding requirement actually comes from. -->
+                  <span class="wanted-tag">{d.bindingLabel}</span>
+                {/if}
                 <span class="stream-alloc">
                   <button onclick={() => attend(s.id, -1)} disabled={a <= 0} aria-label="less">−</button>
                   <span class="num alloc">{a}<span class="dim">/{s.maxAttention}</span></span>
@@ -296,7 +319,10 @@
                   {INTEL_KINDS.filter((k) => s.yields[k]).map((k) => INTEL_KIND_LABEL[k]).join(' · ')}
                 </span>
               </span>
-              <span class="row-side"><span class="cost num">{fmt(s.unlockCost)}</span></span>
+              <span class="row-side">
+                {#if feedsBinding.has(s.id)}<span class="wanted-tag">{d.bindingLabel}</span>{/if}
+                <span class="cost num">{fmt(s.unlockCost)}</span>
+              </span>
             </button>
           {/each}
         </div>
@@ -557,6 +583,21 @@
     border-bottom: 1px solid var(--edge);
   }
   .stream.dark { opacity: 0.4; }
+  /* A stream that feeds the binding requirement and has no attention on it: the single most
+     useful thing the panel can point at. */
+  .stream.wanted {
+    border-left: 2px solid var(--accent);
+    padding-left: calc(var(--pad) - 2px);
+  }
+  .wanted-tag {
+    font-size: 8.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #000;
+    background: var(--accent);
+    padding: 0 4px;
+    align-self: center;
+  }
   .stream-head {
     display: flex;
     justify-content: space-between;

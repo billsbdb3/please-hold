@@ -18,10 +18,11 @@ import { derive } from '../src/engine/derive';
 import { tick } from '../src/engine/sim';
 import {
   enterPhase2, assignAttention, clearAttention, unlockStream, lookCloser, freshnessOf, deriveP2,
+  buyAttention, buyTradecraft, attentionPool,
 } from '../src/engine/phase2';
 import { DT } from '../src/engine/loop';
 import { LOOK_CLOSER, FATIGUE } from '../src/data/phase2events';
-import { STREAM_BY_ID, ATTENTION } from '../src/data/phase2';
+import { STREAM_BY_ID, ATTENTION, STREAMS, TRADECRAFT } from '../src/data/phase2';
 import { runPhase2 } from '../tools/simulate-phase2';
 import type { GameState } from '../src/engine/types';
 
@@ -163,5 +164,132 @@ describe('it stays optional', () => {
     const engaged = runPhase2('active');
     const ignoring = runPhase2('neglectful');
     expect(ignoring.minutes / engaged.minutes).toBeLessThan(2.2);
+  });
+});
+
+/**
+ * THE ATTENTION CAP MUST NOT SELL A NO-OP.
+ *
+ * `attentionPool` is `min(max, base + bought + tradecraftBonus)`, but the sell check asked only
+ * `base + bought >= max` and ignored the bonus. A player holding both attention upgrades (+5) sat
+ * at a fully capped 14/14 while the game went on offering another point for 20,110 intel that
+ * could not possibly do anything. He found it and asked the obvious question: "why can i still buy
+ * more things to look at?"
+ *
+ * Of all the dead-content bugs this project has produced, selling a no-op is the worst: the others
+ * wasted a slot, this one took the resource.
+ */
+describe('the attention cap', () => {
+  it('stops offering once the pool is actually full', () => {
+    const s = atPhase2();
+    s.p.intel = 1e9;
+    s.p.attentionBought = 999; // however it got there
+    expect(deriveP2(s.p, {}).nextAttentionCost).toBeNull();
+  });
+
+  it('caps what you BUY, and lets tradecraft go above that', () => {
+    /*
+     * This assertion originally read `pool === ATTENTION.max`, which was written for the buggy
+     * model where the cap swallowed the tradecraft bonuses too. That is precisely how the second
+     * half of the fault survived the first fix: the test agreed with the bug.
+     *
+     * The corrected contract is that the ceiling constrains PURCHASED points, and the upgrades are
+     * how you exceed what intel alone can buy.
+     */
+    const s = atPhase2();
+    s.p.intel = 1e12;
+    for (const id of ['t.vm', 't.analyst', 't.attention1', 't.attention2']) buyTradecraft(s, id);
+    const bonus = TRADECRAFT.filter((t) => s.p.tradecraft.includes(t.id))
+      .reduce((n, t) => n + (t.attentionBonus ?? 0), 0);
+
+    let guard = 0;
+    while (deriveP2(s.p, {}).nextAttentionCost !== null && guard++ < 400) buyAttention(s);
+
+    expect(attentionPool(s.p)).toBe(ATTENTION.max + bonus);
+    // And having reached the purchase ceiling, nothing further may be sold.
+    expect(deriveP2(s.p, {}).nextAttentionCost).toBeNull();
+    const before = s.p.intel;
+    expect(buyAttention(s)).toBe(false);
+    expect(s.p.intel).toBe(before);
+  });
+
+  it('leaves the pool smaller than the building, so you still cannot watch everything', () => {
+    // The tension is meant to survive the fix: total stream capacity must exceed the cap.
+    const capacity = STREAMS.reduce((n, st) => n + st.maxAttention, 0);
+    expect(capacity).toBeGreaterThan(ATTENTION.max);
+  });
+
+  it('is large enough to cover four streams at once', () => {
+    // 14 against 28 points of capacity was a trap: a player spread across the three cheap streams
+    // had nothing left for the ledger, and the ledger is the only real source of money - which is
+    // a hard coverage requirement.
+    const cheapestFour = STREAMS.slice()
+      .sort((a, b) => a.maxAttention - b.maxAttention)
+      .slice(0, 4)
+      .reduce((n, st) => n + st.maxAttention, 0);
+    expect(ATTENTION.max).toBeGreaterThanOrEqual(cheapestFour);
+  });
+});
+
+/**
+ * NOTHING MAY BE SOLD THAT CANNOT TAKE EFFECT.
+ *
+ * A playtester found the game offering another attention point for 20,110 intel while his pool sat
+ * fully capped at 14/14, and asked the obvious question. Fixing that exposed the SAME fault from
+ * the other side: an attention-bonus upgrade could be bought against a capped pool and silently do
+ * nothing, because the cap was applied to bought points and bonuses together.
+ *
+ * These guard the class rather than the two instances. Every purchasable thing gets asked the same
+ * question: at your cap, does buying this change anything?
+ */
+describe('no purchase may be a no-op', () => {
+  /** Buy raw attention until the game stops offering it. */
+  function maxOutPurchasedAttention(s: GameState): void {
+    let guard = 0;
+    while (deriveP2(s.p, {}).nextAttentionCost !== null && guard++ < 400) buyAttention(s);
+  }
+
+  it('stops selling raw attention at the cap', () => {
+    const s = atPhase2();
+    s.p.intel = 1e12;
+    maxOutPurchasedAttention(s);
+    expect(deriveP2(s.p, {}).nextAttentionCost).toBeNull();
+    const before = s.p.intel;
+    expect(buyAttention(s)).toBe(false);
+    expect(s.p.intel).toBe(before);
+  });
+
+  it('lets every attention upgrade still do something at that cap', () => {
+    // The mirror of the reported bug. The cap applies to what you BUY; tradecraft goes above it.
+    const withBonus = TRADECRAFT.filter((t) => (t.attentionBonus ?? 0) > 0);
+    expect(withBonus.length).toBeGreaterThan(0);
+    for (const t of withBonus) {
+      const s = atPhase2();
+      s.p.intel = 1e12;
+      maxOutPurchasedAttention(s);
+      for (const req of t.requires ?? []) buyTradecraft(s, req);
+      const before = attentionPool(s.p);
+      expect(buyTradecraft(s, t.id), `${t.id} could not be bought`).toBe(true);
+      expect(attentionPool(s.p), `${t.id} granted nothing at the cap`).toBe(
+        before + (t.attentionBonus ?? 0),
+      );
+    }
+  });
+
+  it('still cannot let you watch the whole building', () => {
+    // The fix must not dissolve the premise: even at the cap plus every bonus, the streams can
+    // absorb more attention than you will ever have.
+    const everyBonus = TRADECRAFT.reduce((n, t) => n + (t.attentionBonus ?? 0), 0);
+    const capacity = STREAMS.reduce((n, st) => n + st.maxAttention, 0);
+    expect(ATTENTION.max + everyBonus).toBeLessThan(capacity);
+  });
+
+  it('refuses to sell a stream twice, or a tradecraft twice', () => {
+    const s = atPhase2();
+    s.p.intel = 1e12;
+    expect(unlockStream(s, 'ledger')).toBe(true);
+    expect(unlockStream(s, 'ledger')).toBe(false);
+    expect(buyTradecraft(s, 't.vm')).toBe(true);
+    expect(buyTradecraft(s, 't.vm')).toBe(false);
   });
 });
