@@ -30,13 +30,14 @@ import {
   tick, stall, buyGenerator, buyUpgrade, availableUpgrades,
   redial, canRedial, buyDossier, availableDossier, catchEvent,
   takeBreath, canTakeBreath, switchPersona, availablePersonas,
-  phase1Complete, phase1Progress,
+  phase1Complete, phase1Progress, playLine,
 } from '../src/engine/sim';
 import { DT } from '../src/engine/loop';
 import {
   GENERATORS, PHASE1_MILESTONES, PHASE1_GATE, PHASE1_TARGET_MINUTES, DOSSIER,
 } from '../src/data/balance';
 import { UPGRADES } from '../src/data/upgrades';
+import { boardFor, type BoardLine } from '../src/data/soundboard';
 import { fmt, fmtDuration } from '../src/engine/numbers';
 
 export type Archetype = 'idle' | 'casual' | 'active' | 'optimal' | 'exploiter';
@@ -218,7 +219,20 @@ export function run(archetype: Archetype, opts: RunOpts = {}): SimResult {
     if (present && policy.stallsPerSecond > 0) {
       stallCredit += policy.stallsPerSecond * DT;
       while (stallCredit >= 1) {
-        stall(s, virtualMs);
+        /*
+         * Play the BOARD, not the bare stall button.
+         *
+         * Phase 1's verb is now choosing a line, so a simulator that only presses `stall` measures
+         * a game nobody plays. It picks the freshest line that is off cooldown, which is roughly
+         * what a player working the board does - and, importantly, it means the repetition penalty
+         * is exercised by the pacing gate rather than only by a unit test.
+         */
+        const lines: BoardLine[] = boardFor(p.persona)
+          .filter((l) => (s.t.lineCooldown[l.id] ?? 0) <= 0);
+        const fresh = lines.filter((l: BoardLine) => !s.t.recentLines.includes(l.id));
+        const pick = (fresh.length > 0 ? fresh : lines)[0];
+        if (pick) playLine(s, pick.id, virtualMs);
+        else stall(s, virtualMs);
         stallCredit -= 1;
         // The cooldown is enforced inside stall(); advance the virtual clock so a
         // high requested rate is capped by it exactly as in a browser.

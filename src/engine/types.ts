@@ -369,6 +369,15 @@ export interface Transient {
   eventTimer: number;
   /** Per-stream cooldown on looking closer. Transient: a cooldown should not survive a reload. */
   closerCooldown: Partial<Record<StreamId, number>>;
+  /** Per-line cooldowns on the soundboard, seconds. Transient. */
+  lineCooldown: Record<string, number>;
+  /**
+   * The last few lines played, newest first.
+   *
+   * He remembers what you have just said, which is what makes repeating a line worse than
+   * choosing a new one - and therefore what makes the board a decision rather than a button.
+   */
+  recentLines: string[];
   /** The last resolved event's text, kept briefly for the panel. */
   lastEventNote: string | null;
 

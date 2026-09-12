@@ -20,14 +20,14 @@
     stall, buyGenerator, buyUpgrade,
     catchEvent, redial, canRedial, buyDossier, availableDossier,
     takeBreath, canTakeBreath, breathCost,
-    switchPersona, availablePersonas, phase1Progress, phase1Complete,
-  } from './engine/sim';
+    switchPersona, availablePersonas, phase1Progress, phase1Complete, playLine} from './engine/sim';
   import {
     GENERATORS, COMPOSURE, RAPPORT, REDIAL, DOSSIER,
     RAGE, PERSONA_SWITCH_COST, PHASE1_COMPLETION, SLIPS} from './data/balance';
   import { UPGRADES, statusOf, excludedBy } from './data/upgrades';
   import { isUnlocked, maxComposure } from './engine/derive';
   import { snapshot } from './engine/snapshot';
+import { boardFor } from './data/soundboard';
   import Phase2 from './Phase2.svelte';
   import { enterPhase2 } from './engine/phase2';
   import { audio } from './audio';
@@ -243,6 +243,21 @@
     audio.startHoldMusic();
   }
 
+  /** The current persona's board, and its name for the panel header. */
+  const board = $derived.by(() => { void frame.n; return boardFor(p.persona); });
+  const personaName = $derived.by(() => {
+    void frame.n;
+    return personas.find((x: { id: string; name: string }) => x.id === p.persona)?.name ?? '';
+  });
+
+  function onLine(id: string) {
+    const gained = playLine(game, id, performance.now());
+    if (gained > 0) {
+      audio.persona(game.p.persona);
+      interacted();
+    }
+  }
+
   function onStall(e: MouseEvent) {
     const gained = stall(game, Date.now());
     interacted();
@@ -437,6 +452,42 @@
               {/if}
             </div>
             <p class="hint">Space bar also works.</p>
+
+            <!--
+              THE SOUNDBOARD.
+              The stall button asks 'how fast'. The board asks 'which one', and each line buys a
+              different mixture of hold time, rapport and rage. Repeating one is heavily penalised,
+              so working the whole board is the play - see src/data/soundboard.ts.
+            -->
+            <div class="board">
+              <div class="board-head">
+                <span>Soundboard</span>
+                <span class="dim">{personaName}</span>
+              </div>
+              {#each board as line (line.id)}
+                {@const cd = t.lineCooldown[line.id] ?? 0}
+                {@const heard = t.recentLines.includes(line.id)}
+                <button
+                  class="board-line"
+                  class:heard
+                  onclick={() => onLine(line.id)}
+                  disabled={cd > 0}
+                  title={line.effect}
+                >
+                  <span class="board-text">{line.text}</span>
+                  <span class="board-side">
+                    {#if cd > 0}
+                      <span class="num dim">{Math.ceil(cd)}s</span>
+                    {:else}
+                      {#if line.rapport >= 1.4}<span class="tag warm">rapport</span>{/if}
+                      {#if line.rage >= 1.8}<span class="tag hot">temper</span>{/if}
+                      {#if line.stall >= 1.7}<span class="tag">time</span>{/if}
+                      {#if heard}<span class="tag stale">heard</span>{/if}
+                    {/if}
+                  </span>
+                </button>
+              {/each}
+            </div>
           </div>
         </div>
 

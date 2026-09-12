@@ -21,6 +21,7 @@ import {
 import { GENERATOR_IDS } from './state';
 import { UPGRADES_BY_ID, isAvailable, UPGRADES } from '../data/upgrades';
 import { pushLog } from './log';
+import { BOARD, BOARD_BY_ID } from '../data/soundboard';
 import { drawFromBag } from './rng';
 import { tickPhase2 } from './phase2';
 
@@ -29,6 +30,13 @@ export function tick(s: GameState, dt: number): void {
   const p = s.p;
 
   p.elapsed += dt;
+
+  // Soundboard cooldowns. He forgets a line eventually; the board does not.
+  for (const id of Object.keys(s.t.lineCooldown)) {
+    const left = (s.t.lineCooldown[id] ?? 0) - dt;
+    if (left <= 0) delete s.t.lineCooldown[id];
+    else s.t.lineCooldown[id] = left;
+  }
 
   // Phase 2 REPLACES phase 1 rather than extending it. Stalling, composure, rage and the
   // whole hold-time economy stop existing here - see docs/DESIGN.md section 3.
@@ -488,6 +496,59 @@ function loseTheCall(s: GameState): void {
 // ---------------------------------------------------------------- player actions
 
 /** A manual stall. Returns the Hold Time gained, for the popup. */
+/**
+ * Play a line from the soundboard.
+ *
+ * Built on top of `stall` rather than beside it, so the composure band, every upgrade grant, the
+ * combo and the persona multipliers all continue to apply exactly as they did. The line then
+ * shapes the RESULT: which of hold time, rapport and rage you actually bought.
+ *
+ * Returns the hold time gained, or 0 when the line is unavailable.
+ */
+export function playLine(s: GameState, id: string, nowMs: number): number {
+  const p = s.p;
+  const line = BOARD_BY_ID[id];
+  if (!line) return 0;
+  if (line.persona !== p.persona) return 0;
+  if ((s.t.lineCooldown[id] ?? 0) > 0) return 0;
+
+  // Record before stalling, so the base stall's own rapport and rage can be adjusted afterwards.
+  const rapportBefore = p.rapport;
+  const rageBefore = p.rage;
+  const gained = stall(s, nowMs);
+  if (gained <= 0) return 0; // the shared stall cooldown refused it
+
+  // He has heard this recently. Saying it again is worth much less, and irritates him in the way
+  // that does not help you.
+  const heardRecently = s.t.recentLines.includes(id);
+  const wear = heardRecently ? BOARD.repeatPenalty : 1;
+  const rageWear = heardRecently ? BOARD.repeatRageBonus : 1;
+
+  // Reshape what the stall produced.
+  const extraStall = gained * (line.stall * wear - 1);
+  p.holdTime += extraStall;
+  p.holdTimeLifetime += extraStall;
+  p.holdTimeCareer += extraStall;
+
+  const rapportGain = p.rapport - rapportBefore;
+  p.rapport = Math.min(RAPPORT.max, rapportBefore + rapportGain * line.rapport * wear);
+
+  const rageGain = p.rage - rageBefore;
+  p.rage = Math.min(RAGE.max, rageBefore + rageGain * line.rage * rageWear);
+
+  if (line.composure !== 0) {
+    p.composure = Math.max(0, Math.min(COMPOSURE.max, p.composure - line.composure));
+  }
+
+  s.t.lineCooldown[id] = line.cooldown;
+  s.t.recentLines = [id, ...s.t.recentLines].slice(0, BOARD.memory);
+
+  pushLog(s, line.text, 'call');
+  pushLog(s, heardRecently ? `${line.effect} He has heard this one.` : line.effect, 'beat');
+
+  return gained * line.stall * wear;
+}
+
 export function stall(s: GameState, nowMs: number): number {
   const p = s.p;
   if (nowMs - (s.t.lastStallAt ?? 0) < STALL.cooldown) return 0;
