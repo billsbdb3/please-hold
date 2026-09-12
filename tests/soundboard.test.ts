@@ -242,3 +242,102 @@ describe('the stall rate limit has one clock', () => {
     expect(playLine(s, 'doris.spell', t0 + 5000)).toBeGreaterThan(0);
   });
 });
+
+/**
+ * A line moves three things, so its feedback must name all three.
+ *
+ * The popup reported one bare number and a playtester asked exactly the right question: '145 of
+ * what? 145 temper? 145 time?'. It was hold time, but nothing on screen said so, and a board whose
+ * whole point is that lines differ in WHAT they buy cannot report a single unlabelled figure.
+ */
+describe('what a line did is reported in units', () => {
+  it('records all three effects, not just the hold time', () => {
+    const s = game();
+    play(s, 'nigel.hold'); // wrong persona; nothing should be recorded
+    expect(s.t.lastLineResult).toBeNull();
+
+    play(s, 'doris.spell'); // rapport 0.6, rage 2.1 — a temper line
+    const r = s.t.lastLineResult!;
+    expect(r.id).toBe('doris.spell');
+    expect(r.held).toBeGreaterThan(0);
+    expect(r.rage).toBeGreaterThan(0);
+  });
+
+  it('reports the hold time it actually returned', () => {
+    const s = game();
+    const returned = play(s, 'doris.glasses');
+    expect(s.t.lastLineResult!.held).toBeCloseTo(returned, 6);
+  });
+
+  it('shows a rapport line and a temper line as different shapes', () => {
+    // The numbers the player sees must reflect the choice they made.
+    const warm = game();
+    const hot = game();
+    play(warm, 'doris.tv');
+    play(hot, 'doris.spell');
+    const w = warm.t.lastLineResult!;
+    const h = hot.t.lastLineResult!;
+    expect(w.rapport).toBeGreaterThan(h.rapport);
+    expect(h.rage).toBeGreaterThan(w.rage);
+  });
+
+  it('is not left stale by a refused click', () => {
+    // A refusal must not leave the previous line's numbers on screen as if they were new.
+    const s = game();
+    const at = 500_000;
+    expect(playLine(s, 'doris.tv', at)).toBeGreaterThan(0);
+    const first = s.t.lastLineResult;
+    expect(playLine(s, 'doris.spell', at + 1)).toBe(0); // shared cooldown
+    expect(s.t.lastLineResult).toBe(first);
+  });
+});
+
+/**
+ * A LINE MUST STAY WORTH PLAYING.
+ *
+ * A playtester producing 400 a second was handed 145 by a board line and said, correctly, that it
+ * was 'mere peanuts'. A flat click value in a game whose passive income grows without bound stops
+ * being worth touching the moment the generators pass it — the oldest trap in the genre, and the
+ * player is right to stop playing at that point.
+ *
+ * The payout is now the larger of the flat stall and a slice of the player's OWN production, so it
+ * stays relevant at every scale without ever becoming a windfall.
+ */
+describe('a line scales with production', () => {
+  it('pays more to a bigger operation', () => {
+    const small = game();
+    const large = game();
+    large.p.generators.confusion = 200;
+    large.d = derive(large.p);
+    expect(large.d.hps).toBeGreaterThan(small.d.hps * 10);
+
+    const a = play(small, 'doris.glasses');
+    const b = play(large, 'doris.glasses');
+    expect(b).toBeGreaterThan(a * 5);
+  });
+
+  it('is worth a meaningful slice of a second of production', () => {
+    const s = game();
+    s.p.generators.confusion = 200;
+    s.d = derive(s.p);
+    const line = BOARD_LINES.find((l) => l.id === 'doris.glasses')!;
+    const got = play(s, 'doris.glasses');
+    expect(got).toBeGreaterThanOrEqual(s.d.hps * BOARD.productionSeconds * line.stall * 0.99);
+  });
+
+  it('does not fall below the flat stall in the early game', () => {
+    // Production is near zero at the start; the board must never pay less than the button it is
+    // built on, or the fix would have traded one dead mechanic for another.
+    const s = game();
+    const got = play(s, 'doris.glasses');
+    expect(got).toBeGreaterThanOrEqual(s.d.stallValue * 0.99);
+  });
+
+  it('and does not distort the phase it was tuned for', () => {
+    // At 2.5 seconds of production the phase finished in 82 minutes against its 90-120 window: the
+    // board became strong enough to break pacing that had already been playtested and liked.
+    const r = simulate('active');
+    expect(r.minutesToGate).toBeGreaterThanOrEqual(90);
+    expect(r.minutesToGate).toBeLessThanOrEqual(120);
+  });
+});

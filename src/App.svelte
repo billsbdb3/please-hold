@@ -27,7 +27,7 @@
   import { UPGRADES, statusOf, excludedBy } from './data/upgrades';
   import { isUnlocked, maxComposure } from './engine/derive';
   import { snapshot } from './engine/snapshot';
-import { boardFor } from './data/soundboard';
+import { boardFor, BOARD } from './data/soundboard';
   import Phase2 from './Phase2.svelte';
   import { enterPhase2 } from './engine/phase2';
   import { audio } from './audio';
@@ -266,7 +266,19 @@ import { boardFor } from './data/soundboard';
     interacted();
     if (gained > 0) {
       audio.persona(game.p.persona);
-      spawnPopup(e, `+${fmt(gained)}`);
+      /*
+       * Name the units, and name ALL of them. A line moves hold time, rapport and temper at once,
+       * and the popup used to report a single bare number - which produced the entirely reasonable
+       * question '145 of what? 145 temper? 145 time?'. An action with three effects needs three
+       * effects in its feedback.
+       */
+      const r = game.t.lastLineResult;
+      const parts = [`+${fmt(gained)} time`];
+      if (r) {
+        if (r.rapport >= 0.05) parts.push(`+${r.rapport.toFixed(1)} trust`);
+        if (r.rage >= 0.05) parts.push(`+${r.rage.toFixed(1)} temper`);
+      }
+      spawnPopup(e, parts.join('  '));
     } else {
       // NEVER fail silently. A refusal is information: the line is still on his mind, or the
       // handset is not ready yet.
@@ -288,7 +300,7 @@ import { boardFor } from './data/soundboard';
     const gained = stall(game, callClock());
     interacted();
     audio.stall();
-    if (gained > 0) spawnPopup(e, `+${fmt(gained)}`);
+    if (gained > 0) spawnPopup(e, `+${fmt(gained)} time`);
   }
 
   // Popups are rendered outside Svelte's reactive graph on purpose: they are
@@ -490,6 +502,15 @@ import { boardFor } from './data/soundboard';
                 <span>Soundboard</span>
                 <span class="dim">{personaName}</span>
               </div>
+              <!-- What the last line did, in units, kept on screen after the popup has faded. -->
+              {#if t.lastLineResult}
+                <p class="board-result">
+                  that bought
+                  <span class="num">{fmt(t.lastLineResult.held)}</span> time<span class="dim">,</span>
+                  <span class="num">+{t.lastLineResult.rapport.toFixed(1)}</span> trust<span class="dim">,</span>
+                  <span class="num">+{t.lastLineResult.rage.toFixed(1)}</span> temper
+                </p>
+              {/if}
               {#each board as line (line.id)}
                 {@const cd = t.lineCooldown[line.id] ?? 0}
                 {@const heard = t.recentLines.includes(line.id)}
@@ -500,15 +521,26 @@ import { boardFor } from './data/soundboard';
                   disabled={cd > 0}
                   title={line.effect}
                 >
-                  <span class="board-text">{line.text}</span>
+                  <span class="board-main">
+                    <span class="board-text">{line.text}</span>
+                    <!--
+                      The MAGNITUDES, not categories.
+                      The first version tagged lines 'temper' and 'time' and then paid out a single
+                      unlabelled number, so there was no way to connect the promise to the result -
+                      'it says temper and time. i dont get it'. Every line now states what it
+                      multiplies, in the same three words the payout reports back.
+                    -->
+                    <span class="board-mults">
+                      <span class="m"><span class="mk">time</span> ×{(line.stall * (heard ? BOARD.repeatPenalty : 1)).toFixed(1)}</span>
+                      <span class="m" class:warm={line.rapport >= 1.4}><span class="mk">trust</span> ×{line.rapport.toFixed(1)}</span>
+                      <span class="m" class:hot={line.rage >= 1.8}><span class="mk">temper</span> ×{(line.rage * (heard ? BOARD.repeatRageBonus : 1)).toFixed(1)}</span>
+                    </span>
+                  </span>
                   <span class="board-side">
                     {#if cd > 0}
                       <span class="num dim">{Math.ceil(cd)}s</span>
-                    {:else}
-                      {#if line.rapport >= 1.4}<span class="tag warm">rapport</span>{/if}
-                      {#if line.rage >= 1.8}<span class="tag hot">temper</span>{/if}
-                      {#if line.stall >= 1.7}<span class="tag">time</span>{/if}
-                      {#if heard}<span class="tag stale">heard</span>{/if}
+                    {:else if heard}
+                      <span class="tag stale">heard</span>
                     {/if}
                   </span>
                 </button>

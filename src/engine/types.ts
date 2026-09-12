@@ -372,6 +372,14 @@ export interface Transient {
   /** Per-line cooldowns on the soundboard, seconds. Transient. */
   lineCooldown: Record<string, number>;
   /**
+   * What the last line actually did, for the UI to report.
+   *
+   * A board line moves three things at once, and the popup showed a single unlabelled number. A
+   * playtester asked the reasonable question - '145 of what? 145 temper? 145 time?' - and there
+   * was nothing on screen that answered it.
+   */
+  lastLineResult: { id: string; held: number; rapport: number; rage: number } | null;
+  /**
    * The last few lines played, newest first.
    *
    * He remembers what you have just said, which is what makes repeating a line worse than

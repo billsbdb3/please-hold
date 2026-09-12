@@ -54,6 +54,24 @@ export interface BoardLine {
 
 export const BOARD = {
   /**
+   * A line is worth this many SECONDS OF CURRENT PRODUCTION, whichever is larger than the flat
+   * stall it is built on.
+   *
+   * WHY IT HAS TO SCALE. A playtester producing 400 a second was handed 145 by a board line and
+   * said, correctly, that it was 'mere peanuts'. A flat click value in a game whose passive income
+   * grows without bound is worthless the moment the generators pass it, which is the oldest trap in
+   * the genre: the active layer quietly stops being worth touching and the player is right to stop.
+   *
+   * Denominating the payout in seconds of the player's OWN production keeps a line relevant at
+   * every scale without ever being a windfall - the same guardrail Phase 2's camera events use.
+   *
+   * 1.3 seconds, arrived at by measurement rather than taste. At 2.5 the phase finished in 82
+   * minutes against its 90-120 window - the board became strong enough to distort the pacing Phase
+   * 1 was tuned and playtested at. 1.3 keeps `active` at 91 minutes while making a line worth
+   * roughly five times what the old flat value paid at 400 a second.
+   */
+  productionSeconds: 1.3,
+  /**
    * How much a line is worth the second time in a row: he has heard it.
    *
    * Deliberately harsh. If repeating were merely slightly worse, the optimal play would be to find

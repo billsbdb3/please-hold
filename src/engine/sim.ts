@@ -524,8 +524,16 @@ export function playLine(s: GameState, id: string, nowMs: number): number {
   const wear = heardRecently ? BOARD.repeatPenalty : 1;
   const rageWear = heardRecently ? BOARD.repeatRageBonus : 1;
 
-  // Reshape what the stall produced.
-  const extraStall = gained * (line.stall * wear - 1);
+  /*
+   * What the line is worth.
+   *
+   * The larger of the flat stall it is built on and a slice of the player's own production. Early
+   * on the flat value wins and the board feels generous; later, production wins and the board stays
+   * relevant instead of becoming peanuts next to the generators.
+   */
+  const scaled = s.d.hps * BOARD.productionSeconds;
+  const base = Math.max(gained, scaled);
+  const extraStall = base * line.stall * wear - gained;
   p.holdTime += extraStall;
   p.holdTimeLifetime += extraStall;
   p.holdTimeCareer += extraStall;
@@ -543,10 +551,20 @@ export function playLine(s: GameState, id: string, nowMs: number): number {
   s.t.lineCooldown[id] = line.cooldown;
   s.t.recentLines = [id, ...s.t.recentLines].slice(0, BOARD.memory);
 
+  const held = base * line.stall * wear;
+
+  // Record all three effects, because a line moves all three and the UI has to be able to say so.
+  s.t.lastLineResult = {
+    id,
+    held,
+    rapport: p.rapport - rapportBefore,
+    rage: p.rage - rageBefore,
+  };
+
   pushLog(s, line.text, 'call');
   pushLog(s, heardRecently ? `${line.effect} He has heard this one.` : line.effect, 'beat');
 
-  return gained * line.stall * wear;
+  return held;
 }
 
 export function stall(s: GameState, nowMs: number): number {
