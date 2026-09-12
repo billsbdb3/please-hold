@@ -17,7 +17,7 @@ import { freshTransient } from '../src/engine/log';
 import { derive } from '../src/engine/derive';
 import { playLine, stall, switchPersona } from '../src/engine/sim';
 import { BOARD, BOARD_LINES, boardFor } from '../src/data/soundboard';
-import { PERSONAS, RAGE, RAPPORT } from '../src/data/balance';
+import { PERSONAS, RAGE, RAPPORT, PHASE1_TARGET_MINUTES } from '../src/data/balance';
 import { simulate } from '../tools/simulate';
 import type { GameState } from '../src/engine/types';
 
@@ -187,8 +187,8 @@ describe('the board does not break phase 1', () => {
   it('leaves the pacing inside its window', () => {
     // The simulator plays the board now, so this is a real check on the new verb.
     const r = simulate('active');
-    expect(r.minutesToGate).toBeGreaterThanOrEqual(90);
-    expect(r.minutesToGate).toBeLessThanOrEqual(120);
+    expect(r.minutesToGate).toBeGreaterThanOrEqual(PHASE1_TARGET_MINUTES.min);
+    expect(r.minutesToGate).toBeLessThanOrEqual(PHASE1_TARGET_MINUTES.max);
   });
 
   it('a player who only presses stall still progresses', () => {
@@ -334,10 +334,11 @@ describe('a line scales with production', () => {
   });
 
   it('and does not distort the phase it was tuned for', () => {
-    // At 2.5 seconds of production the phase finished in 82 minutes against its 90-120 window: the
-    // board became strong enough to break pacing that had already been playtested and liked.
+    // Reads the declared window rather than hard-coding it: the target itself moved once the board
+    // became a real mechanic, and a test that pins yesterday's number blocks a deliberate change
+    // while still not catching an accidental one.
     const r = simulate('active');
-    expect(r.minutesToGate).toBeGreaterThanOrEqual(90);
-    expect(r.minutesToGate).toBeLessThanOrEqual(120);
+    expect(r.minutesToGate).toBeGreaterThanOrEqual(PHASE1_TARGET_MINUTES.min);
+    expect(r.minutesToGate).toBeLessThanOrEqual(PHASE1_TARGET_MINUTES.max);
   });
 });

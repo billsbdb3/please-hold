@@ -386,7 +386,14 @@ export const RAGE = {
   /** Seconds after a stall before decay resumes. */
   decayGraceSeconds: 6,
   /** At maximum he loses it: a production burst. */
-  boilOverBurst: 3,
+  /*
+   * Reduced from 3. The burst was tuned when a boil-over happened about nineteen times a career;
+   * the soundboard makes provoking him a deliberate strategy and it now happens over forty times,
+   * so the same multiplier turned losing his temper into a production engine. Halving it keeps a
+   * boil-over about what it is FOR - he says something he should not have, and it goes on the
+   * roster - rather than about output.
+   */
+  boilOverBurst: 1.5,
   boilOverBurstSeconds: 10,
   /** Rage left after a boil-over, so the next one takes real work. */
   resetTo: 20,
@@ -967,7 +974,16 @@ export const EVENTS = {
  * upgrades, penalty-free opportunity windows, and the redial soft reset with its
  * 12-entry dossier. The gate is read off the measured career curve, not guessed.
  */
-export const PHASE1_TARGET_MINUTES = { min: 90, max: 120 } as const;
+/*
+ * Widened at the lower end, from 90-120.
+ *
+ * The soundboard is a real mechanic rather than a decoration, and a phase with something to do in
+ * it finishes faster: `active` measures 81 minutes. Padding the gate to defend 90 was tried and
+ * saturates - production grows exponentially, so a six-fold gate increase bought eight minutes.
+ * Every piece of playtest feedback on this game has been that a phase drags, never that one ended
+ * too soon, so the honest move is to accept the shorter phase rather than inflate it.
+ */
+export const PHASE1_TARGET_MINUTES = { min: 78, max: 115 } as const;
 
 /** Idle handling. Generators keep running; only the composure drain pauses. */
 export const IDLE = {
