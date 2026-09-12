@@ -250,16 +250,42 @@ import { boardFor } from './data/soundboard';
     return personas.find((x: { id: string; name: string }) => x.id === p.persona)?.name ?? '';
   });
 
-  function onLine(id: string) {
-    const gained = playLine(game, id, performance.now());
+  /**
+   * Play a line from the soundboard.
+   *
+   * `callClock()` and not `performance.now()`. The two are not interchangeable and mixing them
+   * broke the board completely: `stall` rate-limits on `nowMs - lastStallAt`, the Stall button
+   * passes `Date.now()` (~1.79e12) and this passed `performance.now()` (~3e4), so after anything
+   * touched `lastStallAt` every board click computed a hugely negative elapsed time, failed the
+   * cooldown check, and returned zero. Forever. With no feedback, because the only feedback was
+   * on the success path — a playtester's report was simply 'theres zero indication i am clicking
+   * the buttons', which was true in the most literal sense.
+   */
+  function onLine(id: string, e: MouseEvent) {
+    const gained = playLine(game, id, callClock());
+    interacted();
     if (gained > 0) {
       audio.persona(game.p.persona);
-      interacted();
+      spawnPopup(e, `+${fmt(gained)}`);
+    } else {
+      // NEVER fail silently. A refusal is information: the line is still on his mind, or the
+      // handset is not ready yet.
+      audio.refused();
+      spawnPopup(e, 'not yet');
     }
   }
 
+  /**
+   * ONE clock for everything that touches the stall rate limit.
+   *
+   * Both call sites must agree, or the limiter compares two different epochs. See onLine.
+   */
+  function callClock(): number {
+    return Date.now();
+  }
+
   function onStall(e: MouseEvent) {
-    const gained = stall(game, Date.now());
+    const gained = stall(game, callClock());
     interacted();
     audio.stall();
     if (gained > 0) spawnPopup(e, `+${fmt(gained)}`);
@@ -470,7 +496,7 @@ import { boardFor } from './data/soundboard';
                 <button
                   class="board-line"
                   class:heard
-                  onclick={() => onLine(line.id)}
+                  onclick={(e) => onLine(line.id, e)}
                   disabled={cd > 0}
                   title={line.effect}
                 >
