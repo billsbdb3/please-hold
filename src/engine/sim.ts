@@ -538,11 +538,36 @@ export function playLine(s: GameState, id: string, nowMs: number): number {
   p.holdTimeLifetime += extraStall;
   p.holdTimeCareer += extraStall;
 
+  /*
+   * Trust and temper come from the LINE, not from reshaping the stall's contribution.
+   *
+   * Reshaping was the bug: the stall's own rage is 0.055 before the persona multiplier against a
+   * passive 0.05 per SECOND, so multiplying it by 3.4 produced 0.13 and the board's headline effect
+   * was indistinguishable from noise. A line now carries its own weight, scaled by the persona so
+   * a bewildered old woman still winds him up less than an officious one.
+   */
+  /*
+   * TRUST is left exactly as it was: the line scales the stall's own contribution.
+   *
+   * Giving the board its own rapport base moved the trust gate and put Phase 1 outside the window
+   * it was tuned and playtested in, and trust is the resource the design says cannot be bought.
+   * Its per-line numbers stay small; the fix for reading them is precision in the UI, not inflation
+   * in the economy.
+   */
   const rapportGain = p.rapport - rapportBefore;
   p.rapport = Math.min(RAPPORT.max, rapportBefore + rapportGain * line.rapport * wear);
 
-  const rageGain = p.rage - rageBefore;
-  p.rage = Math.min(RAGE.max, rageBefore + rageGain * line.rage * rageWear);
+  /*
+   * TEMPER is the one that genuinely needed a base of its own.
+   *
+   * Rage comes overwhelmingly from passive time - 0.05/s, three a minute - against a stall's 0.055
+   * before the persona multiplier. So multiplying the stall's share by 3.4 moved temper by 0.13,
+   * which is two and a half seconds of simply sitting there: 'temper never goes above 0.1', and it
+   * did not make sense because it did not do anything. The line now carries its own weight, still
+   * scaled by the persona so a bewildered old woman winds him up less than an officious one.
+   */
+  const rageDelta = BOARD.ragePerLine * line.rage * rageWear * s.d.persona.rageMultiplier;
+  p.rage = Math.min(RAGE.max, rageBefore + rageDelta);
 
   if (line.composure !== 0) {
     p.composure = Math.max(0, Math.min(COMPOSURE.max, p.composure - line.composure));

@@ -71,7 +71,28 @@ export const BOARD = {
    * roughly five times what the old flat value paid at 400 a second.
    */
   productionSeconds: 1.3,
+
   /**
+   * What a line contributes to his TEMPER and to TRUST, before its own multipliers.
+   *
+   * These exist because the board was multiplying a negligible base. Rage comes overwhelmingly
+   * from passive time - 0.05/s, three per minute - while a stall contributes 0.055 before the
+   * persona multiplier, so 0.038 for Doris. A line advertised as 'temper x3.4' therefore moved
+   * temper by 0.13: worth two and a half seconds of simply sitting there. A playtester reported it
+   * as 'temper never goes above 0.1' and that it 'still doesnt make sense', and both were exactly
+   * right - the number was true, meaningless, and advertised as though it mattered.
+   *
+   * Set against the thing it is for. A boil-over needs 80 rage from its reset point, and winding
+   * him up on purpose should take on the order of a dozen provoking lines rather than four hundred.
+   * At 0.6 a x2.6 line moves temper by about 1.1 on Doris - legible, and a real strategy.
+   *
+   * TRUST deliberately has no equivalent. Giving the board its own rapport base moved the trust
+   * gate and pushed Phase 1 out of the window it was playtested in, and trust is the resource the
+   * design says cannot be bought. Its per-line numbers stay small; the fix for reading them is
+   * precision in the UI, not inflation in the economy.
+   */
+  ragePerLine: 0.6,
+    /**
    * How much a line is worth the second time in a row: he has heard it.
    *
    * Deliberately harsh. If repeating were merely slightly worse, the optimal play would be to find
@@ -80,8 +101,14 @@ export const BOARD = {
   repeatPenalty: 0.35,
   /** And repeating annoys him in the way that does not help. */
   repeatRageBonus: 1.6,
-  /** How many recent lines he remembers. Beyond this, a line is fresh again. */
-  memory: 3,
+  /**
+   * How many recent lines he remembers.
+   *
+   * Was 3, against five lines per board - so three of every five were penalised at all times and
+   * the player never had more than two good options. A screenshot showed exactly that: three rows
+   * marked 'heard' at once. Two leaves a real choice while still forbidding a favourite.
+   */
+  memory: 2,
 } as const;
 
 /**
