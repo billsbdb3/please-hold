@@ -199,3 +199,46 @@ describe('the board does not break phase 1', () => {
     expect(s.p.holdTime).toBeGreaterThan(before);
   });
 });
+
+/**
+ * THE BOARD MUST ACTUALLY DO SOMETHING.
+ *
+ * It shipped doing nothing at all. `stall` rate-limits on `nowMs - lastStallAt`; the Stall button
+ * passed `Date.now()` (~1.79e12) and the soundboard passed `performance.now()` (~3e4). So once
+ * anything had touched `lastStallAt`, every board click computed a hugely negative elapsed time,
+ * failed the cooldown check and returned zero — forever, and silently, because the only feedback
+ * was on the success path. The report was 'theres zero indication i am clicking the buttons',
+ * which was literally true.
+ *
+ * Every test above passed throughout, because they all use one clock. The bug lived entirely in
+ * the disagreement between two call sites, which is why this one tests the CONTRACT rather than
+ * the function: any two things that share the rate limit must share an epoch.
+ */
+describe('the stall rate limit has one clock', () => {
+  it('lets a board line follow a stall on the same clock', () => {
+    const s = game();
+    const t0 = Date.now();
+    expect(stall(s, t0)).toBeGreaterThan(0);
+    // A moment later, on the SAME epoch, the board must work.
+    expect(playLine(s, 'doris.tv', t0 + 5000)).toBeGreaterThan(0);
+  });
+
+  it('is broken by mixing epochs, which is what shipped', () => {
+    // Kept as an explicit demonstration: this is the shape of the failure, so that anyone who
+    // reintroduces a second clock sees precisely what it costs.
+    const s = game();
+    const epoch = Date.now();
+    stall(s, epoch);
+    const sincePageLoad = 30_000;
+    expect(playLine(s, 'doris.tv', sincePageLoad)).toBe(0);
+  });
+
+  it('recovers on the next tick rather than jamming permanently', () => {
+    const s = game();
+    const t0 = Date.now();
+    playLine(s, 'doris.tv', t0);
+    // Refused immediately (shared cooldown), then allowed once it has passed.
+    expect(playLine(s, 'doris.spell', t0 + 1)).toBe(0);
+    expect(playLine(s, 'doris.spell', t0 + 5000)).toBeGreaterThan(0);
+  });
+});
