@@ -279,8 +279,50 @@ export const INTRUSION = {
    */
   webcamFaceChance: 0.55,
   webcamOccupiedHeat: 2.2,
-  /** Yield of one action, in seconds-of-production terms, so results feel like a real haul. */
-  actionSeconds: 9,
+  /**
+   * Per-second income from a machine, per point of what it holds.
+   *
+   * This is now the phase's whole growth curve: more machines and more administrator means a higher
+   * rate, and the player can point at the reason. The attention pool used to do this job, which is
+   * why the two systems felt disconnected - the thing being acted on was not the thing paying.
+   */
+  ratePerSecond: 1.35,
+  /**
+   * An action's haul, in SECONDS of that machine's own production.
+   *
+   * Denominated this way so an action is always worth taking and never a windfall - the same
+   * guardrail the soundboard and the camera events use. It also answers 'what will the actions do
+   * besides raise suspicion' honestly: a burst of what that box is worth, plus whatever it turns up.
+   */
+  actionSeconds: 15,
   /** A sweep sometimes turns up nothing at all. */
   sweepDudChance: 0.35,
+
+  /**
+   * Seconds of holding a machine before it quietly reveals one of its neighbours.
+   *
+   * IDLE HAS TO STAY VIABLE. Without this, discovery came only from escalating, so a player who
+   * never acted was stuck on one box for ever and the simulator's `neglectful` archetype could not
+   * finish at all - the active layer had become mandatory rather than rewarded. Now simply being on
+   * a machine eventually shows you what is next to it; escalating does it at once and pays more
+   * besides. Slow enough that acting is clearly better, generous enough that absence is not a wall.
+   */
+  passiveRevealSeconds: 150,
+
+  /**
+   * What being noticed costs, now that it costs something real.
+   *
+   * Heat had NO consequence after the streams stopped mattering: `burnAStream` darkened a stream
+   * nothing depended on, so every archetype recorded zero burns and reckless play beat careful play
+   * by twenty-six minutes. A burn now takes the most exposed machine you hold offline and strips
+   * administrator from it - they notice, and they reimage the box. Escalating again is the way back.
+   */
+  burnSecondsBase: 55,
+  burnSecondsPerPrevious: 22,
+  /*
+   * Capped low enough that recklessness is SLOW rather than impossible. At 240 a player who was
+   * noticed a thousand times could never finish at all, and an unwinnable state is worse design
+   * than a punishing one - the player should be able to see they are losing and change.
+   */
+  burnSecondsMax: 120,
 };

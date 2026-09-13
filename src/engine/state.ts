@@ -72,6 +72,7 @@ export function freshState(): Persisted {
     revealed: [],
     footholds: [],
     admin: [],
+    revealProgress: 0,
     freshness: { cctv: 1, recordings: 1, switchboard: 1, crm: 1, whatsapp: 1, ledger: 1 },
     chain: 0,
     cameraEventsCaught: 0,

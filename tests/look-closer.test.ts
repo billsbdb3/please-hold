@@ -163,7 +163,10 @@ describe('it stays optional', () => {
   it('and is not left far behind', () => {
     const engaged = runPhase2('active');
     const ignoring = runPhase2('neglectful');
-    expect(ignoring.minutes / engaged.minutes).toBeLessThan(2.2);
+    // 2.6: Phase 2 is an intrusion now, not an idle phase with an active layer. See the note in
+    // tests/phase2.test.ts — a player who never acts must still FINISH, which is the property that
+    // matters, but he is legitimately much slower.
+    expect(ignoring.minutes / engaged.minutes).toBeLessThan(2.6);
   });
 });
 
