@@ -66,6 +66,11 @@ export function snapshot(game: GameState): Snapshot {
       slipBag: p.slipBag.slice(),
       boilBag: p.boilBag.slice(),
       freshness: { ...p.freshness },
+      // The intrusion's collections. Caught by the enumerating test the moment they were added,
+      // which is now the third time that test has paid for itself.
+      revealed: p.revealed.slice(),
+      footholds: p.footholds.slice(),
+      admin: p.admin.slice(),
       // Phase 2's collections need the same treatment for the same reason. Phase 2 shipped
       // with its component reading `game.p` directly and froze exactly as described above —
       // a camera wall updating live next to an attention counter stuck on its first value.
@@ -86,6 +91,9 @@ export function snapshot(game: GameState): Snapshot {
       // this UI froze twice before.
       liveEvents: game.t.liveEvents.map((e) => ({ ...e })),
       closerCooldown: { ...game.t.closerCooldown },
+      actionCooldown: Object.fromEntries(
+        Object.entries(game.t.actionCooldown ?? {}).map(([k, v]) => [k, { ...v }]),
+      ),
     },
     log: game.t.log.slice(),
   };

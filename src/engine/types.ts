@@ -156,6 +156,14 @@ export interface Persisted {
   boilBag: number[];
   /** Fractional progress toward the next new face on the cameras. */
   faceProgress: number;
+
+  // --- Phase 2: the intrusion (see src/data/intrusion.ts) ---
+  /** Machines revealed by escalating on another machine. */
+  revealed: string[];
+  /** Machines a foothold has been established on. */
+  footholds: string[];
+  /** Machines administrator has been taken on. */
+  admin: string[];
   /**
    * Per-stream freshness, 0..1. Watching a stream lowers it; resting restores it.
    *
@@ -371,6 +379,8 @@ export interface Transient {
   closerCooldown: Partial<Record<StreamId, number>>;
   /** Per-line cooldowns on the soundboard, seconds. Transient. */
   lineCooldown: Record<string, number>;
+  /** Per-machine, per-action cooldowns for the intrusion. Transient. */
+  actionCooldown?: Record<string, Partial<Record<string, number>>>;
   /**
    * What the last line actually did, for the UI to report.
    *
