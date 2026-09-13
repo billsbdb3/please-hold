@@ -13,22 +13,21 @@
    */
   import { frame, game, interacted } from './store.svelte';
   import { snapshot } from './engine/snapshot';
-  import { fmt, fmtPct } from './engine/numbers';
+  import { fmt, fmtPct, fmtRate } from './engine/numbers';
   import {
-    assignAttention, clearAttention, unlockStream, buyAttention,
-    buyTradecraft, availableTradecraft, corroborateNext, deriveP2, claimCameraEvent, freshnessOf,
-    lookCloser, claimEvent,
+    buyTradecraft, availableTradecraft, corroborateNext, deriveP2, claimCameraEvent,
+    claimEvent, intrusionRate,
   } from './engine/phase2';
   import {
     STREAMS, HEAT, COVERAGE, INTEL_KINDS, INTEL_KIND_LABEL, TRADECRAFT,
   } from './data/phase2';
-  import { FATIGUE } from './data/phase2events';
   import type { StreamId } from './engine/types';
   import CctvGrid from './cctv/CctvGrid.svelte';
   import { audio } from './audio';
   import SessionBar from './phase2/SessionBar.svelte';
   import LogTail from './phase2/LogTail.svelte';
   import Network from './phase2/Network.svelte';
+  import { MACHINE_BY_ID } from './data/intrusion';
   import { STREAM_EVENT_VOICE } from './data/streamEvents';
   import { eventsFor } from './engine/phase2';
 
@@ -50,29 +49,25 @@
   const d = $derived.by(() => { void frame.n; return snap.t.p2 ?? deriveP2(snap.p, snap.t.burnedUntil); });
 
   const heatPct = $derived(p.heat / HEAT.max);
-  const tradecraft = $derived.by(() => { void frame.n; return availableTradecraft(game); });
-  const lockedStreams = $derived(STREAMS.filter((s) => !p.streams.includes(s.id)));
-  const openStreams = $derived(STREAMS.filter((s) => p.streams.includes(s.id)));
-  const uncorroborated = $derived(p.roster.filter((r) => !p.corroborated.includes(r.id)));
 
   /**
-   * Which intel kind is holding coverage back, and which streams actually produce it.
+   * The rate the player is actually earning.
    *
-   * The readout already said 'HELD BY MONEY'. It did not say that money comes from the dialler
-   * console and the spreadsheet, so a playtester sat 38 minutes in at 5% coverage with his whole
-   * pool on three streams that produce no money at all, correctly reading a message he could not
-   * act on. A gate should name what it wants AND where to get it.
+   * Every readout was showing `deriveP2().totalRate` — the STREAM rate — which stopped earning
+   * anything the moment the machines became the economy. So the session bar reported 1.3kb/s and
+   * the log 2.18/s while the network was paying four times that, and the entirely reasonable
+   * question was "my rate?". A number on screen that is not the number in the game is worse than
+   * no number at all.
    */
-  const bindingKind = $derived.by(() => {
+  const rate = $derived.by(() => { void frame.n; return intrusionRate(p, t.machineDark ?? {}); });
+
+  /** Machines they have taken off you, by hostname. */
+  const darkMachines = $derived.by(() => {
     void frame.n;
-    return INTEL_KINDS.find((k) => INTEL_KIND_LABEL[k].toLowerCase() === d.bindingLabel) ?? null;
+    return Object.keys(t.machineDark ?? {}).map((id) => MACHINE_BY_ID[id]?.host ?? id);
   });
-  const feedsBinding = $derived.by(() => {
-    void frame.n;
-    const k = bindingKind;
-    if (!k) return new Set<string>();
-    return new Set(STREAMS.filter((st) => st.yields[k]).map((st) => st.id));
-  });
+  const tradecraft = $derived.by(() => { void frame.n; return availableTradecraft(game); });
+  const uncorroborated = $derived(p.roster.filter((r) => !p.corroborated.includes(r.id)));
 
   /** Cameras the player is actually watching, so the wall reflects the allocation. */
   const cctvLive = $derived(
@@ -96,18 +91,6 @@
     }));
   });
   const wallEvent = $derived(t.liveEvents.find((e) => e.stream === 'cctv') ?? null);
-
-  /**
-   * Freshness in words, not a bare percentage.
-   *
-   * Fatigue is invisible unless it is stated: a player watching the same stream would otherwise
-   * just see the numbers quietly getting worse and reasonably conclude something was broken.
-   */
-  function freshLabel(fresh: number): string {
-    if (fresh >= 0.99) return 'fresh';
-    if (fresh <= FATIGUE.floor + 0.01) return 'nothing new here';
-    return `${Math.round(fresh * 100)}% new`;
-  }
 
   function notice(stream: StreamId | null = null) {
     const ok = stream !== null ? claimEvent(game, stream) : claimCameraEvent(game);
@@ -168,26 +151,9 @@
     return h > 0 ? `${h} h ${m} m` : `${m} m`;
   });
 
-  /**
-   * Read a stream properly. The always-available action the phase lacked.
-   *
-   * Deliberately placed on the stream row rather than as one global button: which stream you read
-   * is the decision, and it costs that stream's freshness.
-   */
-  function closer(id: StreamId) {
-    if (lookCloser(game, id)) {
-      audio.noteConfirm();
-      interacted();
-    }
-  }
-
   /** The last thing an intrusion action turned up, kept on screen. */
   let lastAct = $state<string | null>(null);
 
-  function attend(id: StreamId, delta: number) {
-    assignAttention(game, id, delta);
-    interacted();
-  }
 </script>
 
 <!-- The picture destabilises as they get suspicious. Same effect phase 1 uses for his temper,
@@ -197,7 +163,7 @@
     suspicion={heatPct}
     interrupted={d.burned.length > 0}
     elapsed={p.phase2Elapsed}
-    rate={d.totalRate}
+    rate={rate.total}
     onSettings={onSettings}
   />
 
@@ -215,8 +181,9 @@
       </span></span>
     <span class="r"><span class="k">HELD BY</span> <span class="v">{d.bindingLabel.toUpperCase()}</span></span>
     <span class="r"><span class="k">INTEL</span> <span class="v num">{fmt(p.intel)}</span></span>
-    <span class="r"><span class="k">ATTENTION</span>
-      <span class="v num" class:over={d.assigned > d.pool}>{d.assigned}/{d.pool}</span></span>
+    <!-- The number an incremental player actually watches, and the one that was missing. -->
+    <span class="r"><span class="k">RATE</span>
+      <span class="v num">{fmtRate(rate.total)}/s</span></span>
     <span class="r"><span class="k">RUN</span>
       <span class="v num" class:chain-on={p.chain > 0.5}>×{d.chainMultiplier.toFixed(2)}</span>
       {#if d.hotLead}<span class="hot">HOT</span>{/if}</span>
@@ -234,11 +201,10 @@
     </span>
   </div>
 
-  {#if d.burned.length > 0}
+  {#if darkMachines.length > 0}
     <div class="drop-bar">
       <span>
-        Dark: {d.burned.map((id) => STREAMS.find((s) => s.id === id)?.name).join(', ')}.
-        Somebody changed a password, unhelpfully well.
+        Rebuilt: {darkMachines.join(', ')}. The administrator password is not the one you had.
       </span>
     </div>
   {/if}
@@ -260,102 +226,17 @@
         <p class="act-result">{lastAct}</p>
       {/if}
 
-      <div class="panel">
-        <div class="panel-title">
-          <span>Attention</span>
-          <button class="link" onclick={() => { clearAttention(game); interacted(); }}>
-            look away
-          </button>
-        </div>
-        <div class="pad hint-block">
-          <p class="hint">
-            You cannot watch everything. Suspicion rises with what you watch, not with time —
-            and a suspicious floor is a careful floor, so intel is worth less while they are
-            nervous.
-          </p>
-        </div>
-        <div class="list">
-          {#each openStreams as s (s.id)}
-            {@const a = p.attention[s.id] ?? 0}
-            {@const dark = (t.burnedUntil[s.id] ?? 0) > 0}
-            <div class="stream" class:dark class:wanted={feedsBinding.has(s.id) && a === 0}>
-              <div class="stream-head">
-                <span class="row-name">{s.name}</span>
-                {#if feedsBinding.has(s.id)}
-                  <!-- Names where the binding requirement actually comes from. -->
-                  <span class="wanted-tag">{d.bindingLabel}</span>
-                {/if}
-                <span class="stream-alloc">
-                  <button onclick={() => attend(s.id, -1)} disabled={a <= 0} aria-label="less">−</button>
-                  <span class="num alloc">{a}<span class="dim">/{s.maxAttention}</span></span>
-                  <button
-                    onclick={() => attend(s.id, 1)}
-                    disabled={dark || a >= s.maxAttention || d.assigned >= d.pool}
-                    aria-label="more"
-                  >+</button>
-                </span>
-              </div>
-              <span class="row-flavor">{s.flavor}</span>
-              <div class="stream-act">
-                <button
-                  class="closer"
-                  onclick={() => closer(s.id)}
-                  disabled={dark || a <= 0 || (t.closerCooldown[s.id] ?? 0) > 0}
-                  title="Read this stream properly. Costs freshness."
-                >
-                  {(t.closerCooldown[s.id] ?? 0) > 0
-                    ? `${Math.ceil(t.closerCooldown[s.id] ?? 0)}s`
-                    : 'Look closer'}
-                </button>
-                <span class="fresh" class:stale={freshnessOf(p, s.id) < 0.75}>
-                  {freshLabel(freshnessOf(p, s.id))}
-                </span>
-              </div>
-              <span class="stream-stats">
-                {#each INTEL_KINDS as k (k)}
-                  {#if s.yields[k]}
-                    <span class="yield">{INTEL_KIND_LABEL[k].toLowerCase()} {s.yields[k]}</span>
-                  {/if}
-                {/each}
-                <span class="heat-cost">suspicion {s.heatPerAttention.toFixed(2)}/pt</span>
-                {#if dark}
-                  <span class="dark-note">dark {Math.ceil(t.burnedUntil[s.id] ?? 0)}s</span>
-                {/if}
-              </span>
-            </div>
-          {/each}
+      <!--
+        THE ATTENTION PANEL IS GONE.
 
-          {#each lockedStreams as s (s.id)}
-            <button
-              class="row locked-stream"
-              onclick={() => { unlockStream(game, s.id); interacted(); }}
-              disabled={p.intel < s.unlockCost}
-            >
-              <span class="row-main">
-                <span class="row-name">{s.name}</span>
-                <span class="row-effect">
-                  {INTEL_KINDS.filter((k) => s.yields[k]).map((k) => INTEL_KIND_LABEL[k]).join(' · ')}
-                </span>
-              </span>
-              <span class="row-side">
-                {#if feedsBinding.has(s.id)}<span class="wanted-tag">{d.bindingLabel}</span>{/if}
-                <span class="cost num">{fmt(s.unlockCost)}</span>
-              </span>
-            </button>
-          {/each}
-        </div>
-        {#if d.nextAttentionCost !== null}
-          <div class="pad">
-            <button
-              class="btn-wide"
-              onclick={() => { buyAttention(game); interacted(); }}
-              disabled={p.intel < d.nextAttentionCost}
-            >
-              One more thing at once — {fmt(d.nextAttentionCost)}
-            </button>
-          </div>
-        {/if}
-      </div>
+        It sold six streams and a pool to spread across them, and none of it produces income any
+        more - the machines do. Leaving it on screen meant offering purchases that could not do
+        anything, which is precisely the fault a playtester caught when the game was still selling
+        attention against a capped pool. Worse, its readouts were the ones reporting the wrong rate.
+
+        The camera wall stays. It is what the recorder's screens look like, which is a better reason
+        to exist than being one stream among six.
+      -->
     </section>
 
     <!-- ------------------------------------------------------------ the wall -->
@@ -399,7 +280,7 @@
       </div>
 
       <div class="tail-slot">
-        <LogTail lines={log} rate={d.totalRate} suspicion={heatPct} />
+        <LogTail lines={log} rate={rate.total} suspicion={heatPct} />
       </div>
     </section>
 
@@ -567,7 +448,6 @@
   .readout .v { color: var(--ink-text); }
   .readout .r { display: inline-flex; gap: 4px; align-items: baseline; }
   .readout .spacer { flex: 1; }
-  .readout .over { color: var(--red); }
   .readout .chain-on { color: var(--green); }
   .readout .hot { color: var(--red); }
   .dim-note { color: var(--ink-deep); }
@@ -609,63 +489,6 @@
     color: var(--ink-text);
   }
 
-  .hint-block { border-bottom: 1px solid var(--edge); }
-
-  .stream {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    padding: 0.6rem var(--pad);
-    border-bottom: 1px solid var(--edge);
-  }
-  .stream.dark { opacity: 0.4; }
-  /* A stream that feeds the binding requirement and has no attention on it: the single most
-     useful thing the panel can point at. */
-  .stream.wanted {
-    border-left: 2px solid var(--accent);
-    padding-left: calc(var(--pad) - 2px);
-  }
-  .wanted-tag {
-    font-size: 8.5px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: #000;
-    background: var(--accent);
-    padding: 0 4px;
-    align-self: center;
-  }
-  .stream-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .stream-alloc {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .stream-alloc button {
-    padding: 0 7px;
-    font-size: 14px;
-    line-height: 1.4;
-  }
-  .alloc { font-size: 14px; color: var(--ink); }
-
-  .stream-stats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.6rem;
-    font-size: 10px;
-    color: var(--ink-deep);
-    font-variant-numeric: tabular-nums;
-  }
-  .yield { color: var(--ink-dim); }
-  .heat-cost { color: var(--red-dim); }
-  .dark-note { color: var(--red); }
-
-  .locked-stream { opacity: 0.75; }
-
   .meter-row {
     display: grid;
     grid-template-columns: 1fr 1.1fr;
@@ -692,20 +515,6 @@
   .notice-line { flex: 1; min-width: 0; }
   .notice-claim { white-space: nowrap; }
   .notice-clock { color: var(--ink-deep); }
-
-  .stream-act {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin: 2px 0 1px;
-  }
-  .closer {
-    font-size: 10px;
-    padding: 1px 6px;
-    min-width: 5.5rem;
-  }
-  .fresh { color: var(--ink-deep); }
-  .fresh.stale { color: var(--red-dim); }
   /* The requirement actually holding coverage back, so the panel answers 'what now'. */
   .binding-row .meter-label { color: var(--ink); }
   .binding-row .meter-fill { background: var(--ink); }
