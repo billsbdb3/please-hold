@@ -61,6 +61,7 @@ export function freshTransient(nowMs: number): GameState['t'] {
     closerCooldown: {},
     lineCooldown: {},
     actionCooldown: {},
+    machineDark: {},
     lastLineResult: null,
     recentLines: [],
     lastEventNote: null,

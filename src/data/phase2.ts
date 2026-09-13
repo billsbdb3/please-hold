@@ -239,10 +239,10 @@ export const HEAT = {
  */
 export const COVERAGE = {
   need: {
-    people: 224_000,
-    structure: 186_000,
-    money: 152_000,
-    evidence: 193_000,
+    people: 616_000,
+    structure: 511_500,
+    money: 418_000,
+    evidence: 530_750,
   } as Record<IntelKind, number>,
   /**
    * Roster entries whose real name must be resolved. An attentive Phase 1 arrives with 12,

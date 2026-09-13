@@ -164,6 +164,8 @@ export interface Persisted {
   footholds: string[];
   /** Machines administrator has been taken on. */
   admin: string[];
+  /** Fractional progress toward the next machine revealing itself without being escalated. */
+  revealProgress: number;
   /**
    * Per-stream freshness, 0..1. Watching a stream lowers it; resting restores it.
    *
@@ -381,6 +383,8 @@ export interface Transient {
   lineCooldown: Record<string, number>;
   /** Per-machine, per-action cooldowns for the intrusion. Transient. */
   actionCooldown?: Record<string, Partial<Record<string, number>>>;
+  /** Seconds each machine remains offline after being noticed. Transient. */
+  machineDark?: Record<string, number>;
   /**
    * What the last line actually did, for the UI to report.
    *

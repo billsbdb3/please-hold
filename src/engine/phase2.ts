@@ -27,8 +27,8 @@ import {
 import type { CameraEventTier } from '../data/phase2events';
 import { STREAM_EVENTS, EVENT_STREAMS } from '../data/streamEvents';
 import { drawFromBag, nextInt, nextRandom } from './rng';
-import { tickIntrusion } from './intrusion';
-import { ENTRY_MACHINE } from '../data/intrusion';
+import { tickIntrusion, burnMachine } from './intrusion';
+import { ENTRY_MACHINE, MACHINE_BY_ID, INTRUSION } from '../data/intrusion';
 import {
   NEW_FACES,
   STREAMS, STREAM_BY_ID, ATTENTION, HEAT, COVERAGE, IDENTIFY,
@@ -213,6 +213,53 @@ export function deriveP2(p: GameState['p'], burnedUntil: Partial<Record<StreamId
 
 // ------------------------------------------------------------------------ tick
 
+/**
+ * What the machines you hold produce, per second, per kind.
+ *
+ * THE ECONOMY IS THE NETWORK. This is the change that makes the intrusion the phase rather than a
+ * panel bolted onto it. Previously per-second income came from attention on streams while the
+ * machines paid one-off hauls, so two economies sat side by side and neither felt like the player's:
+ * "what will the actions do besides raise suspicion? ... its very hard to get an even remotely high
+ * per second on whatever it is im farming with the attention."
+ *
+ * Now a foothold IS income. Every box you are on drips what that box knows, administrator nearly
+ * doubles it, and the growth curve is the map filling in — which is legible in a way an attention
+ * slider never was, because the player can point at the reason their rate went up.
+ *
+ * Derived every tick and never stored, like every other multiplier here.
+ */
+export function intrusionRate(p: GameState['p'], dark: Record<string, number> = {}): {
+  byKind: Record<IntelKind, number>;
+  total: number;
+  heatMultiplier: number;
+} {
+  const m = multipliers(p);
+  const byKind: Record<IntelKind, number> = { people: 0, structure: 0, money: 0, evidence: 0 };
+
+  // A suspicious floor is a careful floor: the same yield penalty the streams used, kept because
+  // it is what makes managing heat worth anything.
+  const heatMultiplier = 1 - (p.heat / HEAT.max) * HEAT.yieldPenaltyAtMax;
+
+  for (const id of p.footholds ?? []) {
+    if ((dark[id] ?? 0) > 0) continue; // rebuilt; it answers to somebody else for now
+    const def = MACHINE_BY_ID[id];
+    if (!def) continue;
+    const access = (p.admin ?? []).includes(id) ? 'admin' : 'user';
+    const scale = INTRUSION.accessMultiplier[access] * INTRUSION.ratePerSecond;
+    for (const kind of INTEL_KINDS) {
+      const y = def.yields[kind];
+      if (y) byKind[kind] += y * scale;
+    }
+  }
+
+  let total = 0;
+  for (const kind of INTEL_KINDS) {
+    byKind[kind] *= m.yieldMult * heatMultiplier;
+    total += byKind[kind];
+  }
+  return { byKind, total, heatMultiplier };
+}
+
 export function tickPhase2(s: GameState, dt: number): void {
   const p = s.p;
   p.phase2Elapsed += dt;
@@ -231,9 +278,15 @@ export function tickPhase2(s: GameState, dt: number): void {
   const d = deriveP2(p, s.t.burnedUntil);
   s.t.p2 = d;
 
-  // Intel accrues by kind; the plain `intel` total is what you spend.
+  /*
+   * Intel accrues from the MACHINES you hold, not from attention on streams.
+   *
+   * The streams' own contribution is gone rather than added to: two parallel income sources was
+   * the actual complaint, because the one the player was acting on was not the one paying.
+   */
+  const rate = intrusionRate(p, s.t.machineDark ?? {});
   for (const kind of INTEL_KINDS) {
-    const gained = d.intelRate[kind] * dt;
+    const gained = rate.byKind[kind] * dt;
     p.intelByKind[kind] += gained;
     p.intel += gained;
     p.intelLifetime += gained;
@@ -261,7 +314,22 @@ export function tickPhase2(s: GameState, dt: number): void {
 
   // Heat.
   p.heat = Math.max(0, Math.min(HEAT.max, p.heat + d.heatRate * dt));
-  if (p.heat >= HEAT.burnAt) burnAStream(s);
+  if (p.heat >= HEAT.burnAt) {
+    /*
+     * They noticed. Take a MACHINE, not a stream.
+     *
+     * Once the machines became the economy, `burnAStream` was darkening something nothing depended
+     * on - so every archetype recorded zero burns and reckless play beat careful play by
+     * twenty-six minutes. Heat with no consequence is a decorative meter.
+     */
+    if (burnMachine(s)) {
+      p.burns++;
+      p.heat = HEAT.afterBurn;
+      if (CHAIN.brokenByBurn) p.chain = 0;
+    } else {
+      burnAStream(s);
+    }
+  }
 
   checkPhase2Milestones(s);
 }

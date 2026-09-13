@@ -29,11 +29,18 @@ export interface MachineView {
   known: boolean;
   /** Cooldowns remaining per action, seconds. */
   cooling: Partial<Record<ActionId, number>>;
+  /** True while they have taken this machine off you. */
+  dark: boolean;
   /** Actions currently possible, with what each would cost and roughly yield. */
   available: { def: (typeof ACTIONS)[number]; heat: number; ready: boolean }[];
 }
 
 /** Access held on a machine. */
+/** True while a machine is offline because they noticed. */
+export function isDark(s: GameState, id: string): boolean {
+  return (s.t.machineDark?.[id] ?? 0) > 0;
+}
+
 export function accessOf(p: GameState['p'], id: string): Access {
   if (p.admin?.includes(id)) return 'admin';
   if (p.footholds?.includes(id)) return 'user';
@@ -74,12 +81,14 @@ export function viewMachines(s: GameState): MachineView[] {
       access,
       known: true,
       cooling,
+      dark: isDark(s, id),
       available: ACTIONS.map((a) => ({
         def: a,
         heat: heatOf(def, a.id),
         ready:
           canDo(access, a.needs)
           && (cooling[a.id] ?? 0) <= 0
+          && !isDark(s, id)
           && !(a.id === 'escalate' && access === 'admin'),
       })),
     });
@@ -139,6 +148,7 @@ export function act(s: GameState, id: string, action: ActionId): ActionResult | 
   if (!def || !adef) return null;
 
   const access = accessOf(p, id);
+  if (isDark(s, id)) return null;
   if (!canDo(access, adef.needs)) return null;
   if ((s.t.actionCooldown?.[id]?.[action] ?? 0) > 0) return null;
   if (action === 'escalate' && access === 'admin') return null;
@@ -150,6 +160,22 @@ export function act(s: GameState, id: string, action: ActionId): ActionResult | 
 
   const heat = heatOf(def, action);
   p.heat = Math.min(HEAT.max, p.heat + heat);
+
+  /*
+   * Check for being noticed HERE, not on the next tick.
+   *
+   * The tick applies heat decay before its threshold check, so an action that pushed heat to the
+   * ceiling was nudged back under it in the same frame and the burn never fired - every archetype
+   * recorded zero burns while sitting at peak 100. Checking on the spot is also better feedback: the
+   * action that got you noticed is the one that costs you.
+   */
+  if (p.heat >= HEAT.burnAt) {
+    if (burnMachine(s)) {
+      p.burns++;
+      p.heat = HEAT.afterBurn;
+      p.chain = 0;
+    }
+  }
 
   const result: ActionResult = {
     machine: id, action, gained: {}, total: 0, heat, line: '',
@@ -205,7 +231,7 @@ export function act(s: GameState, id: string, action: ActionId): ActionResult | 
   }
 
   // --- The rest: a haul, weighted by what this machine holds and how much access you have.
-  const scale = INTRUSION.accessMultiplier[access];
+  const scale = INTRUSION.accessMultiplier[access] * INTRUSION.ratePerSecond;
   const weight = actionWeight(action);
   const seconds = INTRUSION.actionSeconds;
   let total = 0;
@@ -267,6 +293,40 @@ function describe(def: MachineDef, action: ActionId): string {
 
 /** Tick the per-machine action cooldowns. */
 export function tickIntrusion(s: GameState, dt: number): void {
+  const p = s.p;
+
+  // Machines come back on their own once they have stopped looking.
+  if (s.t.machineDark) {
+    for (const id of Object.keys(s.t.machineDark)) {
+      const left = (s.t.machineDark[id] ?? 0) - dt;
+      if (left <= 0) {
+        delete s.t.machineDark[id];
+        pushLog(s, `${MACHINE_BY_ID[id]?.host ?? id} answers again. Nobody mentioned it.`, 'intel');
+      } else {
+        s.t.machineDark[id] = left;
+      }
+    }
+  }
+
+  /*
+   * Discovery without acting.
+   *
+   * Simply being on a machine eventually shows you what is next to it. Escalating does it at once
+   * and pays more, so acting is plainly better - but a player who does nothing is no longer walled
+   * in on the first box, which is what made the phase's active layer mandatory rather than rewarded.
+   */
+  const held = (p.footholds ?? []).filter((id) => !isDark(s, id));
+  if (held.length > 0) {
+    p.revealProgress += (dt * held.length) / INTRUSION.passiveRevealSeconds;
+    while (p.revealProgress >= 1) {
+      p.revealProgress -= 1;
+      if (!revealSomething(s)) {
+        p.revealProgress = 0;
+        break;
+      }
+    }
+  }
+
   const all = s.t.actionCooldown;
   if (!all) return;
   for (const machine of Object.keys(all)) {
@@ -278,6 +338,61 @@ export function tickIntrusion(s: GameState, dt: number): void {
     }
     if (Object.keys(per).length === 0) delete all[machine];
   }
+}
+
+/**
+ * Reveal one machine reachable from something already held. Returns false when nothing is left.
+ */
+function revealSomething(s: GameState): boolean {
+  const p = s.p;
+  const known = new Set(knownMachines(p));
+  const candidates: string[] = [];
+  for (const id of p.footholds ?? []) {
+    for (const r of MACHINE_BY_ID[id]?.reveals ?? []) {
+      if (!known.has(r)) candidates.push(r);
+    }
+  }
+  if (candidates.length === 0) return false;
+  const roll = nextRandom(p.rngState);
+  p.rngState = roll.state;
+  const found = candidates[Math.floor(roll.value * candidates.length)];
+  p.revealed = [...(p.revealed ?? []), found];
+  pushLog(s, `${MACHINE_BY_ID[found].host} is reachable from something you are already on.`, 'intel');
+  return true;
+}
+
+/**
+ * They noticed. Take the most exposed machine off the player and strip administrator from it.
+ *
+ * Heat had no consequence at all once the streams stopped driving the economy - every archetype
+ * recorded zero burns and reckless play beat careful play by twenty-six minutes. This is the
+ * consequence, and it maps exactly onto the fiction: somebody reimages the box.
+ */
+export function burnMachine(s: GameState): string | null {
+  const p = s.p;
+  const held = (p.footholds ?? []).filter((id) => !isDark(s, id));
+  if (held.length === 0) return null;
+
+  const worst = held
+    .map((id) => MACHINE_BY_ID[id])
+    .filter(Boolean)
+    .sort((a, b) => b.exposure - a.exposure)[0];
+  if (!worst) return null;
+
+  const dark = Math.min(
+    INTRUSION.burnSecondsMax,
+    INTRUSION.burnSecondsBase + p.burns * INTRUSION.burnSecondsPerPrevious,
+  );
+  s.t.machineDark ??= {};
+  s.t.machineDark[worst.id] = dark;
+  p.admin = (p.admin ?? []).filter((x) => x !== worst.id);
+  pushLog(
+    s,
+    `Somebody has noticed. ${worst.host} has been rebuilt and is gone for ${Math.round(dark)} `
+    + 'seconds. The administrator password is not the one you had.',
+    'threat',
+  );
+  return worst.id;
 }
 
 /** How much of the network is in hand, for the readout. */

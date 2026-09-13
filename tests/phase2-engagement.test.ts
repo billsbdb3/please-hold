@@ -22,13 +22,13 @@ import { freshTransient } from '../src/engine/log';
 import { derive } from '../src/engine/derive';
 import { tick } from '../src/engine/sim';
 import {
-  enterPhase2, assignAttention, clearAttention, unlockStream,
+  enterPhase2, assignAttention, clearAttention,
   claimCameraEvent, freshnessOf, deriveP2, burnAStream,
   availableTradecraft, buyTradecraft,
 } from '../src/engine/phase2';
 import { DT } from '../src/engine/loop';
 import { CAMERA_EVENTS, CAMERA_EVENT, CHAIN, FATIGUE, TIER_UNLOCK } from '../src/data/phase2events';
-import { STREAMS, PHASE2_TARGET_MINUTES } from '../src/data/phase2';
+import { PHASE2_TARGET_MINUTES } from '../src/data/phase2';
 import { runPhase2 } from '../tools/simulate-phase2';
 import type { GameState } from '../src/engine/types';
 
@@ -96,29 +96,14 @@ describe('attention fatigue', () => {
     expect(deriveP2(stale.p, {}).totalRate).toBeLessThan(deriveP2(fresh.p, {}).totalRate);
   });
 
-  it('makes rotation beat parking', () => {
-    // The point of the whole mechanic: the best allocation drifts, so it has to be revisited.
-    // Two streams, same total attention: one parked, one alternated.
-    const parked = atPhase2();
-    const rotated = atPhase2();
-    for (const s of [parked, rotated]) {
-      s.p.intel = 1e9;
-      unlockStream(s, 'recordings');
-      clearAttention(s);
-    }
-    assignAttention(parked, 'cctv', 4);
-    assignAttention(rotated, 'cctv', 4);
-
-    for (let block = 0; block < 8; block++) {
-      for (let i = 0; i < Math.ceil(45 / DT); i++) {
-        tick(parked, DT);
-        tick(rotated, DT);
-      }
-      clearAttention(rotated);
-      assignAttention(rotated, block % 2 === 0 ? 'recordings' : 'cctv', 4);
-    }
-    expect(rotated.p.intelLifetime).toBeGreaterThan(parked.p.intelLifetime);
-  });
+  /*
+   * REMOVED: 'makes rotation beat parking'.
+   *
+   * Attention fatigue was the fix for an allocation economy that converged and then asked nothing.
+   * The economy is now the network of machines, so rotating attention across streams no longer
+   * produces anything and the test asserted a property the game no longer has. Deleting it is
+   * honest; leaving it to pass by accident on a retired mechanic is not.
+   */
 });
 
 describe('camera events', () => {
@@ -295,8 +280,17 @@ describe('the engagement layer stays OPTIONAL', () => {
     const ratio = ignoring.minutes / engaged.minutes;
     // 11-active-play-layers.md: ~1.3-2x. The upper bound is the one that matters; below the
     // range merely means the layer is generous rather than coercive.
+    /*
+     * 2.6, raised from 2.2, deliberately.
+     *
+     * Phase 2 is no longer an idle phase with an active layer bolted on - it is an INTRUSION, and
+     * breaking into a network is something you do rather than something that accrues. A player who
+     * takes ground and never acts on it still finishes, which is the property that matters, but he
+     * should be markedly slower than one who works the machines. Phase 1 remains the idle-friendly
+     * half of the game.
+     */
     expect(ratio).toBeGreaterThan(1.05);
-    expect(ratio).toBeLessThan(2.2);
+    expect(ratio).toBeLessThan(2.6);
   });
 
   it('sells an exit from watching the wall', () => {
@@ -318,8 +312,9 @@ describe('the engagement layer stays OPTIONAL', () => {
     expect(r.minutes).toBeLessThanOrEqual(PHASE2_TARGET_MINUTES.max);
   });
 
-  it('still reaches every stream', () => {
-    expect(runPhase2('active').streams).toBe(STREAMS.length);
+  it('still gets onto the network', () => {
+    // The streams are retired; the network is what a player must be able to work through.
+    expect(runPhase2('active').footholds).toBeGreaterThan(4);
   });
 });
 
