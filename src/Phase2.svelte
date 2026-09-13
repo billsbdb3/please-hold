@@ -28,6 +28,7 @@
   import { audio } from './audio';
   import SessionBar from './phase2/SessionBar.svelte';
   import LogTail from './phase2/LogTail.svelte';
+  import Network from './phase2/Network.svelte';
   import { STREAM_EVENT_VOICE } from './data/streamEvents';
   import { eventsFor } from './engine/phase2';
 
@@ -180,6 +181,9 @@
     }
   }
 
+  /** The last thing an intrusion action turned up, kept on screen. */
+  let lastAct = $state<string | null>(null);
+
   function attend(id: StreamId, delta: number) {
     assignAttention(game, id, delta);
     interacted();
@@ -242,6 +246,20 @@
   <div class="p2-grid">
     <!-- ------------------------------------------------------- streams / attention -->
     <section class="col">
+      <!--
+        THE NETWORK, and the phase's new verb.
+        Attention allocation stays below it for now rather than being deleted in the same change:
+        Phase 2's economy, coverage gate and pacing gate are all still wired to the streams, and
+        removing them in the same commit as introducing this would mean shipping an unmeasured
+        phase. The intrusion is the part to judge.
+      -->
+      <div class="net-slot">
+        <Network onResult={(line) => (lastAct = line)} />
+      </div>
+      {#if lastAct}
+        <p class="act-result">{lastAct}</p>
+      {/if}
+
       <div class="panel">
         <div class="panel-title">
           <span>Attention</span>
@@ -571,6 +589,24 @@
   .wall-body.unwatched {
     opacity: 0.35;
     filter: grayscale(1);
+  }
+
+  .net-slot {
+    flex: 0 0 auto;
+    height: 46%;
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .net-slot :global(.net) { flex: 1 1 auto; min-height: 0; }
+  .act-result {
+    margin: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--edge);
+    background: var(--surface-raised);
+    font-size: 10.5px;
+    color: var(--ink-text);
   }
 
   .hint-block { border-bottom: 1px solid var(--edge); }

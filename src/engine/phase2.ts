@@ -27,6 +27,8 @@ import {
 import type { CameraEventTier } from '../data/phase2events';
 import { STREAM_EVENTS, EVENT_STREAMS } from '../data/streamEvents';
 import { drawFromBag, nextInt, nextRandom } from './rng';
+import { tickIntrusion } from './intrusion';
+import { ENTRY_MACHINE } from '../data/intrusion';
 import {
   NEW_FACES,
   STREAMS, STREAM_BY_ID, ATTENTION, HEAT, COVERAGE, IDENTIFY,
@@ -248,6 +250,7 @@ export function tickPhase2(s: GameState, dt: number): void {
     else s.t.closerCooldown[id] = left;
   }
 
+  tickIntrusion(s, dt);
   tickFatigue(s, dt);
   tickCameraEvents(s, dt);
 
@@ -810,6 +813,14 @@ export function enterPhase2(s: GameState): void {
   // You arrive with the cameras. Everything else is bought.
   if (!p.streams.includes('cctv')) p.streams.push('cctv');
   p.attention.cctv = Math.min(2, attentionPool(p));
+
+  /*
+   * And you arrive ON a machine. One badly-secured dialler desktop with the password on a sticky
+   * note, which is where every one of these actually starts - see src/data/intrusion.ts.
+   */
+  if (!(p.footholds ?? []).includes(ENTRY_MACHINE)) {
+    p.footholds = [...(p.footholds ?? []), ENTRY_MACHINE];
+  }
   s.t.p2 = deriveP2(p, s.t.burnedUntil);
 
   pushLog(s, 'You are no longer on the phone. You are in the building, in the way that matters.', 'beat');
